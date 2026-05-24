@@ -1,0 +1,97 @@
+# -----------------------------
+# OS / editor
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# -----------------------------
+# Environment / secrets
+# -----------------------------
+.env
+.env.*
+!.env.example
+
+# -----------------------------
+# Python / FastAPI backend
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+.venv/
+venv/
+ENV/
+
+# Keep uv.lock committed
+# uv.lock
+
+# -----------------------------
+# Node / Vite frontend
+# -----------------------------
+node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Keep pnpm-lock.yaml committed
+# pnpm-lock.yaml
+
+# -----------------------------
+# SQLite / local app data
+# -----------------------------
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+data/
+.local-data/
+
+# -----------------------------
+# Logs
+# -----------------------------
+*.log
+logs/
+
+# -----------------------------
+# Test / browser tooling
+# -----------------------------
+playwright-report/
+test-results/
+coverage/
+
+# -----------------------------
+# Docker / devcontainer local files
+# -----------------------------
+.docker/
+docker-compose.override.yml
+
+# Do not ignore .devcontainer/
+# It should be committed if it defines the project dev environment.
+
+# -----------------------------
+# Temporary files
+# -----------------------------
+tmp/
+temp/
+.cache/
