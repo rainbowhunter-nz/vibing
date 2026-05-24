@@ -1,0 +1,12 @@
+{
+  "name": "Vibing",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "mounts": [
+    "source=${localEnv:DOCKER_SOCKET:/var/run/docker.sock},target=/var/run/docker.sock,type=bind",
+    "source=vibing-claude,target=/home/vscode/.claude,type=volume"
+  ],
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude",
+  "remoteUser": "vscode"
+}
