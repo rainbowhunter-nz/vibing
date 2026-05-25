@@ -46,6 +46,7 @@ dist/
 dist-ssr/
 build/
 .vite/
+.pnpm-store/
 
 npm-debug.log*
 yarn-debug.log*
