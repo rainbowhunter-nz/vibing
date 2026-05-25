@@ -21,16 +21,27 @@ This keeps status words and event words separate.
 
 ## Workspace
 
-A workspace is one isolated development environment for one project.
+A workspace is one isolated development environment for one local project.
 
-A workspace contains the project source code, workspace configuration, runtime state, editor access, Git state, and at most one active Claude Code session for the MVP.
+A workspace contains the project source code, workspace configuration, runtime state, editor access, Git state when the local project is a Git repository, and at most one active Claude Code session for the MVP.
 
-A workspace may be created from:
+MVP source rule:
 
-- a local folder
-- a Git URL
+- A workspace is created from an existing local folder only.
+- The canonical source field is `local_path`.
+- Git URL workspace creation and repository cloning are not part of the MVP.
 
 The Host Runtime Worker owns workspace lifecycle operations such as creating, starting, stopping, restarting, and deleting the workspace environment.
+
+Suggested MVP fields:
+
+- `id`
+- `name`
+- `local_path`
+- `status`
+- `container_id`
+- `created_at`
+- `updated_at`
 
 ### Workspace statuses
 
@@ -158,6 +169,7 @@ For VIB-3, this is a vocabulary definition only. Do not implement a full event b
 
 Do not introduce the following as part of VIB-3:
 
+- Git URL workspace creation or repository cloning.
 - Codex or other non-Claude coding agents.
 - Multiple concurrent sessions in one workspace.
 - Multi-user ownership, RBAC, or audit vocabulary.
