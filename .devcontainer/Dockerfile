@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
 ARG USERNAME=vscode
 ARG NVM_VERSION=v0.40.1
-ARG PNPM_VERSION=latest
+ARG PNPM_VERSION=11.3.0
 
 ENV NVM_DIR=/home/${USERNAME}/.nvm
 ENV NVM_SYMLINK_CURRENT=true
