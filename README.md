@@ -9,7 +9,7 @@ The MVP focuses on:
 
 - local-only, single-user workflow
 - workspace dashboard
-- creating workspaces from local folders or Git URLs
+- creating workspaces from local folders only (`local_path`)
 - one persistent isolated workspace per project
 - Claude Code support
 - one active Claude Code session per workspace
@@ -24,6 +24,7 @@ The MVP focuses on:
 
 The MVP does not include:
 
+- Git URL workspace creation or repository cloning
 - Codex or other coding agents
 - multiple concurrent sessions in one workspace
 - cloud sync or hosted execution
@@ -39,7 +40,7 @@ The MVP does not include:
 - Backend: Python + FastAPI
 - Workspace runtime agent: Python
 - Local metadata: SQLite
-- Workspace model: devcontainer-first
+- Workspace model: devcontainer-first, local-folder-only for MVP
 
 ## Documentation
 
