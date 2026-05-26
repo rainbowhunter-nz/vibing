@@ -3,9 +3,10 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 
-from vibing_api.api.routes import health
+from vibing_api.api.routes import config, health, status, workspaces
 from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
+from vibing_api.core.errors import register_error_handlers
 
 
 @asynccontextmanager
@@ -16,7 +17,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
-    app.include_router(health.router, prefix=settings.api_v1_prefix)
+    register_error_handlers(app)
+    for router in (health.router, status.router, config.router, workspaces.router):
+        app.include_router(router, prefix=settings.api_v1_prefix)
     return app
 
 
