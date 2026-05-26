@@ -5,8 +5,8 @@
   },
   "mounts": [
     "source=${localEnv:DOCKER_SOCKET:/var/run/docker.sock},target=/var/run/docker.sock,type=bind",
-    "source=vibing-claude,target=/home/vscode/.claude,type=volume"
+    "source=claude-${devcontainerId},target=/home/vscode/.claude,type=volume"
   ],
-  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude",
+  "postCreateCommand": "sudo bash .devcontainer/post_create_setup.sh",
   "remoteUser": "vscode"
 }
