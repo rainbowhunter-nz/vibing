@@ -96,3 +96,8 @@ docker-compose.override.yml
 tmp/
 temp/
 .cache/
+
+# -----------------------------
+# Superpowers brainstorm session files
+# -----------------------------
+.superpowers/
