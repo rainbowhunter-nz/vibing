@@ -10,11 +10,11 @@ const ITEMS = [
 
 export function Sidebar() {
   return (
-    <aside className="flex w-[200px] flex-col border-r border-border bg-surface-sidebar py-4">
+    <aside aria-label="Primary" className="flex w-[200px] flex-col border-r border-border bg-surface-sidebar py-4">
       <div className="px-[18px] pb-[18px] text-[15px] font-semibold tracking-tight text-text">
         Vibing
       </div>
-      <nav className="flex flex-col">
+      <nav aria-label="Main" className="flex flex-col">
         {ITEMS.map((item) => (
           <NavLink
             key={item.to}

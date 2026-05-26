@@ -10,7 +10,7 @@ export function AppShell() {
       <main className="flex flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
-      <aside className="flex w-[240px] flex-col gap-4 border-l border-border bg-surface-rail p-4">
+      <aside aria-label="Activity" className="flex w-[240px] flex-col gap-4 border-l border-border bg-surface-rail p-4">
         <RailActivity />
         <div className="flex-1" />
         <RailBackend />
