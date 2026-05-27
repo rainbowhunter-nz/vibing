@@ -22,5 +22,7 @@ rm -f "$CLAUDE_JSON_LINK"
 ln -s "$CLAUDE_JSON_TARGET" "$CLAUDE_JSON_LINK"
 
 # Ensure the vscode user can read/write the persisted files.
-chown -R vscode:vscode "$CLAUDE_DIR"
-chown -h vscode:vscode "$CLAUDE_JSON_LINK"
+sudo chown -R vscode:vscode "$CLAUDE_DIR"
+sudo chown -h vscode:vscode "$CLAUDE_JSON_LINK"
+
+uv run .devcontainer/sync-claude-statusline.py
