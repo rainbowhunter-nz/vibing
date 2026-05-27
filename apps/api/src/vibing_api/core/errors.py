@@ -48,12 +48,18 @@ def register_error_handlers(app: FastAPI) -> None:
     async def handle_validation_error(
         _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        errors = []
+        for err in exc.errors():
+            err = dict(err)
+            if "ctx" in err:
+                err["ctx"] = {k: str(v) for k, v in err["ctx"].items()}
+            errors.append(err)
         return JSONResponse(
             status_code=422,
             content=_envelope(
                 VALIDATION_ERROR,
                 "Request validation failed",
-                details=exc.errors(),
+                details=errors,
             ),
         )
 

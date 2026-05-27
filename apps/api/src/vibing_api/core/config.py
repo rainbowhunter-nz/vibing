@@ -17,5 +17,9 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{Path.cwd() / 'vibing.db'}"
     static_dir: str | None = None
 
+    backend_host: str = "0.0.0.0"
+    backend_port: int = 8080
+    settings_file: str = str(Path.home() / ".vibing" / "settings.json")
+
 
 settings = Settings()

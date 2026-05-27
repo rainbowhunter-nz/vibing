@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from vibing_api.core.config import settings
+
 
 def test_config_returns_api_prefix(client: TestClient) -> None:
     response = client.get("/api/v1/config")
@@ -14,3 +16,9 @@ def test_config_does_not_leak_database_url(client: TestClient) -> None:
     body = response.json()
     # Backend-only values must not be exposed to the frontend.
     assert "database_url" not in body
+
+
+def test_settings_has_backend_host_port_and_settings_file() -> None:
+    assert settings.backend_host == "0.0.0.0"
+    assert settings.backend_port == 8080
+    assert settings.settings_file.endswith("settings.json")

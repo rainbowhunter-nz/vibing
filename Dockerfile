@@ -25,6 +25,7 @@ COPY --from=builder /build/dist /app/dist
 
 ENV VIBING_DATABASE_URL=sqlite:////data/vibing.db
 ENV VIBING_STATIC_DIR=/app/dist
+ENV VIBING_SETTINGS_FILE=/data/settings.json
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 VOLUME /data
