@@ -23,3 +23,20 @@ export function fetchHealth(): Promise<HealthResponse> {
 export function fetchConfig(): Promise<ConfigResponse> {
   return getJson<ConfigResponse>('/api/v1/config')
 }
+
+export interface Workspace {
+  id: string
+  name: string
+  local_path: string
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+interface WorkspaceList {
+  items: Workspace[]
+}
+
+export function fetchWorkspaces(): Promise<WorkspaceList> {
+  return getJson<WorkspaceList>('/api/v1/workspaces')
+}
