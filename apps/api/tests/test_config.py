@@ -18,7 +18,6 @@ def test_config_does_not_leak_database_url(client: TestClient) -> None:
     assert "database_url" not in body
 
 
-def test_settings_has_backend_host_port_and_settings_file() -> None:
+def test_settings_has_backend_host_and_port() -> None:
     assert settings.backend_host == "0.0.0.0"
     assert settings.backend_port == 8080
-    assert settings.settings_file.endswith("settings.json")

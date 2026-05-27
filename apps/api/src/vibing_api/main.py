@@ -3,11 +3,30 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
+from starlette.responses import Response
+from starlette.types import Scope
 
 from vibing_api.api.routes import config, health, settings as settings_route, status, workspaces
 from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
 from vibing_api.core.errors import register_error_handlers
+
+
+class SpaStaticFiles(StaticFiles):
+    """Serve index.html for unmatched client-side routes (e.g. /workspace on refresh)."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            # Keep API and asset 404s as real 404s; only fall back for SPA routes.
+            last = path.rsplit("/", 1)[-1]
+            if path.startswith("api/") or "." in last:
+                raise
+            return await super().get_response("index.html", scope)
 
 
 @asynccontextmanager
@@ -22,7 +41,7 @@ def create_app() -> FastAPI:
     for router in (health.router, status.router, config.router, workspaces.router, settings_route.router):
         app.include_router(router, prefix=settings.api_v1_prefix)
     if settings.static_dir:
-        app.mount("/", StaticFiles(directory=settings.static_dir, html=True), name="static")
+        app.mount("/", SpaStaticFiles(directory=settings.static_dir, html=True), name="static")
     return app
 
 

@@ -19,10 +19,3 @@ def db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def client(db_path: Path) -> Iterator[TestClient]:
     with TestClient(create_app()) as client:
         yield client
-
-
-@pytest.fixture
-def settings_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    path = tmp_path / "vibing-settings.json"
-    monkeypatch.setattr(settings, "settings_file", str(path))
-    return path

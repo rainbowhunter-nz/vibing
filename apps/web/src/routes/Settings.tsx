@@ -1,14 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { PageHeader } from '../components/PageHeader'
-import { fetchSettings, updateSettings, type SettingsResponse } from '../lib/api'
+import { fetchSettings, type SettingsResponse } from '../lib/api'
 import { cn } from '../lib/cn'
 
 type State =
   | { kind: 'loading' }
   | { kind: 'ready'; settings: SettingsResponse }
   | { kind: 'error' }
-
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 const RUNTIME_ROWS: [keyof SettingsResponse['runtime'], string][] = [
   ['docker', 'Docker'],
@@ -59,6 +57,37 @@ function Field({
   )
 }
 
+function Toggle({
+  id,
+  checked,
+  onChange,
+}: {
+  id: string
+  checked: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition-colors',
+        checked ? 'bg-accent' : 'bg-surface-muted',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-[18px]' : 'translate-x-0.5',
+        )}
+      />
+    </button>
+  )
+}
+
 function runtimeLabel(value: boolean | null): string {
   if (value === null) return 'Not detected yet'
   return value ? 'Available' : 'Not found'
@@ -66,16 +95,16 @@ function runtimeLabel(value: boolean | null): string {
 
 export function Settings() {
   const [state, setState] = useState<State>({ kind: 'loading' })
-  const [storageLocation, setStorageLocation] = useState('')
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [notifications, setNotifications] = useState(false)
+  const [displayName, setDisplayName] = useState('')
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+  const [sidebarWidth, setSidebarWidth] = useState(240)
 
   useEffect(() => {
     let cancelled = false
     fetchSettings()
       .then((settings) => {
-        if (cancelled) return
-        setState({ kind: 'ready', settings })
-        setStorageLocation(settings.workspace_storage_location)
+        if (!cancelled) setState({ kind: 'ready', settings })
       })
       .catch(() => {
         if (!cancelled) setState({ kind: 'error' })
@@ -113,59 +142,64 @@ export function Settings() {
   }
 
   const { settings } = state
-  const trimmed = storageLocation.trim()
-  const dirty = trimmed !== settings.workspace_storage_location
-  const canSave = dirty && trimmed.length > 0 && saveStatus !== 'saving'
-
-  function handleSave() {
-    const value = storageLocation.trim()
-    if (!value) return
-    setSaveStatus('saving')
-    updateSettings({ workspace_storage_location: value })
-      .then((updated) => {
-        setState({ kind: 'ready', settings: updated })
-        setSaveStatus('saved')
-      })
-      .catch(() => setSaveStatus('error'))
-  }
 
   return (
     <>
       <PageHeader title="Settings" />
       <div className="flex-1 overflow-auto">
-        <Section title="Workspace">
-          <Field
-            label="Storage location"
-            id="storage-location"
-            hint="Where Vibing stores workspace data on this machine."
-          >
+        <Section title="Preferences">
+          <p className="text-xs text-text-muted">
+            Placeholder controls — not wired up yet.
+          </p>
+          <Field label="Enable notifications">
+            <div className="flex items-center gap-2">
+              <Toggle
+                id="notifications-toggle"
+                checked={notifications}
+                onChange={setNotifications}
+              />
+              <span className="text-[13px] text-text-muted">{notifications ? 'On' : 'Off'}</span>
+            </div>
+          </Field>
+          <Field label="Display name" id="display-name">
             <input
-              id="storage-location"
+              id="display-name"
               type="text"
-              value={storageLocation}
-              onChange={(e) => {
-                setStorageLocation(e.target.value)
-                setSaveStatus('idle')
-              }}
-              className={cn(inputClass, 'max-w-[480px]')}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="e.g. Hank"
+              className={cn(inputClass, 'max-w-[320px]')}
             />
           </Field>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={!canSave}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-[13px] font-medium',
-                canSave
-                  ? 'cursor-pointer bg-accent text-white hover:opacity-90'
-                  : 'cursor-not-allowed bg-surface-muted text-text-muted',
-              )}
+          <Field label="Theme" id="theme-select">
+            <select
+              id="theme-select"
+              value={theme}
+              onChange={(e) => setTheme(e.target.value as typeof theme)}
+              className={cn(inputClass, 'max-w-[240px]')}
             >
-              {saveStatus === 'saving' ? 'Saving…' : 'Save'}
-            </button>
-            {saveStatus === 'saved' && <span className="text-xs text-ok">Saved</span>}
-            {saveStatus === 'error' && <span className="text-xs text-bad">Couldn't save</span>}
-          </div>
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </Field>
+          <Field label="Sidebar width" id="sidebar-width">
+            <div className="flex max-w-[320px] items-center gap-3">
+              <input
+                id="sidebar-width"
+                type="range"
+                min={200}
+                max={320}
+                step={4}
+                value={sidebarWidth}
+                onChange={(e) => setSidebarWidth(Number(e.target.value))}
+                className="flex-1 accent-accent"
+              />
+              <span className="w-12 text-right text-[13px] tabular-nums text-text-muted">
+                {sidebarWidth}px
+              </span>
+            </div>
+          </Field>
         </Section>
 
         <Section title="Backend">
@@ -186,28 +220,6 @@ export function Settings() {
               readOnly
               className={cn(readOnlyClass, 'max-w-[160px]')}
             />
-          </Field>
-        </Section>
-
-        <Section title="Editor">
-          <Field label="Preferred editor" id="editor-preference" hint="Coming soon.">
-            <input
-              id="editor-preference"
-              type="text"
-              value=""
-              placeholder="Coming soon"
-              disabled
-              className={cn(readOnlyClass, 'max-w-[480px]')}
-            />
-          </Field>
-        </Section>
-
-        <Section title="Notifications">
-          <Field label="Notifications" hint="Coming soon.">
-            <label className="inline-flex cursor-not-allowed items-center gap-2">
-              <input type="checkbox" disabled className="h-4 w-4 cursor-not-allowed" />
-              <span className="text-[13px] text-text-muted">Coming soon</span>
-            </label>
           </Field>
         </Section>
 

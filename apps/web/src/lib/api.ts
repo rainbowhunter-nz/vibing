@@ -16,18 +16,6 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T
 }
 
-async function sendJson<T>(path: string, method: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    throw new Error(`${path} ${res.status}`)
-  }
-  return (await res.json()) as T
-}
-
 export function fetchHealth(): Promise<HealthResponse> {
   return getJson<HealthResponse>('/api/v1/health')
 }
@@ -61,20 +49,11 @@ export interface RuntimeDetection {
 }
 
 export interface SettingsResponse {
-  workspace_storage_location: string
   backend_host: string
   backend_port: number
-  editor_preference: string | null
-  notifications_enabled: boolean | null
   runtime: RuntimeDetection
 }
 
 export function fetchSettings(): Promise<SettingsResponse> {
   return getJson<SettingsResponse>('/api/v1/settings')
-}
-
-export function updateSettings(patch: {
-  workspace_storage_location: string
-}): Promise<SettingsResponse> {
-  return sendJson<SettingsResponse>('/api/v1/settings', 'PATCH', patch)
 }

@@ -19,7 +19,6 @@ class Settings(BaseSettings):
 
     backend_host: str = "0.0.0.0"
     backend_port: int = 8080
-    settings_file: str = str(Path.home() / ".vibing" / "settings.json")
 
 
 settings = Settings()

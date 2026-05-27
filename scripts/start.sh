@@ -8,8 +8,15 @@ IMAGE=vibing
 CONTAINER=vibing
 PORT=8080
 
+if [[ "${1:-}" == "--stop" ]]; then
+  echo "Stopping container..."
+  docker rm -f "$CONTAINER" 2>/dev/null || true
+  echo "Stopped."
+  exit 0
+fi
+
 echo "Building image..."
-docker build -t "$IMAGE" .
+docker build --load -t "$IMAGE" .
 
 echo "Starting container..."
 docker rm -f "$CONTAINER" 2>/dev/null || true
