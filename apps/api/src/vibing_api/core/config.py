@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
 
     database_url: str = f"sqlite:///{Path.cwd() / 'vibing.db'}"
+    static_dir: str | None = None
 
 
 settings = Settings()
