@@ -1,15 +1,15 @@
 # Stage 1: build frontend
 FROM node:24-slim AS builder
 WORKDIR /build
-RUN corepack enable
+RUN corepack enable && corepack install -g pnpm@11.3.0
 COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
-RUN corepack install -g pnpm@11.3.0 && pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 COPY apps/web/ ./
 RUN pnpm build
 
 # Stage 2: run backend + serve built frontend
 FROM python:3.13-slim AS final
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /usr/local/bin/uv
 WORKDIR /app
 
 # Install Python dependencies (separate layer for cache efficiency)
@@ -25,6 +25,8 @@ COPY --from=builder /build/dist /app/dist
 
 ENV VIBING_DATABASE_URL=sqlite:////data/vibing.db
 ENV VIBING_STATIC_DIR=/app/dist
+ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
+VOLUME /data
 
 CMD ["uv", "run", "uvicorn", "vibing_api.main:app", "--host", "0.0.0.0", "--port", "8080"]
