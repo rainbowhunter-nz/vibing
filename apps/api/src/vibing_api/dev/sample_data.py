@@ -7,11 +7,7 @@ prefixed with `sample-` and every sample workspace name starts with
 DELETE per table. Not part of the production import graph.
 """
 
-import argparse
 import sqlite3
-import sys
-
-from vibing_api.core.database import get_connection, init_db
 
 SAMPLE_ID_PREFIX = "sample-"
 SAMPLE_NAME_PREFIX = "[sample] "
@@ -202,52 +198,3 @@ def status(conn: sqlite3.Connection) -> dict[str, int]:
     return counts
 
 
-def _cmd_seed() -> int:
-    init_db()
-    with get_connection() as conn:
-        inserted = seed(conn)
-        conn.commit()
-    print(f"seeded {inserted} rows across {len(_DATASET)} tables.")
-    return 0
-
-
-def _cmd_reset() -> int:
-    init_db()
-    with get_connection() as conn:
-        removed = reset(conn)
-        conn.commit()
-    print(f"removed {removed} sample rows.")
-    return 0
-
-
-def _cmd_status() -> int:
-    init_db()
-    with get_connection() as conn:
-        counts = status(conn)
-    for table, _ in _DATASET:
-        print(f"{table}: {counts[table]}")
-    return 0
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="python -m vibing_api.dev.sample_data",
-        description="Seed, reset, or report on local sample data.",
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("seed", help="Insert the curated sample dataset.")
-    subparsers.add_parser("reset", help="Remove all sample-prefixed rows.")
-    subparsers.add_parser("status", help="Print per-table sample row counts.")
-    args = parser.parse_args(argv)
-    if args.command == "seed":
-        return _cmd_seed()
-    if args.command == "reset":
-        return _cmd_reset()
-    if args.command == "status":
-        return _cmd_status()
-    parser.error(f"unknown command: {args.command}")
-    return 2
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

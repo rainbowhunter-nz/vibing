@@ -120,9 +120,9 @@ Populate the dashboard, inbox, and approval queue with curated sample rows for U
 
 ```bash
 cd apps/api
-uv run python -m vibing_api.dev.sample_data seed     # idempotent
-uv run python -m vibing_api.dev.sample_data status   # show counts
-uv run python -m vibing_api.dev.sample_data reset    # remove samples
+uv run vibing dev sample_data seed
+uv run vibing dev sample_data status
+uv run vibing dev sample_data reset
 ```
 
 Every sample row's `id` is prefixed with `sample-` and every sample workspace name starts with `[sample]`. Real rows created via the API are never touched by `reset`.

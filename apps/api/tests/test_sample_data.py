@@ -10,7 +10,6 @@ from vibing_api.dev.sample_data import (
     SAMPLE_ID_PREFIX,
     SAMPLE_INBOX_EVENTS,
     SAMPLE_WORKSPACES,
-    main,
     reset,
     seed,
     status,
@@ -142,26 +141,3 @@ def test_seeded_sample_workspaces_visible_via_api(client: TestClient) -> None:
     ]
 
 
-def test_main_dispatches_subcommands(
-    db_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert main(["seed"]) == 0
-    seed_out = capsys.readouterr().out.strip()
-    assert seed_out == "seeded 12 rows across 4 tables."
-
-    assert main(["status"]) == 0
-    status_out = capsys.readouterr().out.strip().splitlines()
-    assert status_out == [
-        f"workspaces: {len(SAMPLE_WORKSPACES)}",
-        f"agent_sessions: {len(SAMPLE_AGENT_SESSIONS)}",
-        f"approval_requests: {len(SAMPLE_APPROVAL_REQUESTS)}",
-        f"inbox_events: {len(SAMPLE_INBOX_EVENTS)}",
-    ]
-
-    assert main(["reset"]) == 0
-    reset_out = capsys.readouterr().out.strip()
-    assert reset_out == "removed 12 sample rows."
-
-    assert main(["reset"]) == 0
-    reset_again_out = capsys.readouterr().out.strip()
-    assert reset_again_out == "removed 0 sample rows."
