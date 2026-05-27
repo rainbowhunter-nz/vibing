@@ -1,19 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { PageHeader } from '../components/PageHeader'
-import { fetchSettings, type SettingsResponse } from '../lib/api'
+import {
+  fetchDiagnostics,
+  fetchSettings,
+  type DiagnosticCheck,
+  type DiagnosticStatus,
+  type DiagnosticsResponse,
+  type SettingsResponse,
+} from '../lib/api'
 import { cn } from '../lib/cn'
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'ready'; settings: SettingsResponse }
+  | { kind: 'ready'; settings: SettingsResponse; diagnostics: DiagnosticsResponse }
   | { kind: 'error' }
-
-const RUNTIME_ROWS: [keyof SettingsResponse['runtime'], string][] = [
-  ['docker', 'Docker'],
-  ['podman', 'Podman'],
-  ['devcontainer_cli', 'Dev Container CLI'],
-  ['claude_code', 'Claude Code'],
-]
 
 const inputClass =
   'rounded-md border border-border bg-bg px-3 py-1.5 text-[13px] text-text outline-none focus:border-accent'
@@ -88,9 +88,33 @@ function Toggle({
   )
 }
 
-function runtimeLabel(value: boolean | null): string {
-  if (value === null) return 'Not detected yet'
-  return value ? 'Available' : 'Not found'
+const STATUS_DOT: Record<DiagnosticStatus, string> = {
+  ok: 'bg-ok',
+  fail: 'bg-bad',
+  unknown: 'bg-text-subtle',
+}
+
+const STATUS_LABEL: Record<DiagnosticStatus, string> = {
+  ok: 'OK',
+  fail: 'Failed',
+  unknown: 'Not detected yet',
+}
+
+function DiagnosticRow({ check }: { check: DiagnosticCheck }) {
+  return (
+    <div className="flex max-w-[480px] items-start justify-between gap-4">
+      <div className="flex flex-col">
+        <span className="text-[13px] text-text">{check.label}</span>
+        {check.message && (
+          <span className="text-xs text-text-subtle">{check.message}</span>
+        )}
+      </div>
+      <span className="flex items-center gap-2 text-xs text-text-muted">
+        <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[check.status])} />
+        {STATUS_LABEL[check.status]}
+      </span>
+    </div>
+  )
 }
 
 export function Settings() {
@@ -102,9 +126,9 @@ export function Settings() {
 
   useEffect(() => {
     let cancelled = false
-    fetchSettings()
-      .then((settings) => {
-        if (!cancelled) setState({ kind: 'ready', settings })
+    Promise.all([fetchSettings(), fetchDiagnostics()])
+      .then(([settings, diagnostics]) => {
+        if (!cancelled) setState({ kind: 'ready', settings, diagnostics })
       })
       .catch(() => {
         if (!cancelled) setState({ kind: 'error' })
@@ -141,7 +165,7 @@ export function Settings() {
     )
   }
 
-  const { settings } = state
+  const { settings, diagnostics } = state
 
   return (
     <>
@@ -223,13 +247,10 @@ export function Settings() {
           </Field>
         </Section>
 
-        <Section title="Runtime detection">
+        <Section title="Diagnostics">
           <div className="space-y-2">
-            {RUNTIME_ROWS.map(([key, label]) => (
-              <div key={key} className="flex max-w-[480px] items-center justify-between">
-                <span className="text-[13px] text-text">{label}</span>
-                <span className="text-xs text-text-muted">{runtimeLabel(settings.runtime[key])}</span>
-              </div>
+            {diagnostics.checks.map((check) => (
+              <DiagnosticRow key={check.id} check={check} />
             ))}
           </div>
         </Section>

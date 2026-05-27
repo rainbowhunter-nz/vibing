@@ -7,7 +7,14 @@ from starlette.exceptions import HTTPException
 from starlette.responses import Response
 from starlette.types import Scope
 
-from vibing_api.api.routes import config, health, settings as settings_route, status, workspaces
+from vibing_api.api.routes import (
+    config,
+    diagnostics,
+    health,
+    settings as settings_route,
+    status,
+    workspaces,
+)
 from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
 from vibing_api.core.errors import register_error_handlers
@@ -38,7 +45,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     register_error_handlers(app)
-    for router in (health.router, status.router, config.router, workspaces.router, settings_route.router):
+    for router in (
+        health.router,
+        status.router,
+        config.router,
+        workspaces.router,
+        settings_route.router,
+        diagnostics.router,
+    ):
         app.include_router(router, prefix=settings.api_v1_prefix)
     if settings.static_dir:
         app.mount("/", SpaStaticFiles(directory=settings.static_dir, html=True), name="static")

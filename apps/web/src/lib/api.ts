@@ -57,3 +57,20 @@ export interface SettingsResponse {
 export function fetchSettings(): Promise<SettingsResponse> {
   return getJson<SettingsResponse>('/api/v1/settings')
 }
+
+export type DiagnosticStatus = 'ok' | 'fail' | 'unknown'
+
+export interface DiagnosticCheck {
+  id: string
+  label: string
+  status: DiagnosticStatus
+  message: string | null
+}
+
+export interface DiagnosticsResponse {
+  checks: DiagnosticCheck[]
+}
+
+export function fetchDiagnostics(): Promise<DiagnosticsResponse> {
+  return getJson<DiagnosticsResponse>('/api/v1/diagnostics')
+}
