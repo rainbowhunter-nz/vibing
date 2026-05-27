@@ -114,6 +114,19 @@ All backend settings use the `VIBING_` prefix. Set them in the shell or in `apps
 
 The frontend has no env vars — it always calls `/api/v1/*` via the proxy.
 
+### Sample data (local development only)
+
+Populate the dashboard, inbox, and approval queue with curated sample rows for UI validation:
+
+```bash
+cd apps/api
+uv run python -m vibing_api.dev.sample_data seed     # idempotent
+uv run python -m vibing_api.dev.sample_data status   # show counts
+uv run python -m vibing_api.dev.sample_data reset    # remove samples
+```
+
+Every sample row's `id` is prefixed with `sample-` and every sample workspace name starts with `[sample]`. Real rows created via the API are never touched by `reset`.
+
 ### Production-like preview (single container)
 
 ```bash
