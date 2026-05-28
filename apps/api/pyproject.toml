@@ -10,6 +10,8 @@ dependencies = [
     "rich>=15.0.0",
     "typer>=0.26.2",
     "uvicorn[standard]>=0.48.0",
+    "vibing-host-runtime",
+    "vibing-protocol",
 ]
 
 [dependency-groups]
@@ -22,6 +24,10 @@ dev = [
 
 [project.scripts]
 vibing = "vibing_api.cli:app"
+
+[tool.uv.sources]
+vibing-host-runtime = { path = "../../packages/host_runtime", editable = true }
+vibing-protocol = { path = "../../packages/protocol", editable = true }
 
 [build-system]
 requires = ["uv_build>=0.11.16,<0.12.0"]

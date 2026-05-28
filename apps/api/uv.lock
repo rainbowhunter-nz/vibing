@@ -650,6 +650,8 @@ dependencies = [
     { name = "rich" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "vibing-host-runtime" },
+    { name = "vibing-protocol" },
 ]
 
 [package.dev-dependencies]
@@ -667,6 +669,8 @@ requires-dist = [
     { name = "rich", specifier = ">=15.0.0" },
     { name = "typer", specifier = ">=0.26.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.48.0" },
+    { name = "vibing-host-runtime", editable = "../../packages/host_runtime" },
+    { name = "vibing-protocol", editable = "../../packages/protocol" },
 ]
 
 [package.metadata.requires-dev]
@@ -676,6 +680,41 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.14" },
 ]
+
+[[package]]
+name = "vibing-host-runtime"
+version = "0.1.0"
+source = { editable = "../../packages/host_runtime" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "vibing-protocol" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "vibing-protocol", editable = "../../packages/protocol" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "ruff", specifier = ">=0.15.14" },
+]
+
+[[package]]
+name = "vibing-protocol"
+version = "0.1.0"
+source = { editable = "../../packages/protocol" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.15.14" }]
 
 [[package]]
 name = "watchfiles"

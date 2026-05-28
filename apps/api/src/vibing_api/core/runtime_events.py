@@ -1,55 +1,33 @@
-"""Runtime event vocabulary and persistence helpers.
+"""Runtime-event persistence over the runtime_events SQLite table.
 
-Runtime events are structured events emitted by the Host Runtime Worker or
-Workspace Runtime Agent. This module defines the allowed event types and
-provides minimal CRUD helpers over the `runtime_events` table. No event bus,
-no side effects.
+Vocabulary and message shape live in vibing_protocol. This module owns
+only the read/write helpers.
 """
 
 import json
 import sqlite3
-import uuid
-from datetime import datetime, timezone
-from typing import Any, Literal, get_args
+from typing import Any
 
-from pydantic import BaseModel
+from vibing_protocol.runtime_events import (
+    EVENT_TYPES,
+    EventType,
+    InvalidRuntimeEventError,
+    RUNTIME_EVENT_SOURCES,
+    RuntimeEvent,
+    RuntimeEventSource,
+)
 
-EventType = Literal[
-    "workspace_started",
-    "workspace_failed",
-    "claude_session_started",
-    "claude_asked_question",
-    "approval_requested",
-    "approval_resolved",
-    "session_completed",
-    "session_failed",
+__all__ = [
+    "EVENT_TYPES",
+    "EventType",
+    "InvalidRuntimeEventError",
+    "RUNTIME_EVENT_SOURCES",
+    "RuntimeEvent",
+    "RuntimeEventSource",
+    "list_runtime_events_by_session",
+    "list_runtime_events_by_workspace",
+    "record_runtime_event",
 ]
-
-RuntimeEventSource = Literal[
-    "host_runtime_worker",
-    "workspace_runtime_agent",
-]
-
-EVENT_TYPES: frozenset[str] = frozenset(get_args(EventType))
-RUNTIME_EVENT_SOURCES: frozenset[str] = frozenset(get_args(RuntimeEventSource))
-
-
-class InvalidRuntimeEventError(ValueError):
-    """Raised when an event_type or source is not in the allowed vocabulary."""
-
-
-class RuntimeEvent(BaseModel):
-    id: str
-    workspace_id: str | None
-    agent_session_id: str | None
-    event_type: str
-    source: str
-    payload: dict[str, Any] | None
-    created_at: str
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def record_runtime_event(
@@ -61,30 +39,35 @@ def record_runtime_event(
     agent_session_id: str | None = None,
     payload: dict[str, Any] | None = None,
 ) -> RuntimeEvent:
-    """Insert a runtime event and return it. Caller is responsible for commit."""
+    """Validate, build, insert, return. Caller is responsible for commit."""
     if event_type not in EVENT_TYPES:
         raise InvalidRuntimeEventError(f"Unknown event_type: {event_type!r}")
     if source not in RUNTIME_EVENT_SOURCES:
         raise InvalidRuntimeEventError(f"Unknown source: {source!r}")
 
-    event_id = str(uuid.uuid4())
-    created_at = _now()
-    payload_json = json.dumps(payload) if payload is not None else None
+    event = RuntimeEvent(
+        event_type=event_type,
+        source=source,
+        workspace_id=workspace_id,
+        agent_session_id=agent_session_id,
+        payload=payload,
+    )
+    payload_json = json.dumps(event.payload) if event.payload is not None else None
     conn.execute(
         "INSERT INTO runtime_events "
         "(id, workspace_id, agent_session_id, event_type, source, payload, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (event_id, workspace_id, agent_session_id, event_type, source, payload_json, created_at),
+        (
+            event.id,
+            event.workspace_id,
+            event.agent_session_id,
+            event.event_type,
+            event.source,
+            payload_json,
+            event.created_at,
+        ),
     )
-    return RuntimeEvent(
-        id=event_id,
-        workspace_id=workspace_id,
-        agent_session_id=agent_session_id,
-        event_type=event_type,
-        source=source,
-        payload=payload,
-        created_at=created_at,
-    )
+    return event
 
 
 def _row_to_event(row: sqlite3.Row) -> RuntimeEvent:

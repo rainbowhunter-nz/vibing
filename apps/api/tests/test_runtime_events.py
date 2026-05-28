@@ -2,11 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from vibing_api.core.commands import COMMAND_TYPES
 from vibing_api.core.database import get_connection, init_db
 from vibing_api.core.runtime_events import (
-    EVENT_TYPES,
-    RUNTIME_EVENT_SOURCES,
     InvalidRuntimeEventError,
     list_runtime_events_by_session,
     list_runtime_events_by_workspace,

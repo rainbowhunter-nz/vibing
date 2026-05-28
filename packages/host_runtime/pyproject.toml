@@ -1,7 +1,7 @@
 [project]
-name = "vibing-workspace-runtime"
+name = "vibing-host-runtime"
 version = "0.1.0"
-description = "Workspace-side runtime skeleton for the Vibing MVP."
+description = "Host-side runtime skeleton for the Vibing MVP."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
