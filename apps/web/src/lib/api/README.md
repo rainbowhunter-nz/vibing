@@ -1,0 +1,63 @@
+# Frontend API client
+
+All backend calls live under `/api/v1` (see `apps/api/src/vibing_api/main.py`). In dev, Vite proxies that prefix to `http://localhost:8000` (`apps/web/vite.config.ts`); in production the same path is served from the FastAPI process. **Never hardcode `http://localhost:8000`** — always call through this module.
+
+## Calling endpoints
+
+```ts
+import { fetchWorkspaces } from '../lib/api'
+
+const { items } = await fetchWorkspaces()
+```
+
+Each `fetchX` returns the parsed JSON response, typed against the backend Pydantic model. Failures throw:
+
+- `ApiError` — backend returned non-2xx with the standard envelope `{error: {code, message, details}}`. Inspect `err.code` (e.g. `WORKSPACE_NOT_FOUND`, `VALIDATION_ERROR`).
+- `ApiError` with `code: 'HTTP_ERROR'` — non-2xx without the envelope (e.g. 500 with an HTML body).
+- `NetworkError` — `fetch` itself rejected (backend down, DNS failure, etc.).
+
+## Pattern A — `useApiQuery` (use this for new screens)
+
+```tsx
+import { useApiQuery, fetchWorkspaces } from '../lib/api'
+
+function WorkspacesPage() {
+  const { state, refetch } = useApiQuery(fetchWorkspaces, [])
+
+  if (state.kind === 'loading') return <Spinner />
+  if (state.kind === 'error') return <ErrorView onRetry={refetch} />
+  return <List items={state.data.items} />
+}
+```
+
+The hook owns loading state, cancellation on unmount, and refetch. Pass `[]` for an on-mount fetch, or `[id]` to refetch when an id changes.
+
+## Pattern B — manual `useEffect` (legacy)
+
+`Workspaces.tsx`, `Settings.tsx`, and `RailBackend.tsx` were written before the hook existed; they roll their own `{loading | ready | error}` state machine + `cancelled` flag. Don't copy that pattern into new code — use `useApiQuery`.
+
+## Error handling
+
+```ts
+import { ApiError, deleteWorkspace } from '../lib/api'
+
+try {
+  await deleteWorkspace(id)
+} catch (err) {
+  if (err instanceof ApiError && err.code === 'WORKSPACE_NOT_FOUND') {
+    showToast('Workspace already deleted')
+  } else {
+    showToast('Something went wrong')
+  }
+}
+```
+
+## Adding an endpoint
+
+1. Add the response shape to `types.ts`.
+2. Add `fetchX = (): Promise<XResponse> => getJson('/x')` (or `sendJson` for writes) to `endpoints.ts`.
+3. The barrel (`index.ts`) re-exports it automatically.
+
+## Mocking in tests
+
+`__tests__/client.test.ts` is the canonical example: stub `globalThis.fetch` with `vi.stubGlobal('fetch', vi.fn().mockResolvedValue(...))`, restore via `vi.unstubAllGlobals()` in `afterEach`.

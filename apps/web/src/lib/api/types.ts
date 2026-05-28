@@ -1,27 +1,19 @@
+// Backend response shapes (apps/api/src/vibing_api/api/routes/*).
+
 export interface HealthResponse {
   status: string
   service: string
 }
 
+export interface StatusResponse {
+  status: string
+  service: string
+  version: string
+}
+
 export interface ConfigResponse {
   app_name: string
   api_v1_prefix: string
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path)
-  if (!res.ok) {
-    throw new Error(`${path} ${res.status}`)
-  }
-  return (await res.json()) as T
-}
-
-export function fetchHealth(): Promise<HealthResponse> {
-  return getJson<HealthResponse>('/api/v1/health')
-}
-
-export function fetchConfig(): Promise<ConfigResponse> {
-  return getJson<ConfigResponse>('/api/v1/config')
 }
 
 export interface Workspace {
@@ -33,12 +25,8 @@ export interface Workspace {
   updated_at: string
 }
 
-interface WorkspaceList {
+export interface WorkspaceList {
   items: Workspace[]
-}
-
-export function fetchWorkspaces(): Promise<WorkspaceList> {
-  return getJson<WorkspaceList>('/api/v1/workspaces')
 }
 
 export interface RuntimeDetection {
@@ -54,10 +42,6 @@ export interface SettingsResponse {
   runtime: RuntimeDetection
 }
 
-export function fetchSettings(): Promise<SettingsResponse> {
-  return getJson<SettingsResponse>('/api/v1/settings')
-}
-
 export type DiagnosticStatus = 'ok' | 'fail' | 'unknown'
 
 export interface DiagnosticCheck {
@@ -71,6 +55,14 @@ export interface DiagnosticsResponse {
   checks: DiagnosticCheck[]
 }
 
-export function fetchDiagnostics(): Promise<DiagnosticsResponse> {
-  return getJson<DiagnosticsResponse>('/api/v1/diagnostics')
+// Backend error envelope (apps/api/src/vibing_api/core/errors.py).
+
+export interface ApiErrorBody {
+  code: string
+  message: string
+  details: unknown
+}
+
+export interface ApiErrorEnvelope {
+  error: ApiErrorBody
 }
