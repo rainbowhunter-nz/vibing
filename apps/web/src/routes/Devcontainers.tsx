@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
-import { fetchDevcontainers, type Devcontainer } from '../lib/api'
+import { ErrorState } from '../components/ErrorState'
+import { QueryBoundary } from '../components/QueryBoundary'
+import { fetchDevcontainers, useApiQuery, type Devcontainer } from '../lib/api'
+import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 
 const folderIcon = (
@@ -31,11 +33,6 @@ const trashIcon = (
     <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
   </svg>
 )
-
-type State =
-  | { kind: 'loading' }
-  | { kind: 'list'; items: Devcontainer[] }
-  | { kind: 'error' }
 
 const RUNNING_STATUSES = new Set(['running', 'starting', 'stopping'])
 
@@ -85,119 +82,95 @@ function countLabel(n: number): string {
 
 const COLUMNS = 'grid grid-cols-[1fr_110px_100px_150px_80px]'
 
+function DevcontainerTable({ items }: { items: Devcontainer[] }) {
+  return (
+    <div>
+      <div
+        className={cn(
+          COLUMNS,
+          'border-b border-border bg-surface-muted px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted',
+        )}
+      >
+        <span>Name</span>
+        <span>Source</span>
+        <span>Status</span>
+        <span>Last Updated</span>
+        <span />
+      </div>
+      {items.map((devcontainer) => {
+        const running = isRunning(devcontainer.status)
+        return (
+          <div
+            key={devcontainer.id}
+            className={cn(
+              COLUMNS,
+              'items-center border-b border-border px-4 py-3',
+              running ? 'border-l-[3px] border-l-ok' : 'pl-[19px]',
+            )}
+          >
+            <span className="text-[13px] font-semibold text-text">{devcontainer.name}</span>
+            <span className="text-xs text-text-muted">Local folder</span>
+            <span>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                  statusBadgeClass(devcontainer.status),
+                )}
+              >
+                {devcontainer.status}
+              </span>
+            </span>
+            <span className="text-xs text-text-muted">{formatRelativeTime(devcontainer.updated_at)}</span>
+            <div className="flex items-center justify-end gap-0.5">
+              <button
+                title="Start"
+                disabled
+                className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-[5px] text-text-muted opacity-[0.4]"
+              >
+                {playIcon}
+              </button>
+              <button
+                title="Stop"
+                disabled
+                className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-[5px] text-text-muted opacity-[0.4]"
+              >
+                {stopIcon}
+              </button>
+              <button
+                title="Delete"
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] text-bad hover:bg-surface-muted"
+              >
+                {trashIcon}
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Devcontainers() {
-  const [state, setState] = useState<State>({ kind: 'loading' })
-
-  useEffect(() => {
-    let cancelled = false
-    fetchDevcontainers()
-      .then((data) => {
-        if (!cancelled) setState({ kind: 'list', items: data.items })
-      })
-      .catch(() => {
-        if (!cancelled) setState({ kind: 'error' })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const crumbs = state.kind === 'list' ? countLabel(state.items.length) : undefined
+  const { state } = useApiQuery(fetchDevcontainers, [])
+  const crumbs = state.kind === 'ready' ? countLabel(state.data.items.length) : undefined
 
   return (
     <>
       <PageHeader title="Devcontainers" crumbs={crumbs} />
       <div className="flex-1 overflow-auto">
-        {state.kind === 'loading' && (
-          <div className="flex h-full items-center justify-center p-8 text-[13px] text-text-muted">
-            Loading devcontainers…
-          </div>
-        )}
-
-        {state.kind === 'error' && (
-          <div className="flex h-full items-center justify-center p-8">
-            <div className="max-w-[320px] text-center">
-              <h2 className="mb-1.5 text-[15px] font-semibold text-text">Couldn't load devcontainers</h2>
-              <p className="text-[13px] text-text-muted">
-                Check that the backend is running, then reload the page.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {state.kind === 'list' && state.items.length === 0 && (
-          <EmptyState
-            icon={folderIcon}
-            title="No devcontainers yet"
-            helper="Devcontainers will appear here once you add a local folder."
-          />
-        )}
-
-        {state.kind === 'list' && state.items.length > 0 && (
-          <div>
-            <div
-              className={cn(
-                COLUMNS,
-                'border-b border-border bg-surface-muted px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted',
-              )}
-            >
-              <span>Name</span>
-              <span>Source</span>
-              <span>Status</span>
-              <span>Last Updated</span>
-              <span />
-            </div>
-            {state.items.map((devcontainer) => {
-              const running = isRunning(devcontainer.status)
-              return (
-                <div
-                  key={devcontainer.id}
-                  className={cn(
-                    COLUMNS,
-                    'items-center border-b border-border px-4 py-3',
-                    running ? 'border-l-[3px] border-l-ok' : 'pl-[19px]',
-                  )}
-                >
-                  <span className="text-[13px] font-semibold text-text">{devcontainer.name}</span>
-                  <span className="text-xs text-text-muted">Local folder</span>
-                  <span>
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-[11px] font-medium',
-                        statusBadgeClass(devcontainer.status),
-                      )}
-                    >
-                      {devcontainer.status}
-                    </span>
-                  </span>
-                  <span className="text-xs text-text-muted">{formatRelativeTime(devcontainer.updated_at)}</span>
-                  <div className="flex items-center justify-end gap-0.5">
-                    <button
-                      title="Start"
-                      disabled
-                      className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-[5px] text-text-muted opacity-[0.4]"
-                    >
-                      {playIcon}
-                    </button>
-                    <button
-                      title="Stop"
-                      disabled
-                      className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-[5px] text-text-muted opacity-[0.4]"
-                    >
-                      {stopIcon}
-                    </button>
-                    <button
-                      title="Delete"
-                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] text-bad hover:bg-surface-muted"
-                    >
-                      {trashIcon}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <QueryBoundary state={state} error={<ErrorState {...loadError('devcontainers')} />}>
+          {(data) =>
+            data.items.length === 0 ? (
+              <EmptyState
+                icon={folderIcon}
+                title="No devcontainers yet"
+                helper="Devcontainers will appear here once you add a local folder."
+              />
+            ) : (
+              <DevcontainerTable items={data.items} />
+            )
+          }
+        </QueryBoundary>
       </div>
     </>
   )

@@ -1,19 +1,16 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { ErrorState } from '../components/ErrorState'
+import { QueryBoundary } from '../components/QueryBoundary'
 import {
   fetchDiagnostics,
   fetchSettings,
+  useApiQuery,
   type DiagnosticCheck,
   type DiagnosticStatus,
-  type DiagnosticsResponse,
-  type SettingsResponse,
 } from '../lib/api'
+import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
-
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ready'; settings: SettingsResponse; diagnostics: DiagnosticsResponse }
-  | { kind: 'error' }
 
 const inputClass =
   'rounded-md border border-border bg-bg px-3 py-1.5 text-[13px] text-text outline-none focus:border-accent'
@@ -118,142 +115,112 @@ function DiagnosticRow({ check }: { check: DiagnosticCheck }) {
 }
 
 export function Settings() {
-  const [state, setState] = useState<State>({ kind: 'loading' })
+  const { state } = useApiQuery(
+    () =>
+      Promise.all([fetchSettings(), fetchDiagnostics()]).then(([settings, diagnostics]) => ({
+        settings,
+        diagnostics,
+      })),
+    [],
+  )
   const [notifications, setNotifications] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [sidebarWidth, setSidebarWidth] = useState(240)
 
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([fetchSettings(), fetchDiagnostics()])
-      .then(([settings, diagnostics]) => {
-        if (!cancelled) setState({ kind: 'ready', settings, diagnostics })
-      })
-      .catch(() => {
-        if (!cancelled) setState({ kind: 'error' })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  if (state.kind === 'loading') {
-    return (
-      <>
-        <PageHeader title="Settings" />
-        <div className="flex h-full items-center justify-center p-8 text-[13px] text-text-muted">
-          Loading settings…
-        </div>
-      </>
-    )
-  }
-
-  if (state.kind === 'error') {
-    return (
-      <>
-        <PageHeader title="Settings" />
-        <div className="flex h-full items-center justify-center p-8">
-          <div className="max-w-[320px] text-center">
-            <h2 className="mb-1.5 text-[15px] font-semibold text-text">Couldn't load settings</h2>
-            <p className="text-[13px] text-text-muted">
-              Check that the backend is running, then reload the page.
-            </p>
-          </div>
-        </div>
-      </>
-    )
-  }
-
-  const { settings, diagnostics } = state
-
   return (
     <>
       <PageHeader title="Settings" />
       <div className="flex-1 overflow-auto">
-        <Section title="Preferences">
-          <p className="text-xs text-text-muted">
-            Placeholder controls — not wired up yet.
-          </p>
-          <Field label="Enable notifications">
-            <div className="flex items-center gap-2">
-              <Toggle
-                id="notifications-toggle"
-                checked={notifications}
-                onChange={setNotifications}
-              />
-              <span className="text-[13px] text-text-muted">{notifications ? 'On' : 'Off'}</span>
-            </div>
-          </Field>
-          <Field label="Display name" id="display-name">
-            <input
-              id="display-name"
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. Hank"
-              className={cn(inputClass, 'max-w-[320px]')}
-            />
-          </Field>
-          <Field label="Theme" id="theme-select">
-            <select
-              id="theme-select"
-              value={theme}
-              onChange={(e) => setTheme(e.target.value as typeof theme)}
-              className={cn(inputClass, 'max-w-[240px]')}
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </Field>
-          <Field label="Sidebar width" id="sidebar-width">
-            <div className="flex max-w-[320px] items-center gap-3">
-              <input
-                id="sidebar-width"
-                type="range"
-                min={200}
-                max={320}
-                step={4}
-                value={sidebarWidth}
-                onChange={(e) => setSidebarWidth(Number(e.target.value))}
-                className="flex-1 accent-accent"
-              />
-              <span className="w-12 text-right text-[13px] tabular-nums text-text-muted">
-                {sidebarWidth}px
-              </span>
-            </div>
-          </Field>
-        </Section>
+        <QueryBoundary state={state} error={<ErrorState {...loadError('settings')} />}>
+          {({ settings, diagnostics }) => (
+            <>
+              <Section title="Preferences">
+                <p className="text-xs text-text-muted">
+                  Placeholder controls — not wired up yet.
+                </p>
+                <Field label="Enable notifications">
+                  <div className="flex items-center gap-2">
+                    <Toggle
+                      id="notifications-toggle"
+                      checked={notifications}
+                      onChange={setNotifications}
+                    />
+                    <span className="text-[13px] text-text-muted">{notifications ? 'On' : 'Off'}</span>
+                  </div>
+                </Field>
+                <Field label="Display name" id="display-name">
+                  <input
+                    id="display-name"
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="e.g. Hank"
+                    className={cn(inputClass, 'max-w-[320px]')}
+                  />
+                </Field>
+                <Field label="Theme" id="theme-select">
+                  <select
+                    id="theme-select"
+                    value={theme}
+                    onChange={(e) => setTheme(e.target.value as typeof theme)}
+                    className={cn(inputClass, 'max-w-[240px]')}
+                  >
+                    <option value="system">System</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </Field>
+                <Field label="Sidebar width" id="sidebar-width">
+                  <div className="flex max-w-[320px] items-center gap-3">
+                    <input
+                      id="sidebar-width"
+                      type="range"
+                      min={200}
+                      max={320}
+                      step={4}
+                      value={sidebarWidth}
+                      onChange={(e) => setSidebarWidth(Number(e.target.value))}
+                      className="flex-1 accent-accent"
+                    />
+                    <span className="w-12 text-right text-[13px] tabular-nums text-text-muted">
+                      {sidebarWidth}px
+                    </span>
+                  </div>
+                </Field>
+              </Section>
 
-        <Section title="Backend">
-          <Field label="Host" id="backend-host" hint="Set via environment; applies on restart.">
-            <input
-              id="backend-host"
-              type="text"
-              value={settings.backend_host}
-              readOnly
-              className={cn(readOnlyClass, 'max-w-[480px]')}
-            />
-          </Field>
-          <Field label="Port" id="backend-port">
-            <input
-              id="backend-port"
-              type="text"
-              value={String(settings.backend_port)}
-              readOnly
-              className={cn(readOnlyClass, 'max-w-[160px]')}
-            />
-          </Field>
-        </Section>
+              <Section title="Backend">
+                <Field label="Host" id="backend-host" hint="Set via environment; applies on restart.">
+                  <input
+                    id="backend-host"
+                    type="text"
+                    value={settings.backend_host}
+                    readOnly
+                    className={cn(readOnlyClass, 'max-w-[480px]')}
+                  />
+                </Field>
+                <Field label="Port" id="backend-port">
+                  <input
+                    id="backend-port"
+                    type="text"
+                    value={String(settings.backend_port)}
+                    readOnly
+                    className={cn(readOnlyClass, 'max-w-[160px]')}
+                  />
+                </Field>
+              </Section>
 
-        <Section title="Diagnostics">
-          <div className="space-y-2">
-            {diagnostics.checks.map((check) => (
-              <DiagnosticRow key={check.id} check={check} />
-            ))}
-          </div>
-        </Section>
+              <Section title="Diagnostics">
+                <div className="space-y-2">
+                  {diagnostics.checks.map((check) => (
+                    <DiagnosticRow key={check.id} check={check} />
+                  ))}
+                </div>
+              </Section>
+            </>
+          )}
+        </QueryBoundary>
       </div>
     </>
   )
