@@ -12,7 +12,7 @@ deps). Use `uv` only — never edit `pyproject.toml` by hand. `uv run pytest -q`
 
 - `src/vibing_api/main.py` — app factory: wires routers under `/api/v1`, mounts SPA fallback, applies schema on startup.
 - `src/vibing_api/api/routes/` — HTTP endpoints; thin, no SQL, raise HTTP 404s here.
-  - `devcontainers.py` — devcontainer CRUD; delegates to the repository.
+  - `devcontainers.py` — devcontainer CRUD + lifecycle `POST /{id}/start|stop` (validate state, send Command to the worker via the runtime manager; 202, no status mutation).
   - `health.py`, `status.py`, `config.py`, `settings.py`, `diagnostics.py` — health, version/status, runtime config, settings, local prerequisite checks.
   - `runtime.py` — runtime WebSocket channel (`/runtime/ws`): host worker registration + RuntimeEvent intake (ADR-0003).
   - Request/response examples for all the above: [`docs/foundation-api.md`](../../docs/foundation-api.md).

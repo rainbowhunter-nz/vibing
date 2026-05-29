@@ -7,7 +7,7 @@ keeping SQL out of the route.
 """
 
 from fastapi import WebSocket
-from vibing_protocol import RuntimeEvent
+from vibing_protocol import Command, CommandEnvelope, RuntimeEvent
 
 from vibing_api.core.database import get_connection
 from vibing_api.core.reducer import project
@@ -24,6 +24,9 @@ class RuntimeConnectionManager:
     def worker(self) -> WebSocket | None:
         return self._worker
 
+    def is_worker_connected(self) -> bool:
+        return self._worker is not None
+
     def register_worker(self, websocket: WebSocket) -> bool:
         """Claim the single worker slot. Returns False if already taken."""
         if self._worker is not None:
@@ -34,6 +37,12 @@ class RuntimeConnectionManager:
     def unregister_worker(self, websocket: WebSocket) -> None:
         if self._worker is websocket:
             self._worker = None
+
+    async def send_command(self, command: Command) -> None:
+        """Send a Command to the connected worker. Raises if none is connected."""
+        if self._worker is None:
+            raise RuntimeError("No Host Runtime Worker is connected")
+        await self._worker.send_json(CommandEnvelope(command=command).model_dump())
 
 
 def persist_runtime_event(event: RuntimeEvent) -> None:

@@ -9,6 +9,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 VALIDATION_ERROR = "VALIDATION_ERROR"
 DEVCONTAINER_NOT_FOUND = "DEVCONTAINER_NOT_FOUND"
+INVALID_DEVCONTAINER_STATE = "INVALID_DEVCONTAINER_STATE"
+RUNTIME_UNAVAILABLE = "RUNTIME_UNAVAILABLE"
 INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -30,6 +32,24 @@ class DevcontainerNotFoundError(APIError):
 
     def __init__(self, devcontainer_id: str) -> None:
         super().__init__(f"Devcontainer not found: {devcontainer_id}")
+
+
+class InvalidDevcontainerStateError(APIError):
+    status_code = 409
+    code = INVALID_DEVCONTAINER_STATE
+
+    def __init__(self, action: str, current: str, allowed: frozenset[str]) -> None:
+        super().__init__(
+            f"Cannot {action} devcontainer in status {current!r}; allowed from: {sorted(allowed)}"
+        )
+
+
+class RuntimeUnavailableError(APIError):
+    status_code = 409
+    code = RUNTIME_UNAVAILABLE
+
+    def __init__(self) -> None:
+        super().__init__("No Host Runtime Worker is connected")
 
 
 def _envelope(code: str, message: str, details: Any | None = None) -> dict[str, Any]:

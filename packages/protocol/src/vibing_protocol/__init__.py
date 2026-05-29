@@ -1,7 +1,7 @@
 """Shared control-plane message shapes for Vibing host and devcontainer runtimes."""
 
 from .commands import COMMAND_TYPES, Command, CommandType
-from .messages import RegisterEnvelope, RuntimeEventEnvelope
+from .messages import CommandEnvelope, RegisterEnvelope, RuntimeEventEnvelope
 from .runtime_events import (
     EVENT_TYPES,
     EventType,
@@ -14,6 +14,7 @@ from .runtime_events import (
 __all__ = [
     "COMMAND_TYPES",
     "Command",
+    "CommandEnvelope",
     "CommandType",
     "EVENT_TYPES",
     "EventType",

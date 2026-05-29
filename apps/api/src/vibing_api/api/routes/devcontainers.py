@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
+from vibing_protocol import Command, CommandType
 
 from vibing_api.api.schemas.devcontainers import (
     Devcontainer,
@@ -7,10 +8,18 @@ from vibing_api.api.schemas.devcontainers import (
     DevcontainerUpdateRequest,
 )
 from vibing_api.core.database import get_connection
-from vibing_api.core.errors import DevcontainerNotFoundError
+from vibing_api.core.errors import (
+    DevcontainerNotFoundError,
+    InvalidDevcontainerStateError,
+    RuntimeUnavailableError,
+)
+from vibing_api.core.runtime_channel import RuntimeConnectionManager
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 router = APIRouter(tags=["devcontainers"], prefix="/devcontainers")
+
+_START_ALLOWED_FROM = frozenset({"created", "stopped", "error"})
+_STOP_ALLOWED_FROM = frozenset({"running", "error"})
 
 
 @router.post("", response_model=Devcontainer, status_code=status.HTTP_201_CREATED)
@@ -57,3 +66,50 @@ def delete_devcontainer(devcontainer_id: str) -> Response:
     if not deleted:
         raise DevcontainerNotFoundError(devcontainer_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{devcontainer_id}/start", response_model=Devcontainer, status_code=202)
+async def start_devcontainer(devcontainer_id: str, request: Request) -> Devcontainer:
+    return await _dispatch_lifecycle(
+        devcontainer_id, request, "start", "start_devcontainer", _START_ALLOWED_FROM
+    )
+
+
+@router.post("/{devcontainer_id}/stop", response_model=Devcontainer, status_code=202)
+async def stop_devcontainer(devcontainer_id: str, request: Request) -> Devcontainer:
+    return await _dispatch_lifecycle(
+        devcontainer_id, request, "stop", "stop_devcontainer", _STOP_ALLOWED_FROM
+    )
+
+
+async def _dispatch_lifecycle(
+    devcontainer_id: str,
+    request: Request,
+    action: str,
+    command_type: CommandType,
+    allowed_from: frozenset[str],
+) -> Devcontainer:
+    """Validate state + worker availability, then send the lifecycle Command.
+
+    The read model is returned unchanged; projected status updates arrive later as
+    Runtime Events the worker emits back over the runtime channel.
+    """
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+    if devcontainer.status not in allowed_from:
+        raise InvalidDevcontainerStateError(action, devcontainer.status, allowed_from)
+
+    manager: RuntimeConnectionManager = request.app.state.runtime_manager
+    if not manager.is_worker_connected():
+        raise RuntimeUnavailableError()
+
+    await manager.send_command(
+        Command(
+            type=command_type,
+            devcontainer_id=devcontainer.id,
+            payload={"local_path": devcontainer.local_path},
+        )
+    )
+    return devcontainer

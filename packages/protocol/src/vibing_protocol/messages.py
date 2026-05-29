@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from .commands import Command
 from .runtime_events import RuntimeEvent, RuntimeEventSource
 
 
@@ -25,3 +26,10 @@ class RuntimeEventEnvelope(BaseModel):
 
     type: Literal["runtime_event"] = "runtime_event"
     event: RuntimeEvent
+
+
+class CommandEnvelope(BaseModel):
+    """A Command sent from the Control Plane to a runtime."""
+
+    type: Literal["command"] = "command"
+    command: Command
