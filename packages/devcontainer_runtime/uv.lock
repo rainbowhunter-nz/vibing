@@ -190,21 +190,7 @@ wheels = [
 ]
 
 [[package]]
-name = "vibing-protocol"
-version = "0.1.0"
-source = { editable = "../protocol" }
-dependencies = [
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
-
-[package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.15.14" }]
-
-[[package]]
-name = "vibing-workspace-runtime"
+name = "vibing-devcontainer-runtime"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -229,3 +215,17 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.14" },
 ]
+
+[[package]]
+name = "vibing-protocol"
+version = "0.1.0"
+source = { editable = "../protocol" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.15.14" }]

@@ -11,7 +11,7 @@ const icon = (
 export function Inbox() {
   return (
     <>
-      <PageHeader title="Inbox" crumbs="All workspaces" />
+      <PageHeader title="Inbox" crumbs="All devcontainers" />
       <div className="flex-1 overflow-auto">
         <EmptyState
           icon={icon}

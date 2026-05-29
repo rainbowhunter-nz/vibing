@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from vibing_api.core.database import get_connection
+from vibing_api.core.schema import read_schema_version
 
 router = APIRouter(tags=["diagnostics"])
 
@@ -30,12 +31,10 @@ def _check_backend() -> DiagnosticCheck:
 def _check_sqlite() -> DiagnosticCheck:
     try:
         with get_connection() as conn:
-            row = conn.execute(
-                "SELECT value FROM app_meta WHERE key = 'schema_version'"
-            ).fetchone()
+            version = read_schema_version(conn)
     except Exception as exc:
         return DiagnosticCheck(id="sqlite", label="SQLite", status="fail", message=str(exc))
-    if row is None:
+    if version is None:
         return DiagnosticCheck(
             id="sqlite",
             label="SQLite",
@@ -43,7 +42,7 @@ def _check_sqlite() -> DiagnosticCheck:
             message="schema_version missing from app_meta",
         )
     return DiagnosticCheck(
-        id="sqlite", label="SQLite", status="ok", message=f"schema_version={row[0]}"
+        id="sqlite", label="SQLite", status="ok", message=f"schema_version={version}"
     )
 
 

@@ -10,15 +10,15 @@ const icon = (
   </svg>
 )
 
-export function WorkspaceDetail() {
+export function DevcontainerDetail() {
   return (
     <>
-      <PageHeader title="Workspace" crumbs="Detail" />
+      <PageHeader title="Devcontainer" crumbs="Detail" />
       <div className="flex-1 overflow-auto">
         <EmptyState
           icon={icon}
-          title="Workspace not found"
-          helper="This workspace doesn't exist or hasn't been created yet."
+          title="Devcontainer not found"
+          helper="This devcontainer doesn't exist or hasn't been created yet."
         />
       </div>
     </>

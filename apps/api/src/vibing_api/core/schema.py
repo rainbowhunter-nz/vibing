@@ -5,7 +5,7 @@ Keep this file the single source of truth for the on-disk shape.
 
 import sqlite3
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 _TABLE_STATEMENTS: tuple[str, ...] = (
     """
@@ -15,11 +15,10 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS workspaces (
+    CREATE TABLE IF NOT EXISTS devcontainers (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        source_type TEXT NOT NULL,
-        source_value TEXT NOT NULL,
+        local_path TEXT NOT NULL,
         status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -28,7 +27,7 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS agent_sessions (
         id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
         status TEXT NOT NULL,
         started_at TEXT,
         ended_at TEXT,
@@ -40,7 +39,7 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS runtime_events (
         id TEXT PRIMARY KEY,
-        workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        devcontainer_id TEXT REFERENCES devcontainers(id) ON DELETE CASCADE,
         agent_session_id TEXT REFERENCES agent_sessions(id) ON DELETE CASCADE,
         event_type TEXT NOT NULL,
         source TEXT NOT NULL,
@@ -51,7 +50,7 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS approval_requests (
         id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
         agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
         status TEXT NOT NULL,
         requested_action TEXT NOT NULL,
@@ -62,7 +61,7 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS inbox_events (
         id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
         agent_session_id TEXT REFERENCES agent_sessions(id) ON DELETE CASCADE,
         approval_request_id TEXT REFERENCES approval_requests(id) ON DELETE SET NULL,
         event_type TEXT NOT NULL,
@@ -87,12 +86,12 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
 )
 
 _INDEX_STATEMENTS: tuple[str, ...] = (
-    "CREATE INDEX IF NOT EXISTS idx_agent_sessions_workspace ON agent_sessions(workspace_id)",
-    "CREATE INDEX IF NOT EXISTS idx_runtime_events_workspace_created "
-    "ON runtime_events(workspace_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_agent_sessions_devcontainer ON agent_sessions(devcontainer_id)",
+    "CREATE INDEX IF NOT EXISTS idx_runtime_events_devcontainer_created "
+    "ON runtime_events(devcontainer_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_runtime_events_session_created "
     "ON runtime_events(agent_session_id, created_at)",
-    "CREATE INDEX IF NOT EXISTS idx_inbox_events_workspace ON inbox_events(workspace_id)",
+    "CREATE INDEX IF NOT EXISTS idx_inbox_events_devcontainer ON inbox_events(devcontainer_id)",
     "CREATE INDEX IF NOT EXISTS idx_inbox_events_status ON inbox_events(status)",
     "CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON approval_requests(status)",
 )
@@ -108,3 +107,10 @@ def apply_schema(conn: sqlite3.Connection) -> None:
         "INSERT OR IGNORE INTO app_meta (key, value) VALUES ('schema_version', ?)",
         (SCHEMA_VERSION,),
     )
+
+
+def read_schema_version(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute(
+        "SELECT value FROM app_meta WHERE key = 'schema_version'"
+    ).fetchone()
+    return row[0] if row is not None else None

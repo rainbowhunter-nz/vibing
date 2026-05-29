@@ -1,7 +1,7 @@
 [project]
 name = "vibing-protocol"
 version = "0.1.0"
-description = "Shared control-plane message shapes for Vibing host and workspace runtimes."
+description = "Shared control-plane message shapes for Vibing host and devcontainer runtimes."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = ["pydantic>=2.0"]

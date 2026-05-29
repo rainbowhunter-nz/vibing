@@ -79,9 +79,13 @@ Two distinct lifecycles, with deliberately distinct verbs:
 
 ## Status
 
-Early MVP — planning and foundation implementation.
+Early MVP — foundation implemented; core decisions landed.
 
-The decisions above are settled; aligning the code to them is in progress. Notably, the codebase still uses the pre-decision name `workspace` (table `workspaces`, `/api/v1/workspaces` routes, `source_type`/`source_value` columns). Treat **Devcontainer** as canonical per `CONTEXT.md`; the rename and the ADR-0001/0002 schema work are tracked as pending.
+- Workspace→Devcontainer rename is complete: table `devcontainers`, `/api/v1/devcontainers` routes, `devcontainer_id` FKs throughout.
+- Schema simplified to a single `local_path` column (ADR-0001); the `"deleted"` status is gone; status/event vocabularies are typed `Literal`s.
+- Persistence is behind per-entity repository modules; route handlers contain no SQL.
+- Read-model state (devcontainer/agent-session status, inbox, approvals, summaries) is produced by a single projection reducer over the `runtime_events` stream (ADR-0002) — the sole writer of derived state.
+- **Still pending:** the runtime transport / TCP-IP channel between Control Plane and runtimes is not yet implemented (ADR-0003 — the `handle()` skeletons are placeholders), and Session Output (live terminal stream) is deferred.
 
 ## Local development
 

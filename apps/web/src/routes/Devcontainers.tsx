@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
-import { fetchWorkspaces, type Workspace } from '../lib/api'
+import { fetchDevcontainers, type Devcontainer } from '../lib/api'
 import { cn } from '../lib/cn'
 
 const folderIcon = (
@@ -34,7 +34,7 @@ const trashIcon = (
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'list'; items: Workspace[] }
+  | { kind: 'list'; items: Devcontainer[] }
   | { kind: 'error' }
 
 const RUNNING_STATUSES = new Set(['running', 'starting', 'stopping'])
@@ -80,17 +80,17 @@ function formatRelativeTime(iso: string): string {
 }
 
 function countLabel(n: number): string {
-  return `${n} ${n === 1 ? 'workspace' : 'workspaces'}`
+  return `${n} ${n === 1 ? 'devcontainer' : 'devcontainers'}`
 }
 
 const COLUMNS = 'grid grid-cols-[1fr_110px_100px_150px_80px]'
 
-export function Workspaces() {
+export function Devcontainers() {
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   useEffect(() => {
     let cancelled = false
-    fetchWorkspaces()
+    fetchDevcontainers()
       .then((data) => {
         if (!cancelled) setState({ kind: 'list', items: data.items })
       })
@@ -106,18 +106,18 @@ export function Workspaces() {
 
   return (
     <>
-      <PageHeader title="Workspaces" crumbs={crumbs} />
+      <PageHeader title="Devcontainers" crumbs={crumbs} />
       <div className="flex-1 overflow-auto">
         {state.kind === 'loading' && (
           <div className="flex h-full items-center justify-center p-8 text-[13px] text-text-muted">
-            Loading workspaces…
+            Loading devcontainers…
           </div>
         )}
 
         {state.kind === 'error' && (
           <div className="flex h-full items-center justify-center p-8">
             <div className="max-w-[320px] text-center">
-              <h2 className="mb-1.5 text-[15px] font-semibold text-text">Couldn't load workspaces</h2>
+              <h2 className="mb-1.5 text-[15px] font-semibold text-text">Couldn't load devcontainers</h2>
               <p className="text-[13px] text-text-muted">
                 Check that the backend is running, then reload the page.
               </p>
@@ -128,8 +128,8 @@ export function Workspaces() {
         {state.kind === 'list' && state.items.length === 0 && (
           <EmptyState
             icon={folderIcon}
-            title="No workspaces yet"
-            helper="Workspaces will appear here once you add a local folder."
+            title="No devcontainers yet"
+            helper="Devcontainers will appear here once you add a local folder."
           />
         )}
 
@@ -147,30 +147,30 @@ export function Workspaces() {
               <span>Last Updated</span>
               <span />
             </div>
-            {state.items.map((workspace) => {
-              const running = isRunning(workspace.status)
+            {state.items.map((devcontainer) => {
+              const running = isRunning(devcontainer.status)
               return (
                 <div
-                  key={workspace.id}
+                  key={devcontainer.id}
                   className={cn(
                     COLUMNS,
                     'items-center border-b border-border px-4 py-3',
                     running ? 'border-l-[3px] border-l-ok' : 'pl-[19px]',
                   )}
                 >
-                  <span className="text-[13px] font-semibold text-text">{workspace.name}</span>
+                  <span className="text-[13px] font-semibold text-text">{devcontainer.name}</span>
                   <span className="text-xs text-text-muted">Local folder</span>
                   <span>
                     <span
                       className={cn(
                         'rounded-full px-2 py-0.5 text-[11px] font-medium',
-                        statusBadgeClass(workspace.status),
+                        statusBadgeClass(devcontainer.status),
                       )}
                     >
-                      {workspace.status}
+                      {devcontainer.status}
                     </span>
                   </span>
-                  <span className="text-xs text-text-muted">{formatRelativeTime(workspace.updated_at)}</span>
+                  <span className="text-xs text-text-muted">{formatRelativeTime(devcontainer.updated_at)}</span>
                   <div className="flex items-center justify-end gap-0.5">
                     <button
                       title="Start"

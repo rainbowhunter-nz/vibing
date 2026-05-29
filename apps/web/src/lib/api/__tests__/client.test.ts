@@ -25,10 +25,10 @@ describe('getJson', () => {
   it('prepends /api/v1 and sends Accept: application/json', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}))
     vi.stubGlobal('fetch', fetchMock)
-    await getJson('/workspaces')
+    await getJson('/devcontainers')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/workspaces')
+    expect(url).toBe('/api/v1/devcontainers')
     expect((init as RequestInit).headers).toEqual({ Accept: 'application/json' })
   })
 
@@ -37,15 +37,15 @@ describe('getJson', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         jsonResponse(404, {
-          error: { code: 'WORKSPACE_NOT_FOUND', message: 'Workspace not found: x', details: null },
+          error: { code: 'DEVCONTAINER_NOT_FOUND', message: 'Devcontainer not found: x', details: null },
         }),
       ),
     )
-    await expect(getJson('/workspaces/x')).rejects.toMatchObject({
+    await expect(getJson('/devcontainers/x')).rejects.toMatchObject({
       name: 'ApiError',
       status: 404,
-      code: 'WORKSPACE_NOT_FOUND',
-      message: 'Workspace not found: x',
+      code: 'DEVCONTAINER_NOT_FOUND',
+      message: 'Devcontainer not found: x',
       details: null,
     })
   })
@@ -63,7 +63,7 @@ describe('getJson', () => {
         }),
       ),
     )
-    await expect(getJson('/workspaces')).rejects.toMatchObject({
+    await expect(getJson('/devcontainers')).rejects.toMatchObject({
       status: 422,
       code: 'VALIDATION_ERROR',
       details: [{ loc: ['body', 'name'], msg: 'field required' }],
@@ -115,9 +115,9 @@ describe('sendJson', () => {
   it('sends method, Content-Type, and serialized body', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }))
     vi.stubGlobal('fetch', fetchMock)
-    await sendJson('/workspaces', 'POST', { name: 'a', local_path: '/tmp' })
+    await sendJson('/devcontainers', 'POST', { name: 'a', local_path: '/tmp' })
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/workspaces')
+    expect(url).toBe('/api/v1/devcontainers')
     const reqInit = init as RequestInit
     expect(reqInit.method).toBe('POST')
     expect(reqInit.body).toBe(JSON.stringify({ name: 'a', local_path: '/tmp' }))
@@ -132,13 +132,13 @@ describe('sendJson', () => {
       'fetch',
       vi.fn().mockResolvedValue(new Response('', { status: 204 })),
     )
-    await expect(sendJson('/workspaces/x', 'DELETE')).resolves.toBeUndefined()
+    await expect(sendJson('/devcontainers/x', 'DELETE')).resolves.toBeUndefined()
   })
 
   it('omits Content-Type when no body is provided', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
-    await sendJson('/workspaces/x', 'DELETE')
+    await sendJson('/devcontainers/x', 'DELETE')
     const init = fetchMock.mock.calls[0][1] as RequestInit
     expect(init.headers).toEqual({ Accept: 'application/json' })
     expect(init.body).toBeUndefined()
@@ -148,13 +148,13 @@ describe('sendJson', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        jsonResponse(404, { error: { code: 'WORKSPACE_NOT_FOUND', message: 'gone', details: null } }),
+        jsonResponse(404, { error: { code: 'DEVCONTAINER_NOT_FOUND', message: 'gone', details: null } }),
       ),
     )
-    await expect(sendJson('/workspaces/x', 'DELETE')).rejects.toMatchObject({
+    await expect(sendJson('/devcontainers/x', 'DELETE')).rejects.toMatchObject({
       name: 'ApiError',
       status: 404,
-      code: 'WORKSPACE_NOT_FOUND',
+      code: 'DEVCONTAINER_NOT_FOUND',
     })
   })
 })

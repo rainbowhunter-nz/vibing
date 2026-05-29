@@ -33,24 +33,23 @@ def test_init_db_creates_database_file(db_path: Path) -> None:
     assert db_path.exists()
 
 
-def test_init_db_records_schema_version_one(db_path: Path) -> None:
+def test_init_db_records_schema_version_two(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     assert row is not None
-    assert row[0] == "1"
+    assert row[0] == "2"
 
 
-def test_workspaces_table_exists_with_required_columns(db_path: Path) -> None:
+def test_devcontainers_table_exists_with_required_columns(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
-        assert _table_exists(conn, "workspaces")
-        columns = _column_names(conn, "workspaces")
+        assert _table_exists(conn, "devcontainers")
+        columns = _column_names(conn, "devcontainers")
     assert columns >= {
         "id",
         "name",
-        "source_type",
-        "source_value",
+        "local_path",
         "status",
         "created_at",
         "updated_at",
@@ -64,7 +63,7 @@ def test_agent_sessions_table_exists_with_required_columns(db_path: Path) -> Non
         columns = _column_names(conn, "agent_sessions")
     assert columns >= {
         "id",
-        "workspace_id",
+        "devcontainer_id",
         "status",
         "started_at",
         "ended_at",
@@ -74,12 +73,12 @@ def test_agent_sessions_table_exists_with_required_columns(db_path: Path) -> Non
     }
 
 
-def test_agent_sessions_workspace_id_has_foreign_key(db_path: Path) -> None:
+def test_agent_sessions_devcontainer_id_has_foreign_key(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         fks = conn.execute("PRAGMA foreign_key_list(agent_sessions)").fetchall()
     referenced = {(row[2], row[3]) for row in fks}  # (table, from_column)
-    assert ("workspaces", "workspace_id") in referenced
+    assert ("devcontainers", "devcontainer_id") in referenced
 
 
 def test_runtime_events_table_exists_with_required_columns(db_path: Path) -> None:
@@ -89,7 +88,7 @@ def test_runtime_events_table_exists_with_required_columns(db_path: Path) -> Non
         columns = _column_names(conn, "runtime_events")
     assert columns >= {
         "id",
-        "workspace_id",
+        "devcontainer_id",
         "agent_session_id",
         "event_type",
         "source",
@@ -98,12 +97,12 @@ def test_runtime_events_table_exists_with_required_columns(db_path: Path) -> Non
     }
 
 
-def test_runtime_events_has_workspace_and_session_foreign_keys(db_path: Path) -> None:
+def test_runtime_events_has_devcontainer_and_session_foreign_keys(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         fks = conn.execute("PRAGMA foreign_key_list(runtime_events)").fetchall()
     referenced = {(row[2], row[3]) for row in fks}
-    assert ("workspaces", "workspace_id") in referenced
+    assert ("devcontainers", "devcontainer_id") in referenced
     assert ("agent_sessions", "agent_session_id") in referenced
 
 
@@ -114,7 +113,7 @@ def test_approval_requests_table_exists_with_required_columns(db_path: Path) -> 
         columns = _column_names(conn, "approval_requests")
     assert columns >= {
         "id",
-        "workspace_id",
+        "devcontainer_id",
         "agent_session_id",
         "status",
         "requested_action",
@@ -123,12 +122,12 @@ def test_approval_requests_table_exists_with_required_columns(db_path: Path) -> 
     }
 
 
-def test_approval_requests_has_workspace_and_session_foreign_keys(db_path: Path) -> None:
+def test_approval_requests_has_devcontainer_and_session_foreign_keys(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         fks = conn.execute("PRAGMA foreign_key_list(approval_requests)").fetchall()
     referenced = {(row[2], row[3]) for row in fks}
-    assert ("workspaces", "workspace_id") in referenced
+    assert ("devcontainers", "devcontainer_id") in referenced
     assert ("agent_sessions", "agent_session_id") in referenced
 
 
@@ -139,7 +138,7 @@ def test_inbox_events_table_exists_with_required_columns(db_path: Path) -> None:
         columns = _column_names(conn, "inbox_events")
     assert columns >= {
         "id",
-        "workspace_id",
+        "devcontainer_id",
         "agent_session_id",
         "approval_request_id",
         "event_type",
@@ -154,7 +153,7 @@ def test_inbox_events_has_expected_foreign_keys(db_path: Path) -> None:
     with get_connection() as conn:
         fks = conn.execute("PRAGMA foreign_key_list(inbox_events)").fetchall()
     referenced = {(row[2], row[3]) for row in fks}
-    assert ("workspaces", "workspace_id") in referenced
+    assert ("devcontainers", "devcontainer_id") in referenced
     assert ("agent_sessions", "agent_session_id") in referenced
     assert ("approval_requests", "approval_request_id") in referenced
 
@@ -199,8 +198,8 @@ def test_foreign_keys_block_orphan_inserts(db_path: Path) -> None:
     with get_connection() as conn:
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
-                "INSERT INTO agent_sessions (id, workspace_id, status, created_at, updated_at) "
-                "VALUES ('s1', 'missing-ws', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')"
+                "INSERT INTO agent_sessions (id, devcontainer_id, status, created_at, updated_at) "
+                "VALUES ('s1', 'missing-dc', 'running', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')"
             )
 
 
@@ -208,15 +207,54 @@ def test_init_db_is_idempotent(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO workspaces (id, name, source_type, source_value, status, created_at, updated_at) "
-            "VALUES ('w1', 'demo', 'local_folder', '/tmp/demo', 'created', "
+            "INSERT INTO devcontainers (id, name, local_path, status, created_at, updated_at) "
+            "VALUES ('dc1', 'demo', '/tmp/demo', 'created', "
             "'2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')"
         )
         conn.commit()
     init_db()  # second run must not error or wipe data
     with get_connection() as conn:
-        (count,) = conn.execute("SELECT COUNT(*) FROM workspaces").fetchone()
+        (count,) = conn.execute("SELECT COUNT(*) FROM devcontainers").fetchone()
     assert count == 1
+
+
+def test_fk_cascade_on_devcontainer_delete(db_path: Path) -> None:
+    init_db()
+    ts = "2026-01-01T00:00:00Z"
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO devcontainers (id, name, local_path, status, created_at, updated_at) "
+            "VALUES ('dc-cascade', 'cascade test', '/tmp/c', 'running', ?, ?)",
+            (ts, ts),
+        )
+        conn.execute(
+            "INSERT INTO agent_sessions (id, devcontainer_id, status, created_at, updated_at) "
+            "VALUES ('as-cascade', 'dc-cascade', 'running', ?, ?)",
+            (ts, ts),
+        )
+        conn.execute(
+            "INSERT INTO runtime_events (id, devcontainer_id, agent_session_id, event_type, source, created_at) "
+            "VALUES ('re-cascade', 'dc-cascade', 'as-cascade', 'devcontainer_started', 'host_runtime_worker', ?)",
+            (ts,),
+        )
+        conn.execute(
+            "INSERT INTO approval_requests (id, devcontainer_id, agent_session_id, status, requested_action, created_at) "
+            "VALUES ('ar-cascade', 'dc-cascade', 'as-cascade', 'pending', 'run: x', ?)",
+            (ts,),
+        )
+        conn.execute(
+            "INSERT INTO inbox_events (id, devcontainer_id, agent_session_id, approval_request_id, event_type, status, created_at, updated_at) "
+            "VALUES ('ie-cascade', 'dc-cascade', 'as-cascade', NULL, 'question', 'unread', ?, ?)",
+            (ts, ts),
+        )
+        conn.commit()
+        conn.execute("DELETE FROM devcontainers WHERE id = 'dc-cascade'")
+        conn.commit()
+        for table in ("agent_sessions", "runtime_events", "approval_requests", "inbox_events"):
+            (count,) = conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE devcontainer_id = 'dc-cascade'"
+            ).fetchone()
+            assert count == 0, f"cascade failed: {table} still has rows after devcontainer delete"
 
 
 def _indexed_columns(conn, table: str) -> set[tuple[str, ...]]:
@@ -232,10 +270,10 @@ def _indexed_columns(conn, table: str) -> set[tuple[str, ...]]:
 @pytest.mark.parametrize(
     "table,expected_columns",
     [
-        ("agent_sessions", ("workspace_id",)),
-        ("runtime_events", ("workspace_id", "created_at")),
+        ("agent_sessions", ("devcontainer_id",)),
+        ("runtime_events", ("devcontainer_id", "created_at")),
         ("runtime_events", ("agent_session_id", "created_at")),
-        ("inbox_events", ("workspace_id",)),
+        ("inbox_events", ("devcontainer_id",)),
         ("inbox_events", ("status",)),
         ("approval_requests", ("status",)),
     ],

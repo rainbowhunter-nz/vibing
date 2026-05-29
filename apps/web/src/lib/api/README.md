@@ -5,24 +5,24 @@ All backend calls live under `/api/v1` (see `apps/api/src/vibing_api/main.py`). 
 ## Calling endpoints
 
 ```ts
-import { fetchWorkspaces } from '../lib/api'
+import { fetchDevcontainers } from '../lib/api'
 
-const { items } = await fetchWorkspaces()
+const { items } = await fetchDevcontainers()
 ```
 
 Each `fetchX` returns the parsed JSON response, typed against the backend Pydantic model. Failures throw:
 
-- `ApiError` — backend returned non-2xx with the standard envelope `{error: {code, message, details}}`. Inspect `err.code` (e.g. `WORKSPACE_NOT_FOUND`, `VALIDATION_ERROR`).
+- `ApiError` — backend returned non-2xx with the standard envelope `{error: {code, message, details}}`. Inspect `err.code` (e.g. `DEVCONTAINER_NOT_FOUND`, `VALIDATION_ERROR`).
 - `ApiError` with `code: 'HTTP_ERROR'` — non-2xx without the envelope (e.g. 500 with an HTML body).
 - `NetworkError` — `fetch` itself rejected (backend down, DNS failure, etc.).
 
 ## Pattern A — `useApiQuery` (use this for new screens)
 
 ```tsx
-import { useApiQuery, fetchWorkspaces } from '../lib/api'
+import { useApiQuery, fetchDevcontainers } from '../lib/api'
 
-function WorkspacesPage() {
-  const { state, refetch } = useApiQuery(fetchWorkspaces, [])
+function DevcontainersPage() {
+  const { state, refetch } = useApiQuery(fetchDevcontainers, [])
 
   if (state.kind === 'loading') return <Spinner />
   if (state.kind === 'error') return <ErrorView onRetry={refetch} />
@@ -34,18 +34,18 @@ The hook owns loading state, cancellation on unmount, and refetch. Pass `[]` for
 
 ## Pattern B — manual `useEffect` (legacy)
 
-`Workspaces.tsx`, `Settings.tsx`, and `RailBackend.tsx` were written before the hook existed; they roll their own `{loading | ready | error}` state machine + `cancelled` flag. Don't copy that pattern into new code — use `useApiQuery`.
+`Devcontainers.tsx`, `Settings.tsx`, and `RailBackend.tsx` were written before the hook existed; they roll their own `{loading | ready | error}` state machine + `cancelled` flag. Don't copy that pattern into new code — use `useApiQuery`.
 
 ## Error handling
 
 ```ts
-import { ApiError, deleteWorkspace } from '../lib/api'
+import { ApiError, deleteDevcontainer } from '../lib/api'
 
 try {
-  await deleteWorkspace(id)
+  await deleteDevcontainer(id)
 } catch (err) {
-  if (err instanceof ApiError && err.code === 'WORKSPACE_NOT_FOUND') {
-    showToast('Workspace already deleted')
+  if (err instanceof ApiError && err.code === 'DEVCONTAINER_NOT_FOUND') {
+    showToast('Devcontainer already deleted')
   } else {
     showToast('Something went wrong')
   }

@@ -1,4 +1,4 @@
-"""Shared control-plane message shapes for Vibing host and workspace runtimes."""
+"""Shared control-plane message shapes for Vibing host and devcontainer runtimes."""
 
 from .commands import COMMAND_TYPES, Command, CommandType
 from .runtime_events import (

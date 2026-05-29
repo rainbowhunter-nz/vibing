@@ -1,8 +1,8 @@
 """Local-development sample data for product UI validation.
 
-Inserts a curated, deterministic set of workspaces, agent sessions,
+Inserts a curated, deterministic set of devcontainers, agent sessions,
 approval requests, and inbox events. Every sample row has an id
-prefixed with `sample-` and every sample workspace name starts with
+prefixed with `sample-` and every sample devcontainer name starts with
 `[sample] ` so rows are visible in the UI and removable in a single
 DELETE per table. Not part of the production import graph.
 """
@@ -13,30 +13,27 @@ SAMPLE_ID_PREFIX = "sample-"
 SAMPLE_NAME_PREFIX = "[sample] "
 FIXED_TS = "2026-01-01T12:00:00+00:00"
 
-SAMPLE_WORKSPACES: tuple[dict, ...] = (
+SAMPLE_DEVCONTAINERS: tuple[dict, ...] = (
     {
-        "id": "sample-ws-web",
+        "id": "sample-dc-web",
         "name": "[sample] vibing-web",
-        "source_type": "local_folder",
-        "source_value": "/sample/projects/vibing-web",
+        "local_path": "/sample/projects/vibing-web",
         "status": "running",
         "created_at": FIXED_TS,
         "updated_at": FIXED_TS,
     },
     {
-        "id": "sample-ws-api",
+        "id": "sample-dc-api",
         "name": "[sample] vibing-api",
-        "source_type": "local_folder",
-        "source_value": "/sample/projects/vibing-api",
+        "local_path": "/sample/projects/vibing-api",
         "status": "stopped",
         "created_at": FIXED_TS,
         "updated_at": FIXED_TS,
     },
     {
-        "id": "sample-ws-cli",
+        "id": "sample-dc-cli",
         "name": "[sample] vibing-cli",
-        "source_type": "local_folder",
-        "source_value": "/sample/projects/vibing-cli",
+        "local_path": "/sample/projects/vibing-cli",
         "status": "error",
         "created_at": FIXED_TS,
         "updated_at": FIXED_TS,
@@ -46,7 +43,7 @@ SAMPLE_WORKSPACES: tuple[dict, ...] = (
 SAMPLE_AGENT_SESSIONS: tuple[dict, ...] = (
     {
         "id": "sample-as-web",
-        "workspace_id": "sample-ws-web",
+        "devcontainer_id": "sample-dc-web",
         "status": "running",
         "started_at": FIXED_TS,
         "ended_at": None,
@@ -56,7 +53,7 @@ SAMPLE_AGENT_SESSIONS: tuple[dict, ...] = (
     },
     {
         "id": "sample-as-api",
-        "workspace_id": "sample-ws-api",
+        "devcontainer_id": "sample-dc-api",
         "status": "waiting_for_approval",
         "started_at": FIXED_TS,
         "ended_at": None,
@@ -66,7 +63,7 @@ SAMPLE_AGENT_SESSIONS: tuple[dict, ...] = (
     },
     {
         "id": "sample-as-cli",
-        "workspace_id": "sample-ws-cli",
+        "devcontainer_id": "sample-dc-cli",
         "status": "completed",
         "started_at": FIXED_TS,
         "ended_at": FIXED_TS,
@@ -79,7 +76,7 @@ SAMPLE_AGENT_SESSIONS: tuple[dict, ...] = (
 SAMPLE_APPROVAL_REQUESTS: tuple[dict, ...] = (
     {
         "id": "sample-ar-001",
-        "workspace_id": "sample-ws-api",
+        "devcontainer_id": "sample-dc-api",
         "agent_session_id": "sample-as-api",
         "status": "pending",
         "requested_action": "run: pnpm migrate",
@@ -88,7 +85,7 @@ SAMPLE_APPROVAL_REQUESTS: tuple[dict, ...] = (
     },
     {
         "id": "sample-ar-002",
-        "workspace_id": "sample-ws-web",
+        "devcontainer_id": "sample-dc-web",
         "agent_session_id": "sample-as-web",
         "status": "approved",
         "requested_action": "run: rm node_modules",
@@ -100,7 +97,7 @@ SAMPLE_APPROVAL_REQUESTS: tuple[dict, ...] = (
 SAMPLE_INBOX_EVENTS: tuple[dict, ...] = (
     {
         "id": "sample-ie-001",
-        "workspace_id": "sample-ws-api",
+        "devcontainer_id": "sample-dc-api",
         "agent_session_id": "sample-as-api",
         "approval_request_id": None,
         "event_type": "question",
@@ -110,7 +107,7 @@ SAMPLE_INBOX_EVENTS: tuple[dict, ...] = (
     },
     {
         "id": "sample-ie-002",
-        "workspace_id": "sample-ws-api",
+        "devcontainer_id": "sample-dc-api",
         "agent_session_id": "sample-as-api",
         "approval_request_id": "sample-ar-001",
         "event_type": "approval_request",
@@ -120,7 +117,7 @@ SAMPLE_INBOX_EVENTS: tuple[dict, ...] = (
     },
     {
         "id": "sample-ie-003",
-        "workspace_id": "sample-ws-cli",
+        "devcontainer_id": "sample-dc-cli",
         "agent_session_id": "sample-as-cli",
         "approval_request_id": None,
         "event_type": "failure",
@@ -130,7 +127,7 @@ SAMPLE_INBOX_EVENTS: tuple[dict, ...] = (
     },
     {
         "id": "sample-ie-004",
-        "workspace_id": "sample-ws-cli",
+        "devcontainer_id": "sample-dc-cli",
         "agent_session_id": "sample-as-cli",
         "approval_request_id": None,
         "event_type": "completion",
@@ -143,7 +140,7 @@ SAMPLE_INBOX_EVENTS: tuple[dict, ...] = (
 # Insert order = top to bottom (parents before children for foreign keys).
 # Reset order = reverse of this.
 _DATASET: tuple[tuple[str, tuple[dict, ...]], ...] = (
-    ("workspaces", SAMPLE_WORKSPACES),
+    ("devcontainers", SAMPLE_DEVCONTAINERS),
     ("agent_sessions", SAMPLE_AGENT_SESSIONS),
     ("approval_requests", SAMPLE_APPROVAL_REQUESTS),
     ("inbox_events", SAMPLE_INBOX_EVENTS),
@@ -196,5 +193,3 @@ def status(conn: sqlite3.Connection) -> dict[str, int]:
         ).fetchone()
         counts[table] = row[0]
     return counts
-
-

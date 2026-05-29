@@ -9,11 +9,11 @@ from starlette.types import Scope
 
 from vibing_api.api.routes import (
     config,
+    devcontainers,
     diagnostics,
     health,
     settings as settings_route,
     status,
-    workspaces,
 )
 from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
@@ -21,7 +21,7 @@ from vibing_api.core.errors import register_error_handlers
 
 
 class SpaStaticFiles(StaticFiles):
-    """Serve index.html for unmatched client-side routes (e.g. /workspace on refresh)."""
+    """Serve index.html for unmatched client-side routes (e.g. /devcontainers on refresh)."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
         health.router,
         status.router,
         config.router,
-        workspaces.router,
+        devcontainers.router,
         settings_route.router,
         diagnostics.router,
     ):

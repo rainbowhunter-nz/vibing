@@ -2,7 +2,7 @@ import { NavLink } from 'react-router'
 import { cn } from '../lib/cn'
 
 const ITEMS = [
-  { to: '/workspaces', label: 'Workspaces' },
+  { to: '/devcontainers', label: 'Devcontainers' },
   { to: '/inbox', label: 'Inbox' },
   { to: '/approvals', label: 'Approvals' },
   { to: '/settings', label: 'Settings' },

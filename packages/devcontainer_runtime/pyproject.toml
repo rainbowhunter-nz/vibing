@@ -1,7 +1,7 @@
 [project]
-name = "vibing-workspace-runtime"
+name = "vibing-devcontainer-runtime"
 version = "0.1.0"
-description = "Workspace-side runtime skeleton for the Vibing MVP."
+description = "Devcontainer-side runtime skeleton for the Vibing MVP."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -10,7 +10,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=9.0.3", "ruff>=0.15.14"]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.14",
+]
 
 [tool.uv.sources]
 vibing-protocol = { path = "../protocol", editable = true }

@@ -20,7 +20,7 @@ def spa_client(
 
 
 def test_spa_route_refresh_serves_index_html(spa_client: TestClient) -> None:
-    response = spa_client.get("/workspace")
+    response = spa_client.get("/devcontainers")
     assert response.status_code == 200
     assert "SPA" in response.text
 

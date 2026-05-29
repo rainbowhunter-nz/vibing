@@ -16,7 +16,7 @@ export interface ConfigResponse {
   api_v1_prefix: string
 }
 
-export interface Workspace {
+export interface Devcontainer {
   id: string
   name: string
   local_path: string
@@ -25,8 +25,8 @@ export interface Workspace {
   updated_at: string
 }
 
-export interface WorkspaceList {
-  items: Workspace[]
+export interface DevcontainerList {
+  items: Devcontainer[]
 }
 
 export interface RuntimeDetection {

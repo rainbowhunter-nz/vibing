@@ -1,6 +1,6 @@
 """Host-side runtime skeleton.
 
-The Host Runtime Worker owns workspace-lifecycle operations (eventually:
+The Host Runtime Worker owns devcontainer-lifecycle operations (eventually:
 Dev Container CLI, Docker/Podman). This module only defines the interface
 and a skeleton implementation. No Docker, Podman, or Dev Container CLI calls.
 """
@@ -11,9 +11,9 @@ from vibing_protocol import Command, RuntimeEvent
 
 HOST_COMMAND_TYPES: frozenset[str] = frozenset(
     {
-        "start_workspace",
-        "stop_workspace",
-        "restart_workspace",
+        "start_devcontainer",
+        "stop_devcontainer",
+        "restart_devcontainer",
     }
 )
 

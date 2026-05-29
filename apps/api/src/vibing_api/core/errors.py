@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 VALIDATION_ERROR = "VALIDATION_ERROR"
-WORKSPACE_NOT_FOUND = "WORKSPACE_NOT_FOUND"
+DEVCONTAINER_NOT_FOUND = "DEVCONTAINER_NOT_FOUND"
 INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -24,12 +24,12 @@ class APIError(Exception):
         self.details = details
 
 
-class WorkspaceNotFoundError(APIError):
+class DevcontainerNotFoundError(APIError):
     status_code = 404
-    code = WORKSPACE_NOT_FOUND
+    code = DEVCONTAINER_NOT_FOUND
 
-    def __init__(self, workspace_id: str) -> None:
-        super().__init__(f"Workspace not found: {workspace_id}")
+    def __init__(self, devcontainer_id: str) -> None:
+        super().__init__(f"Devcontainer not found: {devcontainer_id}")
 
 
 def _envelope(code: str, message: str, details: Any | None = None) -> dict[str, Any]:

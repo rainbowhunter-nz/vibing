@@ -11,7 +11,7 @@ def _assert_error_shape(body: dict) -> None:
 
 
 def test_validation_error_uses_standard_shape(client: TestClient) -> None:
-    response = client.post("/api/v1/workspaces", json={})
+    response = client.post("/api/v1/devcontainers", json={})
     assert response.status_code == 422
     body = response.json()
     _assert_error_shape(body)
@@ -20,9 +20,9 @@ def test_validation_error_uses_standard_shape(client: TestClient) -> None:
     assert body["error"]["details"] is not None
 
 
-def test_workspace_not_found_uses_standard_shape(client: TestClient) -> None:
-    response = client.get("/api/v1/workspaces/missing")
+def test_devcontainer_not_found_uses_standard_shape(client: TestClient) -> None:
+    response = client.get("/api/v1/devcontainers/missing")
     assert response.status_code == 404
     body = response.json()
     _assert_error_shape(body)
-    assert body["error"]["code"] == "WORKSPACE_NOT_FOUND"
+    assert body["error"]["code"] == "DEVCONTAINER_NOT_FOUND"

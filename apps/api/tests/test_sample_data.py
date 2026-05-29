@@ -1,15 +1,22 @@
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from fastapi.testclient import TestClient
 
 from vibing_api.core.database import get_connection, init_db
+from vibing_api.core.vocabularies import (
+    AgentSessionStatus,
+    ApprovalStatus,
+    DevcontainerStatus,
+    InboxEventType,
+)
 from vibing_api.dev.sample_data import (
     SAMPLE_AGENT_SESSIONS,
     SAMPLE_APPROVAL_REQUESTS,
     SAMPLE_ID_PREFIX,
     SAMPLE_INBOX_EVENTS,
-    SAMPLE_WORKSPACES,
+    SAMPLE_DEVCONTAINERS,
     reset,
     seed,
     status,
@@ -27,7 +34,7 @@ def seeded_db(db_path: Path) -> Path:
 
 def test_seed_inserts_curated_dataset(seeded_db: Path) -> None:
     expected = {
-        "workspaces": len(SAMPLE_WORKSPACES),
+        "devcontainers": len(SAMPLE_DEVCONTAINERS),
         "agent_sessions": len(SAMPLE_AGENT_SESSIONS),
         "approval_requests": len(SAMPLE_APPROVAL_REQUESTS),
         "inbox_events": len(SAMPLE_INBOX_EVENTS),
@@ -51,23 +58,22 @@ def test_seed_is_idempotent(db_path: Path) -> None:
         conn.commit()
     with get_connection() as conn:
         total = conn.execute(
-            "SELECT COUNT(*) FROM workspaces WHERE id LIKE ?",
+            "SELECT COUNT(*) FROM devcontainers WHERE id LIKE ?",
             (f"{SAMPLE_ID_PREFIX}%",),
         ).fetchone()[0]
-    assert total == len(SAMPLE_WORKSPACES)
+    assert total == len(SAMPLE_DEVCONTAINERS)
 
 
 def test_reset_removes_only_sample_rows(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO workspaces "
-            "(id, name, source_type, source_value, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO devcontainers "
+            "(id, name, local_path, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 "real-1",
-                "real workspace",
-                "local_folder",
+                "real devcontainer",
                 "/tmp/real",
                 "created",
                 "2026-01-01T00:00:00+00:00",
@@ -82,11 +88,11 @@ def test_reset_removes_only_sample_rows(db_path: Path) -> None:
     assert removed == 12
     with get_connection() as conn:
         remaining_sample = conn.execute(
-            "SELECT COUNT(*) FROM workspaces WHERE id LIKE ?",
+            "SELECT COUNT(*) FROM devcontainers WHERE id LIKE ?",
             (f"{SAMPLE_ID_PREFIX}%",),
         ).fetchone()[0]
         real_row = conn.execute(
-            "SELECT id, name FROM workspaces WHERE id = ?",
+            "SELECT id, name FROM devcontainers WHERE id = ?",
             ("real-1",),
         ).fetchone()
     assert remaining_sample == 0
@@ -113,13 +119,13 @@ def test_status_counts_sample_rows(db_path: Path) -> None:
         conn.commit()
         after_reset = status(conn)
     assert before == {
-        "workspaces": 0,
+        "devcontainers": 0,
         "agent_sessions": 0,
         "approval_requests": 0,
         "inbox_events": 0,
     }
     assert after == {
-        "workspaces": len(SAMPLE_WORKSPACES),
+        "devcontainers": len(SAMPLE_DEVCONTAINERS),
         "agent_sessions": len(SAMPLE_AGENT_SESSIONS),
         "approval_requests": len(SAMPLE_APPROVAL_REQUESTS),
         "inbox_events": len(SAMPLE_INBOX_EVENTS),
@@ -127,11 +133,11 @@ def test_status_counts_sample_rows(db_path: Path) -> None:
     assert after_reset == before
 
 
-def test_seeded_sample_workspaces_visible_via_api(client: TestClient) -> None:
+def test_seeded_sample_devcontainers_visible_via_api(client: TestClient) -> None:
     with get_connection() as conn:
         seed(conn)
         conn.commit()
-    response = client.get("/api/v1/workspaces")
+    response = client.get("/api/v1/devcontainers")
     assert response.status_code == 200
     names = sorted(item["name"] for item in response.json()["items"])
     assert names == [
@@ -141,3 +147,17 @@ def test_seeded_sample_workspaces_visible_via_api(client: TestClient) -> None:
     ]
 
 
+def test_sample_rows_use_valid_vocabulary_values() -> None:
+    dc_statuses = get_args(DevcontainerStatus)
+    session_statuses = get_args(AgentSessionStatus)
+    approval_statuses = get_args(ApprovalStatus)
+    inbox_event_types = get_args(InboxEventType)
+
+    for row in SAMPLE_DEVCONTAINERS:
+        assert row["status"] in dc_statuses, f"bad devcontainer status: {row['status']}"
+    for row in SAMPLE_AGENT_SESSIONS:
+        assert row["status"] in session_statuses, f"bad session status: {row['status']}"
+    for row in SAMPLE_APPROVAL_REQUESTS:
+        assert row["status"] in approval_statuses, f"bad approval status: {row['status']}"
+    for row in SAMPLE_INBOX_EVENTS:
+        assert row["event_type"] in inbox_event_types, f"bad inbox event_type: {row['event_type']}"
