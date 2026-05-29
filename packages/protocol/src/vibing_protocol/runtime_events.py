@@ -12,9 +12,11 @@ from typing import Any, Literal, get_args
 from pydantic import BaseModel, Field
 
 EventType = Literal[
+    "devcontainer_starting",
     "devcontainer_started",
-    "devcontainer_failed",
+    "devcontainer_stopping",
     "devcontainer_stopped",
+    "devcontainer_failed",
     "agent_session_started",
     "agent_asked_question",
     "approval_requested",

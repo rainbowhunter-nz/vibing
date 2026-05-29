@@ -1,7 +1,7 @@
 import pytest
 
 from vibing_host_runtime import HOST_COMMAND_TYPES, HostRuntime, HostRuntimeWorker
-from vibing_protocol import Command
+from vibing_protocol import COMMAND_TYPES, Command
 
 
 def test_host_runtime_worker_satisfies_protocol() -> None:
@@ -20,3 +20,8 @@ def test_host_command_types_cover_devcontainer_lifecycle() -> None:
         "start_devcontainer",
         "stop_devcontainer",
     }
+
+
+def test_restart_devcontainer_not_in_vocabulary() -> None:
+    assert "restart_devcontainer" not in COMMAND_TYPES
+    assert "restart_devcontainer" not in HOST_COMMAND_TYPES

@@ -55,8 +55,12 @@ def reduce(event: RuntimeEvent) -> ProjectionUpdates:
     payload = event.payload or {}
     inbox_event_type = inbox_event_type_for(event_type)
 
+    if event_type == "devcontainer_starting":
+        return ProjectionUpdates(devcontainer_status="starting")
     if event_type == "devcontainer_started":
         return ProjectionUpdates(devcontainer_status="running")
+    if event_type == "devcontainer_stopping":
+        return ProjectionUpdates(devcontainer_status="stopping")
     if event_type == "devcontainer_stopped":
         return ProjectionUpdates(devcontainer_status="stopped")
     if event_type == "devcontainer_failed":

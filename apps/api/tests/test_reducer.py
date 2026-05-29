@@ -31,7 +31,9 @@ def test_inbox_event_type_for_known_mappings() -> None:
 
 def test_inbox_event_type_for_unmapped_returns_none() -> None:
     for event_type in (
+        "devcontainer_starting",
         "devcontainer_started",
+        "devcontainer_stopping",
         "devcontainer_stopped",
         "devcontainer_failed",
         "agent_session_started",
@@ -46,7 +48,9 @@ def _event(event_type: str, **kwargs: object) -> RuntimeEvent:
 
 
 def test_reduce_devcontainer_lifecycle() -> None:
+    assert reduce(_event("devcontainer_starting")).devcontainer_status == "starting"
     assert reduce(_event("devcontainer_started")).devcontainer_status == "running"
+    assert reduce(_event("devcontainer_stopping")).devcontainer_status == "stopping"
     assert reduce(_event("devcontainer_stopped")).devcontainer_status == "stopped"
     assert reduce(_event("devcontainer_failed")).devcontainer_status == "error"
 
@@ -147,8 +151,12 @@ def test_devcontainer_status_transitions(conn: sqlite3.Connection, seeded: tuple
     dc_id, session_id = seeded
     repo = DevcontainerRepository(conn)
 
+    _emit(conn, dc_id, session_id, "devcontainer_starting")
+    assert repo.get(dc_id).status == "starting"
     _emit(conn, dc_id, session_id, "devcontainer_started")
     assert repo.get(dc_id).status == "running"
+    _emit(conn, dc_id, session_id, "devcontainer_stopping")
+    assert repo.get(dc_id).status == "stopping"
     _emit(conn, dc_id, session_id, "devcontainer_stopped")
     assert repo.get(dc_id).status == "stopped"
     _emit(conn, dc_id, session_id, "devcontainer_failed")

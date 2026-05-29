@@ -10,7 +10,7 @@ Use `uv` only — never hand-edit `pyproject.toml`. Tests: `uv run pytest -q`.
 ## Where things live
 
 - `src/vibing_host_runtime/__init__.py` — public surface; re-exports the symbols below.
-- `src/vibing_host_runtime/runtime.py` — `HOST_COMMAND_TYPES` (devcontainer start/stop/restart), the `HostRuntime` Protocol, and the `HostRuntimeWorker` skeleton.
+- `src/vibing_host_runtime/runtime.py` — `HOST_COMMAND_TYPES` (devcontainer start/stop), the `HostRuntime` Protocol, and the `HostRuntimeWorker` skeleton.
 
 ## Conventions
 
