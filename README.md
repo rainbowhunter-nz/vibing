@@ -1,60 +1,87 @@
 # vibing
 
-Vibing is a local operations center for managing AI coding agents across isolated development workspaces.
+Vibing is a local operations center for managing AI coding agents across isolated devcontainers.
 
-It helps developers run coding agents across multiple projects without losing track of approvals, questions, blocked sessions, or completed work.
+It helps developers run a coding agent across multiple projects without losing track of approvals, questions, blocked sessions, or completed work. The agent is Claude Code today; the product treats "agent" as a role, not a hard-wired vendor.
+
+## Domain language & decisions
+
+This repo keeps its canonical language and architectural decisions in version control. Read these before contributing — code, docs, and PRs should use the same terms:
+
+- [`CONTEXT.md`](CONTEXT.md) — the glossary. Canonical entities: **Devcontainer**, **Agent Session**, **Control Plane**, **Runtime**, **Command**, **Runtime Event**, **Inbox Event**, **Session Output**, etc.
+- [`docs/adr/`](docs/adr/) — Architecture Decision Records (see [the ADR index](docs/adr/CLAUDE.md)).
+
+The three load-bearing decisions:
+
+- **[ADR-0001](docs/adr/0001-devcontainer-source-is-a-single-local-path.md)** — a Devcontainer's source is a single `local_path` column, not a generic `source_type`/`source_value` descriptor.
+- **[ADR-0002](docs/adr/0002-inbox-is-a-projection-of-the-runtime-event-stream.md)** — `runtime_events` is the single append-only source of truth; all read-model state (inbox, statuses, approvals, summaries) is a projection of it, written only by the Control Plane.
+- **[ADR-0003](docs/adr/0003-runtimes-connect-to-the-control-plane-over-tcp-ip-in-a-star-topology.md)** — runtimes connect to the Control Plane over TCP/IP in a star topology; runtimes never talk to each other.
+
+## Core concepts
+
+- **Devcontainer** — the central persistent entity: one isolated container bound to one local folder (`local_path`). It owns its agent-sessions, approvals, inbox, and history, and exists even when stopped.
+- **Agent Session** — one run of a coding agent inside a *running* Devcontainer; at most one active per Devcontainer (MVP).
+- **Control Plane** — the backend (FastAPI + SQLite). The single hub: it sends Commands to runtimes and projects the Runtime Events they emit into all read-model state. The frontend is a separate client over `/api/v1`, not part of the Control Plane.
+- **Runtimes** — the **Host Runtime Worker** (owns the Devcontainer lifecycle, on the host) and the **Devcontainer Runtime Agent** (owns the Agent Session lifecycle, inside the container).
+
+Two distinct lifecycles, with deliberately distinct verbs:
+
+- **Devcontainer:** `created → starting → running → stopping → stopped` (+ `error`). *Stopping the devcontainer ends any active agent-session inside it.*
+- **Agent Session:** `starting → running ⇄ waiting_for_approval → completed / failed / stopped`. *Stopping the agent-session leaves the devcontainer running.*
 
 ## MVP scope
 
 - local-only, single-user workflow
-- workspace dashboard
-- workspaces created from local folders only (`local_path`)
-- one persistent isolated workspace per project
-- Claude Code support
-- one active Claude Code session per workspace
-- live session view and structured status
-- centralized approval queue
+- devcontainer dashboard
+- devcontainers created from local folders only (single `local_path` field)
+- one persistent isolated devcontainer per project
+- Claude Code support; one active agent-session per devcontainer
+- live session view (Session Output) and structured agent-session status
+- centralized approval queue (`pending → approved | rejected`)
 - inbox for questions, approvals, failures, completions
-- direct workspace editing via VS Code / native / browser editor
+- direct editing via VS Code / native / browser editor
 - basic Git status and changed-files view
 - important event history and final session summaries
 
 ## Non-goals (MVP)
 
-- Git URL workspace creation or repo cloning
+- Git URL creation or repo cloning
 - Codex or other coding agents
-- multiple concurrent sessions per workspace
+- multiple concurrent agent-sessions per devcontainer
 - cloud sync, hosted execution, remote workers
 - multi-user collaboration
 - Kubernetes
 - workflow builder or plugin SDK
-- full terminal log persistence
+- Session Output / terminal scrollback persistence
 
 ## Local-first assumptions
 
 - runs entirely on the developer's machine
 - no auth, no remote user accounts
 - single user, single host
-- SQLite file in the working directory holds all metadata
+- SQLite file in the working directory holds all metadata, with `runtime_events` as the source of truth
 - backend on `127.0.0.1`, frontend on `127.0.0.1`, no public exposure
-- workspaces are local folder paths owned by the developer
+- devcontainers are local folder paths owned by the developer
 
 ## Tech stack
 
 - Frontend: React + Vite + TypeScript + Tailwind
-- Backend: Python 3.13 + FastAPI
-- Workspace runtime agent: Python
+- Backend (Control Plane): Python 3.13 + FastAPI
+- Runtimes: Python (Host Runtime Worker, Devcontainer Runtime Agent)
 - Local metadata: SQLite
-- Workspace model: devcontainer-first, local-folder-only for MVP
+- Devcontainer model: devcontainer-first, local-folder-only for MVP
 
 ## Documentation
 
 - [MVP Product Requirement Document](https://rainbowhunter.atlassian.net/wiki/spaces/V/pages/2097153/Vibing+MVP+Product+Requirement+Document)
 - [MVP Architecture](https://rainbowhunter.atlassian.net/wiki/spaces/V/pages/2293790/Vibing+MVP+Architecture)
+- [`CONTEXT.md`](CONTEXT.md) and [`docs/adr/`](docs/adr/) (authoritative for terminology and decisions)
 
 ## Status
 
-Early MVP planning and foundation implementation.
+Early MVP — planning and foundation implementation.
+
+The decisions above are settled; aligning the code to them is in progress. Notably, the codebase still uses the pre-decision name `workspace` (table `workspaces`, `/api/v1/workspaces` routes, `source_type`/`source_value` columns). Treat **Devcontainer** as canonical per `CONTEXT.md`; the rename and the ADR-0001/0002 schema work are tracked as pending.
 
 ## Local development
 
@@ -68,7 +95,7 @@ The devcontainer ships with `uv`, `nvm` + Node LTS, `pnpm@11.3.0` (via Corepack)
 
 You need two terminals: one for backend, one for frontend.
 
-### 1. Backend (FastAPI)
+### 1. Backend (FastAPI Control Plane)
 
 ```bash
 cd apps/api
@@ -125,7 +152,7 @@ uv run vibing dev sample_data status
 uv run vibing dev sample_data reset
 ```
 
-Every sample row's `id` is prefixed with `sample-` and every sample workspace name starts with `[sample]`. Real rows created via the API are never touched by `reset`.
+Every sample row's `id` is prefixed with `sample-` and every sample name starts with `[sample]`. Real rows created via the API are never touched by `reset`.
 
 ### Production-like preview (single container)
 
