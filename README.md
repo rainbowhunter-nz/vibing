@@ -10,6 +10,7 @@ This repo keeps its canonical language and architectural decisions in version co
 
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. Canonical entities: **Devcontainer**, **Agent Session**, **Control Plane**, **Runtime**, **Command**, **Runtime Event**, **Inbox Event**, **Session Output**, etc.
 - [`docs/adr/`](docs/adr/) — Architecture Decision Records (see [the ADR index](docs/adr/CLAUDE.md)).
+- [`docs/foundation-api.md`](docs/foundation-api.md) — request/response examples for the foundation HTTP API.
 
 The three load-bearing decisions:
 

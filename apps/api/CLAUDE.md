@@ -14,6 +14,7 @@ deps). Use `uv` only — never edit `pyproject.toml` by hand. `uv run pytest -q`
 - `src/vibing_api/api/routes/` — HTTP endpoints; thin, no SQL, raise HTTP 404s here.
   - `devcontainers.py` — devcontainer CRUD; delegates to the repository.
   - `health.py`, `status.py`, `config.py`, `settings.py`, `diagnostics.py` — health, version/status, runtime config, settings, local prerequisite checks.
+  - Request/response examples for all the above: [`docs/foundation-api.md`](../../docs/foundation-api.md).
 - `src/vibing_api/api/schemas/` — Pydantic request/response models (`devcontainers.py`, shared `common.py` error shapes).
 - `src/vibing_api/repositories/` — per-entity SQL wrappers over `sqlite3.Connection`. **Execute but never commit; never raise HTTP errors.** Caller owns the transaction.
   - `devcontainers.py`, `agent_sessions.py`, `runtime_events.py`, `approvals.py`, `inbox.py`, `summaries.py`.
