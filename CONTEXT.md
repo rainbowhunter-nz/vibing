@@ -21,7 +21,7 @@ A process that executes Commands and emits Runtime Events. Two kinds: the **Host
 _Avoid_: worker, daemon (when ambiguous)
 
 **Command**:
-A control-plane request directed at a Runtime expressing user/system intent (e.g. `start_devcontainer`, `start_agent_session`). Flows Control Plane → Runtime.
+A control-plane request directed at a Runtime expressing user/system intent (e.g. `start_devcontainer`, `start_agent_session`). Flows Control Plane → Runtime. Restart is not a Command; it is a convenience workflow composed from stop then start.
 _Avoid_: action, request, message
 
 **Runtime Event**:
@@ -50,8 +50,8 @@ Two independent lifecycles. Keep the verbs distinct.
 
 **Devcontainer lifecycle** — owned by the Host Runtime Worker.
 - States: `created → starting → running → stopping → stopped`, plus `error`.
-- Commands: `start_devcontainer`, `stop_devcontainer`, `restart_devcontainer`.
-- "**Stop the devcontainer**" stops the container, which necessarily ends any active agent-session inside it.
+- Commands: `start_devcontainer`, `stop_devcontainer`.
+- "**Stop the devcontainer**" stops the container without deleting its reusable environment; it necessarily ends any active agent-session inside it.
 
 **Agent Session lifecycle** — owned by the Devcontainer Runtime Agent.
 - States: `starting → running ⇄ waiting_for_approval → completed / failed / stopped`.

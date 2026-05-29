@@ -13,7 +13,6 @@ HOST_COMMAND_TYPES: frozenset[str] = frozenset(
     {
         "start_devcontainer",
         "stop_devcontainer",
-        "restart_devcontainer",
     }
 )
 

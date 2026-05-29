@@ -12,7 +12,6 @@ from pydantic import BaseModel
 CommandType = Literal[
     "start_devcontainer",
     "stop_devcontainer",
-    "restart_devcontainer",
     "start_agent_session",
     "stop_agent_session",
     "send_user_input",

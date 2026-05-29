@@ -19,5 +19,4 @@ def test_host_command_types_cover_devcontainer_lifecycle() -> None:
     assert HOST_COMMAND_TYPES == {
         "start_devcontainer",
         "stop_devcontainer",
-        "restart_devcontainer",
     }
