@@ -12,6 +12,7 @@ Use `uv` only — never hand-edit `pyproject.toml`. Tests: `uv run pytest -q`.
 - `src/vibing_protocol/__init__.py` — public surface; re-exports every type/constant below.
 - `src/vibing_protocol/commands.py` — `CommandType` Literal + `COMMAND_TYPES` frozenset + `Command` model (control-plane request to a runtime).
 - `src/vibing_protocol/runtime_events.py` — `EventType` / `RuntimeEventSource` Literals + their frozensets + `RuntimeEvent` model + `InvalidRuntimeEventError`.
+- `src/vibing_protocol/messages.py` — runtime-channel wire envelopes: `RegisterEnvelope` (`runtime_registered`) + `RuntimeEventEnvelope` (`runtime_event`).
 
 ## Conventions
 
