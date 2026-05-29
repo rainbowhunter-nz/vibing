@@ -7,10 +7,7 @@ from datetime import datetime, timezone
 
 from vibing_api.core.vocabularies import ApprovalStatus
 
-_COLUMNS = (
-    "id, devcontainer_id, agent_session_id, status, "
-    "requested_action, created_at, decided_at"
-)
+_COLUMNS = "id, devcontainer_id, agent_session_id, status, requested_action, created_at, decided_at"
 
 
 @dataclass(frozen=True)
@@ -78,9 +75,7 @@ class ApprovalRepository:
         ).fetchone()
         return _row_to_approval(row) if row is not None else None
 
-    def get_pending_by_session(
-        self, agent_session_id: str
-    ) -> ApprovalRequest | None:
+    def get_pending_by_session(self, agent_session_id: str) -> ApprovalRequest | None:
         row = self._conn.execute(
             f"SELECT {_COLUMNS} FROM approval_requests "
             "WHERE agent_session_id = ? AND status = 'pending' "
@@ -89,9 +84,7 @@ class ApprovalRepository:
         ).fetchone()
         return _row_to_approval(row) if row is not None else None
 
-    def resolve(
-        self, approval_id: str, status: ApprovalStatus
-    ) -> ApprovalRequest | None:
+    def resolve(self, approval_id: str, status: ApprovalStatus) -> ApprovalRequest | None:
         if self.get(approval_id) is None:
             return None
         self._conn.execute(

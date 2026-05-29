@@ -8,9 +8,7 @@ from vibing_api.main import create_app
 
 
 @pytest.fixture
-def spa_client(
-    tmp_path: Path, db_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> TestClient:
+def spa_client(tmp_path: Path, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     static_dir = tmp_path / "dist"
     (static_dir / "assets").mkdir(parents=True)
     (static_dir / "index.html").write_text("<!doctype html><body>SPA</body>")

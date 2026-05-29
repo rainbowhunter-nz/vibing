@@ -167,6 +167,29 @@ Every sample row's `id` is prefixed with `sample-` and every sample name starts 
 
 Serves the built frontend and API from one container. DB lives in the `vibing-data` docker volume at `/data/vibing.db`.
 
+### Checks before review
+
+Run these before opening a PR. CI (`.github/workflows/ci.yml`) runs the same set on every push to `main` and pull request; none of them require the devcontainer/host runtime.
+
+**Backend** — run per Python project (`apps/api`, `packages/protocol`, `packages/host_runtime`, `packages/devcontainer_runtime`); `uv run` syncs deps on first use:
+
+```bash
+cd apps/api            # or any packages/* dir
+uv run ruff check .            # lint
+uv run ruff format --check .   # format (drop --check to apply)
+uv run pytest -q               # tests (protocol has none)
+uv run mypy src                # type-check (apps/api only)
+```
+
+**Frontend** (`apps/web`):
+
+```bash
+cd apps/web
+pnpm lint        # eslint
+pnpm typecheck   # tsc -b
+pnpm test        # vitest
+```
+
 ### Lockfiles
 
 Both lockfiles are committed and must stay in sync with their manifests:

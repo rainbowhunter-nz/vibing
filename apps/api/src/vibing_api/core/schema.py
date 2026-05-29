@@ -110,7 +110,5 @@ def apply_schema(conn: sqlite3.Connection) -> None:
 
 
 def read_schema_version(conn: sqlite3.Connection) -> str | None:
-    row = conn.execute(
-        "SELECT value FROM app_meta WHERE key = 'schema_version'"
-    ).fetchone()
+    row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     return row[0] if row is not None else None

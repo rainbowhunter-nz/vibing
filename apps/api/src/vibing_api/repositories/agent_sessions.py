@@ -8,8 +8,7 @@ from datetime import datetime, timezone
 from vibing_api.core.vocabularies import AgentSessionStatus
 
 _COLUMNS = (
-    "id, devcontainer_id, status, started_at, ended_at, "
-    "last_event_at, created_at, updated_at"
+    "id, devcontainer_id, status, started_at, ended_at, last_event_at, created_at, updated_at"
 )
 
 
@@ -43,9 +42,7 @@ class AgentSessionRepository:
         self._conn = conn
         self._conn.row_factory = sqlite3.Row
 
-    def create(
-        self, devcontainer_id: str, status: AgentSessionStatus = "starting"
-    ) -> AgentSession:
+    def create(self, devcontainer_id: str, status: AgentSessionStatus = "starting") -> AgentSession:
         session_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         session = AgentSession(
@@ -80,15 +77,12 @@ class AgentSessionRepository:
         ).fetchone()
         return _row_to_session(row) if row is not None else None
 
-    def set_status(
-        self, session_id: str, status: AgentSessionStatus
-    ) -> AgentSession | None:
+    def set_status(self, session_id: str, status: AgentSessionStatus) -> AgentSession | None:
         if self.get(session_id) is None:
             return None
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
-            "UPDATE agent_sessions SET status = ?, updated_at = ?, last_event_at = ? "
-            "WHERE id = ?",
+            "UPDATE agent_sessions SET status = ?, updated_at = ?, last_event_at = ? WHERE id = ?",
             (status, now, now, session_id),
         )
         return self.get(session_id)

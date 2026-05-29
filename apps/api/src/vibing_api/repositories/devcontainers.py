@@ -85,7 +85,5 @@ class DevcontainerRepository:
         return self.get(devcontainer_id)
 
     def delete(self, devcontainer_id: str) -> bool:
-        cursor = self._conn.execute(
-            "DELETE FROM devcontainers WHERE id = ?", (devcontainer_id,)
-        )
+        cursor = self._conn.execute("DELETE FROM devcontainers WHERE id = ?", (devcontainer_id,))
         return cursor.rowcount > 0

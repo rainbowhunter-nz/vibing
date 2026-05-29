@@ -56,9 +56,7 @@ def test_reduce_agent_session_started() -> None:
 
 
 def test_reduce_approval_requested() -> None:
-    updates = reduce(
-        _event("approval_requested", payload={"requested_action": "rm -rf"})
-    )
+    updates = reduce(_event("approval_requested", payload={"requested_action": "rm -rf"}))
     assert updates == ProjectionUpdates(
         session_status="waiting_for_approval",
         create_approval=True,
@@ -126,8 +124,13 @@ def seeded(conn: sqlite3.Connection) -> tuple[str, str]:
     return dc.id, session.id
 
 
-def _emit(conn: sqlite3.Connection, dc_id: str, session_id: str, event_type: str,
-          payload: dict | None = None) -> None:
+def _emit(
+    conn: sqlite3.Connection,
+    dc_id: str,
+    session_id: str,
+    event_type: str,
+    payload: dict | None = None,
+) -> None:
     project(
         RuntimeEvent(
             event_type=event_type,
@@ -140,9 +143,7 @@ def _emit(conn: sqlite3.Connection, dc_id: str, session_id: str, event_type: str
     )
 
 
-def test_devcontainer_status_transitions(
-    conn: sqlite3.Connection, seeded: tuple[str, str]
-) -> None:
+def test_devcontainer_status_transitions(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     repo = DevcontainerRepository(conn)
 
@@ -154,24 +155,19 @@ def test_devcontainer_status_transitions(
     assert repo.get(dc_id).status == "error"
 
 
-def test_agent_session_started(
-    conn: sqlite3.Connection, seeded: tuple[str, str]
-) -> None:
+def test_agent_session_started(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     _emit(conn, dc_id, session_id, "agent_session_started")
     assert AgentSessionRepository(conn).get(session_id).status == "running"
 
 
-def test_approval_round_trip_approved(
-    conn: sqlite3.Connection, seeded: tuple[str, str]
-) -> None:
+def test_approval_round_trip_approved(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     sessions = AgentSessionRepository(conn)
     approvals = ApprovalRepository(conn)
     inbox = InboxRepository(conn)
 
-    _emit(conn, dc_id, session_id, "approval_requested",
-          {"requested_action": "delete files"})
+    _emit(conn, dc_id, session_id, "approval_requested", {"requested_action": "delete files"})
     assert sessions.get(session_id).status == "waiting_for_approval"
     pending = approvals.get_pending_by_session(session_id)
     assert pending is not None
@@ -189,9 +185,7 @@ def test_approval_round_trip_approved(
     assert approvals.get_pending_by_session(session_id) is None
 
 
-def test_approval_round_trip_rejected(
-    conn: sqlite3.Connection, seeded: tuple[str, str]
-) -> None:
+def test_approval_round_trip_rejected(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     approvals = ApprovalRepository(conn)
     inbox = InboxRepository(conn)
@@ -237,9 +231,7 @@ def test_agent_asked_question_creates_inbox(
     assert rows[0]["status"] == "unread"
 
 
-def test_session_completed(
-    conn: sqlite3.Connection, seeded: tuple[str, str]
-) -> None:
+def test_session_completed(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     _emit(conn, dc_id, session_id, "session_completed")
     assert AgentSessionRepository(conn).get(session_id).status == "completed"
@@ -255,9 +247,7 @@ def test_session_completed(
     assert (rows[0]["event_type"], rows[0]["status"]) == ("completion", "unread")
 
 
-def test_session_failed(
-    conn: sqlite3.Connection, seeded: tuple[str, str]
-) -> None:
+def test_session_failed(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     _emit(conn, dc_id, session_id, "session_failed")
     assert AgentSessionRepository(conn).get(session_id).status == "failed"
@@ -270,9 +260,7 @@ def test_session_failed(
     assert (rows[0]["event_type"], rows[0]["status"]) == ("failure", "unread")
 
 
-def test_session_stopped_no_inbox(
-    conn: sqlite3.Connection, seeded: tuple[str, str]
-) -> None:
+def test_session_stopped_no_inbox(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     _emit(conn, dc_id, session_id, "session_stopped")
     assert AgentSessionRepository(conn).get(session_id).status == "stopped"

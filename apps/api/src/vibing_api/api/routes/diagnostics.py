@@ -63,6 +63,4 @@ def _placeholder_checks() -> list[DiagnosticCheck]:
 
 @router.get("/diagnostics", response_model=DiagnosticsResponse)
 def get_diagnostics() -> DiagnosticsResponse:
-    return DiagnosticsResponse(
-        checks=[_check_backend(), _check_sqlite(), *_placeholder_checks()]
-    )
+    return DiagnosticsResponse(checks=[_check_backend(), _check_sqlite(), *_placeholder_checks()])
