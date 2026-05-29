@@ -217,6 +217,14 @@ def test_approval_resolved_without_pending_is_noop(
     assert rows == []
 
 
+def test_inbox_event_skipped_when_devcontainer_id_absent(conn: sqlite3.Connection) -> None:
+    # Out-of-order tolerance: an inbox-producing event with no devcontainer_id
+    # is dropped rather than inserted against a missing parent.
+    project(RuntimeEvent(event_type="agent_asked_question", source=_SOURCE), conn)
+    rows = conn.execute("SELECT id FROM inbox_events").fetchall()
+    assert rows == []
+
+
 def test_agent_asked_question_creates_inbox(
     conn: sqlite3.Connection, seeded: tuple[str, str]
 ) -> None:

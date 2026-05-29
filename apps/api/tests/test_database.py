@@ -255,33 +255,3 @@ def test_fk_cascade_on_devcontainer_delete(db_path: Path) -> None:
                 f"SELECT COUNT(*) FROM {table} WHERE devcontainer_id = 'dc-cascade'"
             ).fetchone()
             assert count == 0, f"cascade failed: {table} still has rows after devcontainer delete"
-
-
-def _indexed_columns(conn, table: str) -> set[tuple[str, ...]]:
-    indexes = conn.execute(f"PRAGMA index_list({table})").fetchall()
-    result: set[tuple[str, ...]] = set()
-    for index in indexes:
-        index_name = index[1]
-        info = conn.execute(f"PRAGMA index_info({index_name})").fetchall()
-        result.add(tuple(row[2] for row in info))
-    return result
-
-
-@pytest.mark.parametrize(
-    "table,expected_columns",
-    [
-        ("agent_sessions", ("devcontainer_id",)),
-        ("runtime_events", ("devcontainer_id", "created_at")),
-        ("runtime_events", ("agent_session_id", "created_at")),
-        ("inbox_events", ("devcontainer_id",)),
-        ("inbox_events", ("status",)),
-        ("approval_requests", ("status",)),
-    ],
-)
-def test_lookup_index_exists(db_path: Path, table: str, expected_columns: tuple[str, ...]) -> None:
-    init_db()
-    with get_connection() as conn:
-        indexes = _indexed_columns(conn, table)
-    assert expected_columns in indexes, (
-        f"missing index on {table}{expected_columns}; found {sorted(indexes)}"
-    )

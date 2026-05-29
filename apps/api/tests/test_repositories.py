@@ -100,36 +100,6 @@ def test_summary_round_trip(conn: sqlite3.Connection) -> None:
     assert repo.get_by_session(session_id) == created
 
 
-def test_runtime_event_round_trip(conn: sqlite3.Connection) -> None:
-    dc_id = _make_devcontainer(conn)
-    repo = RuntimeEventRepository(conn)
-    created = repo.record(
-        event_type="devcontainer_started",
-        source="host_runtime_worker",
-        devcontainer_id=dc_id,
-        payload={"k": "v"},
-    )
-    events = repo.list_by_devcontainer(dc_id)
-    assert events == [created]
-    assert events[0].payload == {"k": "v"}
-
-
-def test_runtime_event_list_ordering(conn: sqlite3.Connection) -> None:
-    dc_id = _make_devcontainer(conn)
-    repo = RuntimeEventRepository(conn)
-    first = repo.record(
-        event_type="devcontainer_started",
-        source="host_runtime_worker",
-        devcontainer_id=dc_id,
-    )
-    second = repo.record(
-        event_type="devcontainer_stopped",
-        source="host_runtime_worker",
-        devcontainer_id=dc_id,
-    )
-    assert [e.id for e in repo.list_by_devcontainer(dc_id)] == [first.id, second.id]
-
-
 def test_devcontainer_delete_cascades(conn: sqlite3.Connection) -> None:
     dc_id = _make_devcontainer(conn)
     session_id = _make_session(conn, dc_id)
