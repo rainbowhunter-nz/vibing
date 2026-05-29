@@ -7,7 +7,11 @@ requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.0",
     "vibing-protocol",
+    "websockets>=16.0",
 ]
+
+[project.scripts]
+vibing-host-runtime = "vibing_host_runtime.client:main"
 
 [dependency-groups]
 dev = ["pytest>=9.0.3", "ruff>=0.15.14"]

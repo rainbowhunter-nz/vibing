@@ -688,12 +688,14 @@ source = { editable = "../../packages/host_runtime" }
 dependencies = [
     { name = "pydantic" },
     { name = "vibing-protocol" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2.0" },
     { name = "vibing-protocol", editable = "../../packages/protocol" },
+    { name = "websockets", specifier = ">=16.0" },
 ]
 
 [package.metadata.requires-dev]
