@@ -6,8 +6,8 @@ failures and disconnects trigger reconnection with bounded exponential backoff. 
 command queue is in-memory and per-session, so in-flight Commands are never replayed
 after a disconnect or process exit.
 
-Command execution itself is injected as `handler` (wired to the Dev Container CLI
-adapter in a later slice); this module owns only the process, transport, and queue.
+Command execution is wired to the Dev Container CLI adapter via `DevcontainerCommandHandler`;
+this module owns the process, transport, and queue.
 """
 
 import argparse
@@ -176,7 +176,12 @@ class HostRuntimeClient:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from vibing_host_runtime.command_handler import DevcontainerCommandHandler
+    from vibing_host_runtime.devcontainer_cli import DevcontainerCliAdapter
+
     logging.basicConfig(level=logging.INFO)
     config = parse_args(argv)
-    client = HostRuntimeClient(config)
+    adapter = DevcontainerCliAdapter(config.devcontainer_cli)
+    handler = DevcontainerCommandHandler(adapter)
+    client = HostRuntimeClient(config, handler=handler.handle)
     asyncio.run(client.run())

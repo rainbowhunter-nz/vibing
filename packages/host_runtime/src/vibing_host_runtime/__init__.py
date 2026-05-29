@@ -9,6 +9,7 @@ from vibing_host_runtime.client import (
     main,
     parse_args,
 )
+from vibing_host_runtime.command_handler import DevcontainerCommandHandler
 from vibing_host_runtime.devcontainer_cli import (
     DevcontainerCliAdapter,
     DevcontainerFailure,
@@ -29,6 +30,7 @@ __all__ = [
     "Backoff",
     "CommandHandler",
     "DevcontainerCliAdapter",
+    "DevcontainerCommandHandler",
     "DevcontainerFailure",
     "DevcontainerResult",
     "DevcontainerSuccess",
