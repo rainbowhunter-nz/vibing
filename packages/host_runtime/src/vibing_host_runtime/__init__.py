@@ -9,6 +9,14 @@ from vibing_host_runtime.client import (
     main,
     parse_args,
 )
+from vibing_host_runtime.devcontainer_cli import (
+    DevcontainerCliAdapter,
+    DevcontainerFailure,
+    DevcontainerResult,
+    DevcontainerSuccess,
+    RunResult,
+    Runner,
+)
 from vibing_host_runtime.runtime import (
     HOST_COMMAND_TYPES,
     HostRuntime,
@@ -20,11 +28,17 @@ __all__ = [
     "DEFAULT_DEVCONTAINER_CLI",
     "Backoff",
     "CommandHandler",
+    "DevcontainerCliAdapter",
+    "DevcontainerFailure",
+    "DevcontainerResult",
+    "DevcontainerSuccess",
     "EmitFn",
     "HOST_COMMAND_TYPES",
     "HostRuntime",
     "HostRuntimeClient",
     "HostRuntimeWorker",
+    "RunResult",
+    "Runner",
     "WorkerConfig",
     "main",
     "parse_args",
