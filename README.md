@@ -86,7 +86,8 @@ Early MVP — foundation implemented; core decisions landed.
 - Schema simplified to a single `local_path` column (ADR-0001); the `"deleted"` status is gone; status/event vocabularies are typed `Literal`s.
 - Persistence is behind per-entity repository modules; route handlers contain no SQL.
 - Read-model state (devcontainer/agent-session status, inbox, approvals, summaries) is produced by a single projection reducer over the `runtime_events` stream (ADR-0002) — the sole writer of derived state.
-- **Still pending:** the runtime transport / TCP-IP channel between Control Plane and runtimes is not yet implemented (ADR-0003 — the `handle()` skeletons are placeholders), and Session Output (live terminal stream) is deferred.
+- The runtime transport (ADR-0003) is in place for the Devcontainer lifecycle: the Control Plane exposes a runtime WebSocket, and the **Host Runtime Worker** (`vibing-host-runtime`) connects, registers, and drives `devcontainer up`/`stop` via the official Dev Container CLI (see [Local development](#3-host-runtime-worker-vibing-host-runtime)).
+- **Still pending:** the Devcontainer Runtime Agent (Agent Session lifecycle) and Session Output (live terminal stream) are deferred.
 
 ## Local development
 
@@ -130,6 +131,47 @@ pnpm dev
 Dev server: `http://localhost:5173`. It proxies `/api/v1/*` to `http://localhost:8000` (see `apps/web/vite.config.ts`). App code must call the backend via the relative `/api/v1/...` path — do not hardcode `http://localhost:8000`.
 
 Open `http://localhost:5173`; the page shows "Connected to `vibing-api`" once both servers run.
+
+### 3. Host Runtime Worker (`vibing-host-runtime`)
+
+The Host Runtime Worker owns the Devcontainer lifecycle on the host. It's a separate process that connects to the Control Plane over a single WebSocket (ADR-0003), registers as the one host worker, and serially runs the lifecycle Commands the Control Plane sends — shelling out to the official `devcontainer` CLI and emitting Runtime Events back.
+
+Start it in a third terminal, after the backend is up:
+
+```bash
+cd packages/host_runtime
+uv run vibing-host-runtime
+```
+
+With no arguments it uses the defaults:
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--control-plane-url` | `ws://127.0.0.1:8000/api/v1/runtime/ws` | Control Plane runtime WebSocket |
+| `--devcontainer-cli` | `devcontainer` | Dev Container CLI binary name or path |
+
+The runtime channel is **local-only and unauthenticated** — same assumption as the rest of the MVP (single user, single host, bound to `127.0.0.1`, no public exposure). Only one Host Runtime Worker may be connected at a time; a second connection is rejected.
+
+The official [Dev Container CLI](https://github.com/devcontainers/cli) (`devcontainer`) must be installed for lifecycle operations to actually succeed. The worker still connects and registers without it — a missing CLI surfaces as a `devcontainer_failed` Runtime Event when a lifecycle Command runs, not a crash. Point `--devcontainer-cli` at a different binary/path if `devcontainer` isn't on `PATH`.
+
+#### Devcontainer lifecycle endpoints
+
+With the worker connected, drive a Devcontainer's lifecycle through the Control Plane:
+
+```bash
+# Start (created | stopped | error → running)
+curl -X POST http://localhost:8000/api/v1/devcontainers/<id>/start
+
+# Stop (running | error → stopped), preserving the reusable environment
+curl -X POST http://localhost:8000/api/v1/devcontainers/<id>/stop
+```
+
+Both return `202 Accepted` with the current read model unchanged; the status transition (`starting`/`stopping` → `running`/`stopped`, or `error`) arrives later as Runtime Events the worker emits and the Control Plane projects. If no worker is connected, the endpoints return `409`.
+
+- **Start** maps to `devcontainer up` and emits `devcontainer_starting` → `devcontainer_started` (or `devcontainer_failed`).
+- **Stop** maps to `devcontainer stop` and emits `devcontainer_stopping` → `devcontainer_stopped` (or `devcontainer_failed`). Stop **preserves** the container so it can be started again — it does **not** delete or tear down the environment.
+
+There is no `restart_devcontainer` Command; restart is a stop followed by a start.
 
 ### Environment variables
 
