@@ -5,7 +5,7 @@
 - Prefer clean and elegent over simple implementation.
 - Avoid code duplication when you can.
 - When User ask you to work on a jira ticket, Always read and understand the tickt first. STOP if you cannot read the jira ticket.
-- If the jira ticket is in-progress, leave a comment and Move the Jira ticket to in-review after you are done.
+- If the Jira ticket is in TODO, move it to in-progress before you start working on it. If the jira ticket is in-progress, leave a comment and Move the Jira ticket to in-review after you are done. The comment should be short and focus on the result of your work.
 - Remember to keep the folder scoped `CLAUDE.md` coherent to the codebase, to make it easy for agents to pickup the project.
 
 ## Environment
