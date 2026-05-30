@@ -61,6 +61,14 @@ def test_second_worker_is_closed(client: TestClient) -> None:
             assert exc.value.code == 4409
 
 
+def test_malformed_registration_does_not_claim_slot(client: TestClient) -> None:
+    with client.websocket_connect(WS_URL) as ws1:
+        ws1.send_json({"type": "runtime_registered", "source": "garbage"})  # invalid source
+        with client.websocket_connect(WS_URL) as ws2:  # slot must still be free
+            ws2.send_json(_REGISTER)
+            assert ws2.receive_json() == {"type": "registered"}
+
+
 def test_worker_slot_freed_after_disconnect(client: TestClient) -> None:
     with client.websocket_connect(WS_URL) as ws1:
         ws1.send_json(_REGISTER)

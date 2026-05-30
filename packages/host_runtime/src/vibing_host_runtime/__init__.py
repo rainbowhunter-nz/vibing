@@ -1,4 +1,4 @@
-from vibing_host_runtime.cli import cli, main, run_worker
+from vibing_host_runtime.cli import main, run_worker
 from vibing_host_runtime.client import (
     DEFAULT_CONTROL_PLANE_URL,
     DEFAULT_DEVCONTAINER_CLI,
@@ -41,7 +41,6 @@ __all__ = [
     "RunResult",
     "Runner",
     "WorkerConfig",
-    "cli",
     "main",
     "run_worker",
 ]

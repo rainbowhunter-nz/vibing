@@ -1,8 +1,9 @@
 """Runtime WebSocket channel route (ADR-0003): runtime -> Control Plane intake.
 
-A runtime connects, sends one `runtime_registered` envelope to claim the single
-worker slot, then streams `runtime_event` envelopes. Malformed JSON, malformed
-envelopes, and unsupported message types are ignored without producing events.
+A runtime connects, sends one valid `runtime_registered` envelope to claim the
+single worker slot, then streams `runtime_event` envelopes. Malformed JSON,
+malformed envelopes (registration included), and unsupported message types are
+ignored — they neither claim the slot nor produce events.
 """
 
 import json
@@ -10,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
-from vibing_protocol import RuntimeEventEnvelope
+from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope
 
 from vibing_api.core.runtime_channel import RuntimeConnectionManager, persist_runtime_event
 
@@ -41,6 +42,10 @@ async def runtime_ws(websocket: WebSocket) -> None:
 
             if msg_type == "runtime_registered":
                 if registered:
+                    continue
+                try:
+                    RegisterEnvelope.model_validate(message)
+                except ValidationError:
                     continue
                 if not manager.register_worker(websocket):
                     await websocket.close(code=_WORKER_ALREADY_CONNECTED)

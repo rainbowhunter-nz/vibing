@@ -3,7 +3,7 @@
 import pytest
 from typer.testing import CliRunner
 
-from vibing_host_runtime import cli as cli_module
+import vibing_host_runtime.cli as cli_module
 from vibing_host_runtime.cli import cli
 from vibing_host_runtime.client import (
     DEFAULT_CONTROL_PLANE_URL,
