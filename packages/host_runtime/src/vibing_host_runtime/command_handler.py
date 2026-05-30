@@ -1,14 +1,12 @@
 """Command handler: wires received Commands to DevcontainerCliAdapter, emits RuntimeEvents."""
 
 import dataclasses
-import logging
 from collections.abc import Awaitable, Callable
 
+from logzero import logger
 from vibing_protocol import Command, RuntimeEvent
 
 from vibing_host_runtime.devcontainer_cli import DevcontainerCliAdapter, DevcontainerFailure
-
-logger = logging.getLogger(__name__)
 
 _SOURCE = "host_runtime_worker"
 

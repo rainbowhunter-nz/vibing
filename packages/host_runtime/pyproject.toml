@@ -5,13 +5,16 @@ description = "Host-side runtime skeleton for the Vibing MVP."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "logzero>=1.7.0",
     "pydantic>=2.0",
+    "rich>=15.0.0",
+    "typer>=0.26.3",
     "vibing-protocol",
     "websockets>=16.0",
 ]
 
 [project.scripts]
-vibing-host-runtime = "vibing_host_runtime.client:main"
+vibing-host-runtime = "vibing_host_runtime.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=9.0.3", "ruff>=0.15.14"]

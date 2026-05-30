@@ -7,12 +7,9 @@ from collections.abc import Awaitable, Callable
 from vibing_protocol import Command, CommandEnvelope, RuntimeEvent
 
 from vibing_host_runtime.client import (
-    DEFAULT_CONTROL_PLANE_URL,
-    DEFAULT_DEVCONTAINER_CLI,
     Backoff,
     HostRuntimeClient,
     WorkerConfig,
-    parse_args,
 )
 
 
@@ -85,32 +82,6 @@ def _stop_after(
 def _command_json(devcontainer_id: str, command_type: str = "start_devcontainer") -> str:
     envelope = CommandEnvelope(command=Command(type=command_type, devcontainer_id=devcontainer_id))
     return json.dumps(envelope.model_dump())
-
-
-# --- CLI config -----------------------------------------------------------
-
-
-def test_parse_args_defaults() -> None:
-    config = parse_args([])
-    assert (
-        config.control_plane_url
-        == DEFAULT_CONTROL_PLANE_URL
-        == "ws://127.0.0.1:8000/api/v1/runtime/ws"
-    )
-    assert config.devcontainer_cli == DEFAULT_DEVCONTAINER_CLI == "devcontainer"
-
-
-def test_parse_args_overrides() -> None:
-    config = parse_args(
-        [
-            "--control-plane-url",
-            "ws://host:9/api/v1/runtime/ws",
-            "--devcontainer-cli",
-            "/opt/devcontainer",
-        ]
-    )
-    assert config.control_plane_url == "ws://host:9/api/v1/runtime/ws"
-    assert config.devcontainer_cli == "/opt/devcontainer"
 
 
 # --- backoff --------------------------------------------------------------

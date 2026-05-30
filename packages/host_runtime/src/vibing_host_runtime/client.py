@@ -1,26 +1,24 @@
-"""Host Runtime Worker process: runtime-channel client, reconnect loop, command queue.
+"""Host Runtime Worker runtime-channel client: reconnect loop and command queue.
 
-A separately-started process (ADR-0003) that connects to the Control Plane runtime
-WebSocket, registers, and serially processes the Commands it receives. Connection
-failures and disconnects trigger reconnection with bounded exponential backoff. The
-command queue is in-memory and per-session, so in-flight Commands are never replayed
-after a disconnect or process exit.
+Connects to the Control Plane runtime WebSocket (ADR-0003), registers, and serially
+processes the Commands it receives. Connection failures and disconnects trigger
+reconnection with bounded exponential backoff. The command queue is in-memory and
+per-session, so in-flight Commands are never replayed after a disconnect or process exit.
 
-Command execution is wired to the Dev Container CLI adapter via `DevcontainerCommandHandler`;
-this module owns the process, transport, and queue.
+This module owns the transport and queue; `cli.py` wires the command `handler` (the Dev
+Container CLI adapter) and starts the process.
 """
 
-import argparse
 import asyncio
 import contextlib
 import json
-import logging
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Any
 
 import websockets
+from logzero import logger
 from pydantic import ValidationError
 from vibing_protocol import (
     Command,
@@ -29,8 +27,6 @@ from vibing_protocol import (
     RuntimeEvent,
     RuntimeEventEnvelope,
 )
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_CONTROL_PLANE_URL = "ws://127.0.0.1:8000/api/v1/runtime/ws"
 DEFAULT_DEVCONTAINER_CLI = "devcontainer"
@@ -45,28 +41,6 @@ SleepFn = Callable[[float], Awaitable[None]]
 class WorkerConfig:
     control_plane_url: str
     devcontainer_cli: str
-
-
-def parse_args(argv: list[str] | None = None) -> WorkerConfig:
-    parser = argparse.ArgumentParser(
-        prog="vibing-host-runtime",
-        description="Host Runtime Worker: drives Devcontainer lifecycle for the Control Plane.",
-    )
-    parser.add_argument(
-        "--control-plane-url",
-        default=DEFAULT_CONTROL_PLANE_URL,
-        help="Control Plane runtime WebSocket URL",
-    )
-    parser.add_argument(
-        "--devcontainer-cli",
-        default=DEFAULT_DEVCONTAINER_CLI,
-        help="Dev Container CLI binary name or path",
-    )
-    namespace = parser.parse_args(argv)
-    return WorkerConfig(
-        control_plane_url=namespace.control_plane_url,
-        devcontainer_cli=namespace.devcontainer_cli,
-    )
 
 
 class Backoff:
@@ -139,20 +113,28 @@ class HostRuntimeClient:
                     await self._run_session(ws)
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.warning("Runtime channel error; reconnecting", exc_info=True)
+            except Exception as exc:
+                logger.warning("Runtime channel disconnected: %s", exc)
             if self._stopped:
                 break
-            await self._sleep(self._backoff.next_delay())
+            delay = self._backoff.next_delay()
+            logger.info("Reconnecting in %.1fs", delay)
+            await self._sleep(delay)
 
     async def _run_session(self, ws: Any) -> None:
         await ws.send(json.dumps(RegisterEnvelope().model_dump()))
+        logger.info("Registered with control plane; awaiting commands")
         queue: asyncio.Queue[Command] = asyncio.Queue()
         consumer = asyncio.create_task(self._consume(queue, ws))
         try:
             while True:
                 command = _parse_command(await ws.recv())
                 if command is not None:
+                    logger.info(
+                        "Received command %s (devcontainer=%s)",
+                        command.type,
+                        command.devcontainer_id,
+                    )
                     queue.put_nowait(command)
         finally:
             consumer.cancel()
@@ -170,18 +152,11 @@ class HostRuntimeClient:
 
     def _make_emit(self, ws: Any) -> EmitFn:
         async def emit(event: RuntimeEvent) -> None:
+            logger.info(
+                "Emitting event %s (devcontainer=%s)",
+                event.event_type,
+                event.devcontainer_id,
+            )
             await ws.send(json.dumps(RuntimeEventEnvelope(event=event).model_dump()))
 
         return emit
-
-
-def main(argv: list[str] | None = None) -> None:
-    from vibing_host_runtime.command_handler import DevcontainerCommandHandler
-    from vibing_host_runtime.devcontainer_cli import DevcontainerCliAdapter
-
-    logging.basicConfig(level=logging.INFO)
-    config = parse_args(argv)
-    adapter = DevcontainerCliAdapter(config.devcontainer_cli)
-    handler = DevcontainerCommandHandler(adapter)
-    client = HostRuntimeClient(config, handler=handler.handle)
-    asyncio.run(client.run())

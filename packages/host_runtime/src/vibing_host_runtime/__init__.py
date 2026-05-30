@@ -1,3 +1,4 @@
+from vibing_host_runtime.cli import cli, main, run_worker
 from vibing_host_runtime.client import (
     DEFAULT_CONTROL_PLANE_URL,
     DEFAULT_DEVCONTAINER_CLI,
@@ -6,8 +7,6 @@ from vibing_host_runtime.client import (
     EmitFn,
     HostRuntimeClient,
     WorkerConfig,
-    main,
-    parse_args,
 )
 from vibing_host_runtime.command_handler import DevcontainerCommandHandler
 from vibing_host_runtime.devcontainer_cli import (
@@ -42,6 +41,7 @@ __all__ = [
     "RunResult",
     "Runner",
     "WorkerConfig",
+    "cli",
     "main",
-    "parse_args",
+    "run_worker",
 ]
