@@ -2,6 +2,7 @@
 
 import dataclasses
 from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 from logzero import logger
 from vibing_protocol import Command, RuntimeEvent
@@ -13,9 +14,16 @@ _SOURCE = "host_runtime_worker"
 EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
 
 
+class _LauncherProtocol(Protocol):
+    async def launch(self, devcontainer_id: str, local_path: str) -> None: ...
+
+
 class DevcontainerCommandHandler:
-    def __init__(self, adapter: DevcontainerCliAdapter) -> None:
+    def __init__(
+        self, adapter: DevcontainerCliAdapter, launcher: _LauncherProtocol | None = None
+    ) -> None:
         self._adapter = adapter
+        self._launcher = launcher
 
     async def handle(self, command: Command, emit: EmitFn) -> None:
         if command.type == "start_devcontainer":
@@ -92,3 +100,8 @@ class DevcontainerCommandHandler:
                     payload=payload or None,
                 )
             )
+            if operation == "start" and self._launcher and command.devcontainer_id and local_path:
+                try:
+                    await self._launcher.launch(command.devcontainer_id, local_path)
+                except Exception:
+                    logger.warning("Unexpected error during agent launch; ignoring")

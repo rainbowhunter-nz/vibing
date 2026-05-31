@@ -8,9 +8,11 @@ from dataclasses import dataclass
 
 DEFAULT_CONTROL_PLANE_URL = "ws://127.0.0.1:8000/api/v1/runtime/ws"
 DEFAULT_DEVCONTAINER_CLI = "devcontainer"
+DEFAULT_AGENT_CONTROL_PLANE_URL = "ws://host.docker.internal:8000/api/v1/runtime/agent/ws"
 
 
 @dataclass(frozen=True)
 class WorkerConfig:
     control_plane_url: str
     devcontainer_cli: str
+    agent_control_plane_url: str = DEFAULT_AGENT_CONTROL_PLANE_URL

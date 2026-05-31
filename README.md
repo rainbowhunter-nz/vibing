@@ -147,12 +147,19 @@ With no arguments it uses the defaults:
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--control-plane-url` | `ws://127.0.0.1:8000/api/v1/runtime/ws` | Control Plane runtime WebSocket |
+| `--control-plane-url` | `ws://127.0.0.1:8000/api/v1/runtime/ws` | Control Plane runtime WebSocket (host uses `127.0.0.1`) |
 | `--devcontainer-cli` | `devcontainer` | Dev Container CLI binary name or path |
+| `--agent-control-plane-url` | `ws://host.docker.internal:8000/api/v1/runtime/agent/ws` | Agent WebSocket URL injected into the container (`host.docker.internal`) |
 
 The runtime channel is **local-only and unauthenticated** — same assumption as the rest of the MVP (single user, single host, bound to `127.0.0.1`, no public exposure). Only one Host Runtime Worker may be connected at a time; a second connection is rejected.
 
 The official [Dev Container CLI](https://github.com/devcontainers/cli) (`devcontainer`) must be installed for lifecycle operations to actually succeed. The worker still connects and registers without it — a missing CLI surfaces as a `devcontainer_failed` Runtime Event when a lifecycle Command runs, not a crash. Point `--devcontainer-cli` at a different binary/path if `devcontainer` isn't on `PATH`.
+
+#### Auto-launch of Devcontainer Runtime Agent
+
+After a successful `devcontainer up`, the worker automatically launches the Devcontainer Runtime Agent inside the container via a detached `devcontainer exec`. The agent (`vibing-devcontainer-runtime`) **must be pre-installed in the Devcontainer image**.
+
+The agent connects to the Control Plane at `/api/v1/runtime/agent/ws` (ADR-0004) using `host.docker.internal` (not `127.0.0.1`) — hence the separate `--agent-control-plane-url` flag. Launch is best-effort: failure logs a `WARNING` and leaves `devcontainer_started` intact; a missing agent surfaces later as `409` on `start_agent_session`.
 
 #### Devcontainer lifecycle endpoints
 
