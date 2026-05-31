@@ -1,7 +1,8 @@
-"""Runtime WebSocket channel: the single host-worker connection and event intake.
+"""Runtime WebSocket channel: host-worker and agent connections, plus event intake.
 
 `RuntimeConnectionManager` tracks the one active Host Runtime Worker connection
-(ADR-0003: one worker per Control Plane). `persist_runtime_event` is the I/O
+(ADR-0003: one worker per Control Plane). `AgentConnectionManager` tracks per-devcontainer
+agent connections keyed by devcontainer_id. `persist_runtime_event` is the I/O
 seam that records an inbound RuntimeEvent and projects it through the reducer —
 keeping SQL out of the route.
 """
@@ -43,6 +44,36 @@ class RuntimeConnectionManager:
         if self._worker is None:
             raise RuntimeError("No Host Runtime Worker is connected")
         await self._worker.send_json(CommandEnvelope(command=command).model_dump())
+
+
+class AgentConnectionManager:
+    """Tracks per-devcontainer Devcontainer Runtime Agent connections."""
+
+    def __init__(self) -> None:
+        self._agents: dict[str, WebSocket] = {}
+
+    def is_agent_connected(self, devcontainer_id: str) -> bool:
+        return devcontainer_id in self._agents
+
+    def register_agent(self, devcontainer_id: str, websocket: WebSocket) -> bool:
+        """Claim the slot for devcontainer_id. Returns False if already taken."""
+        if devcontainer_id in self._agents:
+            return False
+        self._agents[devcontainer_id] = websocket
+        return True
+
+    def unregister_agent(self, devcontainer_id: str, websocket: WebSocket) -> None:
+        if self._agents.get(devcontainer_id) is websocket:
+            del self._agents[devcontainer_id]
+
+    async def send_command(self, command: Command) -> None:
+        """Route a Command to the agent for command.devcontainer_id. Raises if none connected."""
+        ws = self._agents.get(command.devcontainer_id or "")
+        if ws is None:
+            raise RuntimeError(
+                f"No Devcontainer Runtime Agent connected for {command.devcontainer_id!r}"
+            )
+        await ws.send_json(CommandEnvelope(command=command).model_dump())
 
 
 def persist_runtime_event(event: RuntimeEvent) -> None:

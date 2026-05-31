@@ -19,6 +19,7 @@ class RegisterEnvelope(BaseModel):
 
     type: Literal["runtime_registered"] = "runtime_registered"
     source: RuntimeEventSource = "host_runtime_worker"
+    devcontainer_id: str | None = None
 
 
 class RuntimeEventEnvelope(BaseModel):

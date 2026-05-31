@@ -114,7 +114,10 @@ def test_registers_then_handles_received_command() -> None:
     client._sleep = sleep  # type: ignore[assignment]
     asyncio.run(client.run())
 
-    assert json.loads(ws.sent[0]) == {"type": "runtime_registered", "source": "host_runtime_worker"}
+    sent = json.loads(ws.sent[0])
+    assert sent["type"] == "runtime_registered"
+    assert sent["source"] == "host_runtime_worker"
+    assert sent.get("devcontainer_id") is None
     assert [c.devcontainer_id for c in received] == ["dc1"]
 
 

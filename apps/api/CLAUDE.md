@@ -14,7 +14,7 @@ deps). Use `uv` only — never edit `pyproject.toml` by hand. `uv run pytest -q`
 - `src/vibing_api/api/routes/` — HTTP endpoints; thin, no SQL, raise HTTP 404s here.
   - `devcontainers.py` — devcontainer CRUD + lifecycle `POST /{id}/start|stop` (validate state, send Command to the worker via the runtime manager; 202, no status mutation).
   - `health.py`, `status.py`, `config.py`, `settings.py`, `diagnostics.py` — health, version/status, runtime config, settings, local prerequisite checks.
-  - `runtime.py` — runtime WebSocket channel (`/runtime/ws`): host worker registration + RuntimeEvent intake (ADR-0003).
+  - `runtime.py` — runtime WebSocket channels: `/runtime/ws` (host worker) + `/runtime/agent/ws` (per-devcontainer agent, keyed by `devcontainer_id`); both do registration + RuntimeEvent intake (ADR-0003/ADR-0004).
   - Request/response examples for all the above: [`docs/foundation-api.md`](../../docs/foundation-api.md).
 - `src/vibing_api/api/schemas/` — Pydantic request/response models (`devcontainers.py`, shared `common.py` error shapes).
 - `src/vibing_api/repositories/` — per-entity SQL wrappers over `sqlite3.Connection`. **Execute but never commit; never raise HTTP errors.** Caller owns the transaction.
@@ -24,7 +24,7 @@ deps). Use `uv` only — never edit `pyproject.toml` by hand. `uv run pytest -q`
   - `schema.py` — single source of truth for the on-disk SQLite shape; `apply_schema` is idempotent (no migrations — schema change ⇒ wipe the dev DB).
   - `vocabularies.py` — typed `Literal` status/event vocabularies.
   - `config.py` — `VIBING_`-prefixed settings. `database.py` — connection helper. `errors.py` — error envelope + handlers. `commands.py` — re-export shim for `vibing_protocol.commands`.
-  - `runtime_channel.py` — `RuntimeConnectionManager` (single host-worker slot) + `persist_runtime_event` (record + project an inbound RuntimeEvent).
+  - `runtime_channel.py` — `RuntimeConnectionManager` (single host-worker slot) + `AgentConnectionManager` (per-devcontainer agent slots, `dict[devcontainer_id, WebSocket]`) + `persist_runtime_event` (record + project an inbound RuntimeEvent).
 - `src/vibing_api/cli/dev.py` — `vibing dev` Typer commands (sample-data seed/reset/status).
 - `src/vibing_api/dev/sample_data.py` — curated sample rows (ids prefixed `sample-`).
 - `tests/` — pytest; one `test_*.py` per module.
