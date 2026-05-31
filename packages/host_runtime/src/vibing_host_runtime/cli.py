@@ -1,19 +1,20 @@
 """Command-line entry point for the Host Runtime Worker.
 
-A single flat Typer command that builds a `WorkerConfig` and runs the worker loop
-(`vibing_host_runtime.client`). `run_worker` is the bridge that wires the Dev Container
-CLI adapter as the command handler.
+A single flat Typer command that builds a `WorkerConfig` and runs the worker loop.
+`run_worker` wires the Dev Container CLI adapter as the command handler and runs
+`RuntimeChannelClient` from `vibing_runtime_client`.
 """
 
 import asyncio
 
 import typer
 from logzero import logger
+from vibing_protocol import RegisterEnvelope
+from vibing_runtime_client import RuntimeChannelClient
 
 from vibing_host_runtime.client import (
     DEFAULT_CONTROL_PLANE_URL,
     DEFAULT_DEVCONTAINER_CLI,
-    HostRuntimeClient,
     WorkerConfig,
 )
 
@@ -47,7 +48,8 @@ def run_worker(config: WorkerConfig) -> None:
     )
     adapter = DevcontainerCliAdapter(config.devcontainer_cli)
     handler = DevcontainerCommandHandler(adapter)
-    client = HostRuntimeClient(config, handler=handler.handle)
+    register = RegisterEnvelope(source="host_runtime_worker")
+    client = RuntimeChannelClient(config.control_plane_url, register, handler.handle)
     asyncio.run(client.run())
 
 

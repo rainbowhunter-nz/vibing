@@ -4,6 +4,10 @@
 .DS_Store
 Thumbs.db
 
+# AFK / Ralph-loop run artifacts (local only)
+.claude/ralph-loop.local.md
+.claude/afk-report.md
+
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json

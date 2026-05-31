@@ -15,14 +15,14 @@ jobs:
           enable-cache: true
       - name: Lint and format
         run: |
-          for d in apps/api packages/protocol packages/host_runtime packages/devcontainer_runtime; do
+          for d in apps/api packages/protocol packages/host_runtime packages/devcontainer_runtime packages/runtime_client; do
             ( cd "$d" && uv run ruff check . && uv run ruff format --check . )
           done
       - name: Type-check (apps/api)
         run: cd apps/api && uv run mypy src
       - name: Test
         run: |
-          for d in apps/api packages/host_runtime packages/devcontainer_runtime; do
+          for d in apps/api packages/host_runtime packages/devcontainer_runtime packages/runtime_client; do
             ( cd "$d" && uv run pytest -q )
           done
 
