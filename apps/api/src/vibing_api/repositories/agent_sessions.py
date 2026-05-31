@@ -77,6 +77,16 @@ class AgentSessionRepository:
         ).fetchone()
         return _row_to_session(row) if row is not None else None
 
+    def get_active_by_devcontainer(self, devcontainer_id: str) -> "AgentSession | None":
+        """Return the first active (starting/running/waiting_for_approval) session, or None."""
+        row = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM agent_sessions "
+            "WHERE devcontainer_id = ? AND status IN ('starting','running','waiting_for_approval') "
+            "LIMIT 1",
+            (devcontainer_id,),
+        ).fetchone()
+        return _row_to_session(row) if row is not None else None
+
     def set_status(self, session_id: str, status: AgentSessionStatus) -> AgentSession | None:
         if self.get(session_id) is None:
             return None

@@ -11,6 +11,7 @@ VALIDATION_ERROR = "VALIDATION_ERROR"
 DEVCONTAINER_NOT_FOUND = "DEVCONTAINER_NOT_FOUND"
 INVALID_DEVCONTAINER_STATE = "INVALID_DEVCONTAINER_STATE"
 RUNTIME_UNAVAILABLE = "RUNTIME_UNAVAILABLE"
+AGENT_SESSION_ACTIVE = "AGENT_SESSION_ACTIVE"
 INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -48,8 +49,16 @@ class RuntimeUnavailableError(APIError):
     status_code = 409
     code = RUNTIME_UNAVAILABLE
 
-    def __init__(self) -> None:
-        super().__init__("No Host Runtime Worker is connected")
+    def __init__(self, message: str = "No Host Runtime Worker is connected") -> None:
+        super().__init__(message)
+
+
+class ActiveAgentSessionError(APIError):
+    status_code = 409
+    code = AGENT_SESSION_ACTIVE
+
+    def __init__(self, devcontainer_id: str) -> None:
+        super().__init__(f"An agent session is already active for devcontainer: {devcontainer_id}")
 
 
 def _envelope(code: str, message: str, details: Any | None = None) -> dict[str, Any]:
