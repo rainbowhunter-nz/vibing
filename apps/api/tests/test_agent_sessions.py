@@ -220,3 +220,137 @@ def test_reducer_projects_session_failed(client: TestClient) -> None:
         updated = AgentSessionRepository(conn).get(session.id)
     assert updated is not None
     assert updated.status == "failed"
+
+
+# ============================================================
+# POST /devcontainers/{id}/agent-sessions/{session_id}/stop
+# ============================================================
+
+
+# --- Happy path ---
+
+
+def test_stop_session_returns_202(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        # Create and start a session
+        resp = client.post(
+            f"/api/v1/devcontainers/{dc_id}/agent-sessions", json={"prompt": "hello"}
+        )
+        assert resp.status_code == 202
+        session_id = resp.json()["id"]
+        ws.receive_json()  # consume start_agent_session command
+
+        # Stop the session
+        stop_resp = client.post(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session_id}/stop")
+        assert stop_resp.status_code == 202
+        body = stop_resp.json()
+        assert body["id"] == session_id
+        assert body["devcontainer_id"] == dc_id
+
+
+def test_stop_session_sends_stop_command_to_agent(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        resp = client.post(
+            f"/api/v1/devcontainers/{dc_id}/agent-sessions", json={"prompt": "hello"}
+        )
+        assert resp.status_code == 202
+        session_id = resp.json()["id"]
+        ws.receive_json()  # consume start_agent_session command
+
+        client.post(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session_id}/stop")
+        cmd = ws.receive_json()
+        assert cmd["type"] == "command"
+        assert cmd["command"]["type"] == "stop_agent_session"
+        assert cmd["command"]["devcontainer_id"] == dc_id
+        assert cmd["command"]["agent_session_id"] == session_id
+
+
+# --- Guard: devcontainer not found ---
+
+
+def test_stop_guard_devcontainer_not_found(client: TestClient) -> None:
+    resp = client.post("/api/v1/devcontainers/ghost/agent-sessions/sess-1/stop")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
+
+
+# --- Guard: session not found ---
+
+
+def test_stop_guard_session_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        resp = client.post(f"/api/v1/devcontainers/{dc_id}/agent-sessions/ghost/stop")
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"
+
+
+# --- Guard: session not active (terminal status) ---
+
+
+@pytest.mark.parametrize("terminal_status", ["completed", "failed", "stopped"])
+def test_stop_guard_session_not_active(client: TestClient, terminal_status: str) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="starting")
+        AgentSessionRepository(conn).set_status(session.id, terminal_status)  # type: ignore[arg-type]
+        conn.commit()
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        resp = client.post(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session.id}/stop")
+        assert resp.status_code == 409
+        assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_ACTIVE"
+
+
+# --- Guard: no agent connected ---
+
+
+def test_stop_guard_no_agent_connected(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+    resp = client.post(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session.id}/stop")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+
+
+# --- AC1: reducer projects session_stopped → status=stopped + SessionSummary ---
+
+
+def test_reducer_projects_session_stopped(client: TestClient) -> None:
+    from vibing_api.core.reducer import project
+    from vibing_api.repositories.summaries import SessionSummaryRepository
+    from vibing_protocol import RuntimeEvent
+
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+
+    event = RuntimeEvent(
+        event_type="session_stopped",
+        source="devcontainer_runtime_agent",
+        devcontainer_id=dc_id,
+        agent_session_id=session.id,
+    )
+    with get_connection() as conn:
+        project(event, conn)
+        conn.commit()
+
+    with get_connection() as conn:
+        updated = AgentSessionRepository(conn).get(session.id)
+        summary = SessionSummaryRepository(conn).get_by_session(session.id)
+    assert updated is not None
+    assert updated.status == "stopped"
+    assert summary is not None
+    assert summary.final_status == "stopped"

@@ -165,8 +165,181 @@ def test_unsupported_command_emits_nothing():
 
     asyncio.run(
         handler.handle(
-            Command(type="stop_agent_session", devcontainer_id="dc-1"),  # type: ignore[arg-type]
+            Command(type="send_user_input", devcontainer_id="dc-1"),  # type: ignore[arg-type]
             emit,
         )
     )
     assert events == []
+
+
+# ============================================================
+# stop_agent_session — AC2, AC3, AC4, AC5
+# ============================================================
+
+
+def _make_stop_command(
+    devcontainer_id: str = "dc-1",
+    agent_session_id: str = "sess-1",
+) -> Command:
+    return Command(
+        type="stop_agent_session",  # type: ignore[arg-type]
+        devcontainer_id=devcontainer_id,
+        agent_session_id=agent_session_id,
+    )
+
+
+# AC2: stop terminates process and emits session_stopped
+
+
+def test_stop_terminates_process_and_emits_session_stopped():
+    """stop_agent_session → terminate() called on in-flight process → session_stopped emitted."""
+    terminate_called = False
+    run_started = asyncio.Event()
+    run_blocked = asyncio.Event()
+
+    class FakeProcess:
+        async def wait(self) -> ClaudeSuccess:  # type: ignore[return]
+            run_started.set()
+            await run_blocked.wait()
+            # unreachable in this test path (task cancelled)
+
+        async def terminate(self) -> None:
+            nonlocal terminate_called
+            terminate_called = True
+            run_blocked.set()
+
+    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
+
+    class FakeRunner(ClaudeCodeRunner):
+        def start(self, prompt: str) -> ClaudeProcess:  # type: ignore[override]
+            return FakeProcess()  # type: ignore[return-value]
+
+    handler = AgentCommandHandler(FakeRunner())
+    events: list[RuntimeEvent] = []
+
+    async def emit(event: RuntimeEvent) -> None:
+        events.append(event)
+
+    async def run_test() -> None:
+        start_cmd = _make_command()
+        await handler.handle(start_cmd, emit)
+        await run_started.wait()  # ensure run is in-flight
+
+        stop_cmd = _make_stop_command()
+        await handler.handle(stop_cmd, emit)
+
+    asyncio.run(run_test())
+
+    assert terminate_called
+    event_types = [e.event_type for e in events]
+    assert "session_stopped" in event_types
+    stopped = next(e for e in events if e.event_type == "session_stopped")
+    assert stopped.devcontainer_id == "dc-1"
+    assert stopped.agent_session_id == "sess-1"
+
+
+# AC3 + AC5: stop_agent_session processed while run is in flight (consumer not blocked)
+
+
+def test_stop_handle_returns_promptly_while_run_in_flight():
+    """handle(stop) returns promptly even when a run is blocking."""
+    run_started = asyncio.Event()
+    run_blocked = asyncio.Event()
+    stop_returned_before_run_finished = False
+
+    class BlockingProcess:
+        async def wait(self) -> ClaudeSuccess:  # type: ignore[return]
+            run_started.set()
+            await run_blocked.wait()
+
+        async def terminate(self) -> None:
+            run_blocked.set()
+
+    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
+
+    class BlockingRunner(ClaudeCodeRunner):
+        def start(self, prompt: str) -> ClaudeProcess:  # type: ignore[override]
+            return BlockingProcess()  # type: ignore[return-value]
+
+    handler = AgentCommandHandler(BlockingRunner())
+    events: list[RuntimeEvent] = []
+
+    async def emit(event: RuntimeEvent) -> None:
+        events.append(event)
+
+    async def run_test() -> None:
+        nonlocal stop_returned_before_run_finished
+        await handler.handle(_make_command(), emit)
+        await run_started.wait()
+
+        # handle(stop) should return before the run finishes
+        await handler.handle(_make_stop_command(), emit)
+        # If we reach here, handle returned; run is still blocked by run_blocked
+        # (terminate sets run_blocked, but the bg task may already be cancelled)
+        stop_returned_before_run_finished = True
+
+        # Let any remaining tasks finish
+        await asyncio.gather(*handler._tasks, return_exceptions=True)
+
+    asyncio.run(run_test())
+
+    assert stop_returned_before_run_finished
+    event_types = [e.event_type for e in events]
+    assert "session_stopped" in event_types
+
+
+# AC4: race — at least one terminal event (not suppression)
+
+
+def test_stop_race_yields_at_least_one_terminal_event():
+    """When stop races natural completion, at least one terminal event is emitted."""
+    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
+
+    class InstantProcess:
+        """Completes immediately (before stop can cancel it — simulates race)."""
+
+        async def wait(self) -> ClaudeSuccess:
+            return ClaudeSuccess(result="done")
+
+        async def terminate(self) -> None:
+            pass  # no-op; run already done
+
+    class InstantRunner(ClaudeCodeRunner):
+        def start(self, prompt: str) -> ClaudeProcess:  # type: ignore[override]
+            return InstantProcess()  # type: ignore[return-value]
+
+    handler = AgentCommandHandler(InstantRunner())
+    events: list[RuntimeEvent] = []
+
+    async def emit(event: RuntimeEvent) -> None:
+        events.append(event)
+
+    async def run_test() -> None:
+        await handler.handle(_make_command(), emit)
+        # Let bg task complete naturally first
+        await asyncio.gather(*handler._tasks, return_exceptions=True)
+        # Now send stop — session already done
+        await handler.handle(_make_stop_command(), emit)
+
+    asyncio.run(run_test())
+
+    terminal_types = {"session_completed", "session_failed", "session_stopped"}
+    emitted_terminals = [e.event_type for e in events if e.event_type in terminal_types]
+    assert len(emitted_terminals) >= 1
+
+
+# stop with no running process emits session_stopped (idempotent)
+
+
+def test_stop_with_no_running_process_emits_session_stopped():
+    runner = _make_runner(ClaudeSuccess(result="done"))
+    handler = AgentCommandHandler(runner)
+    events: list[RuntimeEvent] = []
+
+    async def emit(event: RuntimeEvent) -> None:
+        events.append(event)
+
+    asyncio.run(handler.handle(_make_stop_command(), emit))
+
+    event_types = [e.event_type for e in events]
+    assert "session_stopped" in event_types

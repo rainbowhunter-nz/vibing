@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from logzero import logger
 from vibing_protocol import Command, RuntimeEvent
 
-from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner, ClaudeFailure
+from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner, ClaudeFailure, ClaudeProcess
 
 _SOURCE = "devcontainer_runtime_agent"
 
@@ -17,10 +17,14 @@ class AgentCommandHandler:
     def __init__(self, runner: ClaudeCodeRunner) -> None:
         self._runner = runner
         self._tasks: set[asyncio.Task] = set()
+        self._processes: dict[str, ClaudeProcess] = {}
+        self._session_tasks: dict[str, asyncio.Task] = {}
 
     async def handle(self, command: Command, emit: EmitFn) -> None:
         if command.type == "start_agent_session":
             await self._start_agent_session(command, emit)
+        elif command.type == "stop_agent_session":
+            await self._stop_agent_session(command, emit)
         else:
             logger.info("Ignoring unsupported command type: %s", command.type)
 
@@ -34,12 +38,25 @@ class AgentCommandHandler:
             )
         )
         prompt = (command.payload or {}).get("prompt", "")
-        task = asyncio.create_task(self._run_claude(command, emit, prompt))
+        process = self._runner.start(prompt)
+        session_id = command.agent_session_id or ""
+        self._processes[session_id] = process
+        task = asyncio.create_task(self._run_claude(command, emit, process, session_id))
         self._tasks.add(task)
+        self._session_tasks[session_id] = task
         task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(lambda _: self._session_tasks.pop(session_id, None))
 
-    async def _run_claude(self, command: Command, emit: EmitFn, prompt: str) -> None:
-        result = await self._runner.run(prompt)
+    async def _run_claude(
+        self, command: Command, emit: EmitFn, process: ClaudeProcess, session_id: str
+    ) -> None:
+        try:
+            result = await process.wait()
+        except asyncio.CancelledError:
+            raise  # let CancelledError propagate; stop handler emits session_stopped
+        finally:
+            self._processes.pop(session_id, None)
+
         if isinstance(result, ClaudeFailure):
             await emit(
                 RuntimeEvent(
@@ -60,3 +77,26 @@ class AgentCommandHandler:
                     payload={"result": result.result},
                 )
             )
+
+    async def _stop_agent_session(self, command: Command, emit: EmitFn) -> None:
+        session_id = command.agent_session_id or ""
+        process = self._processes.pop(session_id, None)
+        task = self._session_tasks.pop(session_id, None)
+
+        if process is not None:
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            await process.terminate()
+
+        await emit(
+            RuntimeEvent(
+                event_type="session_stopped",
+                source=_SOURCE,
+                devcontainer_id=command.devcontainer_id,
+                agent_session_id=command.agent_session_id,
+            )
+        )

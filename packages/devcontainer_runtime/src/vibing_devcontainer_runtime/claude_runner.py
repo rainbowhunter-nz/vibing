@@ -1,10 +1,12 @@
 """ClaudeCodeRunner: runs `claude` as a subprocess, injectable runner for tests."""
 
 import asyncio
+import signal
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 _STDERR_TAIL_CHARS = 4000
+_SIGTERM_GRACE_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -32,19 +34,75 @@ class ClaudeFailure:
 ClaudeResult = ClaudeSuccess | ClaudeFailure
 
 
-async def _default_runner(command: list[str], cwd: str | None = None) -> RunResult:
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=cwd,
-    )
-    stdout, stderr = await process.communicate()
-    return RunResult(
-        returncode=process.returncode or 0,
-        stdout=stdout.decode(errors="replace"),
-        stderr=stderr.decode(errors="replace"),
-    )
+def _map_run_result(result: RunResult) -> ClaudeResult:
+    if result.returncode != 0:
+        return ClaudeFailure(
+            exit_code=result.returncode,
+            stderr_tail=result.stderr[-_STDERR_TAIL_CHARS:],
+            message=f"claude exited with code {result.returncode}",
+        )
+    return ClaudeSuccess(result=result.stdout)
+
+
+class ClaudeProcess:
+    """Handle to a running (or fake) Claude process.
+
+    Subclasses implement wait() and terminate() — real subprocess or test fake.
+    """
+
+    async def wait(self) -> ClaudeResult:
+        raise NotImplementedError
+
+    async def terminate(self) -> None:
+        raise NotImplementedError
+
+
+class _RealClaudeProcess(ClaudeProcess):
+    """Wraps a real asyncio.subprocess.Process."""
+
+    def __init__(self, proc: asyncio.subprocess.Process) -> None:
+        self._proc = proc
+
+    async def wait(self) -> ClaudeResult:
+        stdout_b, stderr_b = await self._proc.communicate()
+        returncode = self._proc.returncode or 0
+        return _map_run_result(
+            RunResult(
+                returncode=returncode,
+                stdout=stdout_b.decode(errors="replace"),
+                stderr=stderr_b.decode(errors="replace"),
+            )
+        )
+
+    async def terminate(self) -> None:
+        if self._proc.returncode is not None:
+            return
+        try:
+            self._proc.send_signal(signal.SIGTERM)
+            await asyncio.wait_for(self._proc.wait(), timeout=_SIGTERM_GRACE_SECONDS)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            try:
+                self._proc.kill()
+            except ProcessLookupError:
+                pass
+
+
+class _FakeRunnerProcess(ClaudeProcess):
+    """Wraps an injectable Runner callable as a ClaudeProcess for testing."""
+
+    def __init__(self, command: list[str], runner: Runner) -> None:
+        self._command = command
+        self._runner = runner
+
+    async def wait(self) -> ClaudeResult:
+        try:
+            result = await self._runner(self._command)
+        except FileNotFoundError:
+            return ClaudeFailure(exit_code=None, stderr_tail="", message="claude binary not found")
+        return _map_run_result(result)
+
+    async def terminate(self) -> None:
+        pass  # fake; test override handles cancellation if needed
 
 
 class ClaudeCodeRunner:
@@ -75,19 +133,54 @@ class ClaudeCodeRunner:
             "bypassPermissions",
         ]
 
-    async def run(self, prompt: str) -> ClaudeResult:
+    def start(self, prompt: str) -> ClaudeProcess:
+        """Return a ClaudeProcess handle. For the injected-runner path, returns synchronously."""
         command = self._build_command(prompt)
+        if self._runner is not None:
+            return _FakeRunnerProcess(command, self._runner)
+        return _LazyRealProcess(command, self._cwd)
+
+    async def run(self, prompt: str) -> ClaudeResult:
+        """Convenience wrapper: start() + wait()."""
+        return await self.start(prompt).wait()
+
+
+class _LazyRealProcess(ClaudeProcess):
+    """Launches the real subprocess lazily on first wait() call."""
+
+    def __init__(self, command: list[str], cwd: str | None) -> None:
+        self._command = command
+        self._cwd = cwd
+        self._proc: asyncio.subprocess.Process | None = None
+
+    async def wait(self) -> ClaudeResult:
         try:
-            if self._runner is not None:
-                result = await self._runner(command)
-            else:
-                result = await _default_runner(command, self._cwd)
+            self._proc = await asyncio.create_subprocess_exec(
+                *self._command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=self._cwd,
+            )
+            stdout_b, stderr_b = await self._proc.communicate()
         except FileNotFoundError:
             return ClaudeFailure(exit_code=None, stderr_tail="", message="claude binary not found")
-        if result.returncode != 0:
-            return ClaudeFailure(
-                exit_code=result.returncode,
-                stderr_tail=result.stderr[-_STDERR_TAIL_CHARS:],
-                message=f"claude exited with code {result.returncode}",
+        returncode = self._proc.returncode or 0
+        return _map_run_result(
+            RunResult(
+                returncode=returncode,
+                stdout=stdout_b.decode(errors="replace"),
+                stderr=stderr_b.decode(errors="replace"),
             )
-        return ClaudeSuccess(result=result.stdout)
+        )
+
+    async def terminate(self) -> None:
+        if self._proc is None or self._proc.returncode is not None:
+            return
+        try:
+            self._proc.send_signal(signal.SIGTERM)
+            await asyncio.wait_for(self._proc.wait(), timeout=_SIGTERM_GRACE_SECONDS)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            try:
+                self._proc.kill()
+            except ProcessLookupError:
+                pass
