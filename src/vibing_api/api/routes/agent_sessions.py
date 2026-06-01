@@ -11,7 +11,7 @@ from vibing_api.core.errors import (
     InvalidDevcontainerStateError,
     RuntimeUnavailableError,
 )
-from vibing_api.core.runtime_channel import AgentConnectionManager
+from vibing_api.core.runtime_channel import AgentRegistry
 from vibing_api.repositories.agent_sessions import AgentSessionRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
@@ -37,8 +37,8 @@ async def start_agent_session(
             "start agent session", devcontainer.status, frozenset({"running"})
         )
 
-    agent_manager: AgentConnectionManager = request.app.state.agent_manager
-    if not agent_manager.is_agent_connected(devcontainer_id):
+    agent_manager: AgentRegistry = request.app.state.agent_manager
+    if not agent_manager.is_connected(devcontainer_id):
         raise RuntimeUnavailableError(
             f"No Devcontainer Runtime Agent is connected for devcontainer: {devcontainer_id}"
         )
@@ -84,8 +84,8 @@ async def stop_agent_session(
     if session.status not in _ACTIVE_STATUSES:
         raise InactiveAgentSessionError(session_id)
 
-    agent_manager: AgentConnectionManager = request.app.state.agent_manager
-    if not agent_manager.is_agent_connected(devcontainer_id):
+    agent_manager: AgentRegistry = request.app.state.agent_manager
+    if not agent_manager.is_connected(devcontainer_id):
         raise RuntimeUnavailableError(
             f"No Devcontainer Runtime Agent is connected for devcontainer: {devcontainer_id}"
         )

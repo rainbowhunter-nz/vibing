@@ -20,7 +20,7 @@ from vibing_api.api.routes import (
 from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
 from vibing_api.core.errors import register_error_handlers
-from vibing_api.core.runtime_channel import AgentConnectionManager, RuntimeConnectionManager
+from vibing_api.core.runtime_channel import AgentRegistry, WorkerRegistry
 
 
 class SpaStaticFiles(StaticFiles):
@@ -47,8 +47,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
-    app.state.runtime_manager = RuntimeConnectionManager()
-    app.state.agent_manager = AgentConnectionManager()
+    app.state.runtime_manager = WorkerRegistry()
+    app.state.agent_manager = AgentRegistry()
     register_error_handlers(app)
     for router in (
         health.router,

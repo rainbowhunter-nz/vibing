@@ -1,4 +1,4 @@
-"""Tests for the agent WebSocket channel and AgentConnectionManager."""
+"""Tests for the agent WebSocket channel and AgentRegistry."""
 
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -8,7 +8,7 @@ from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 from vibing_api.core.database import get_connection
-from vibing_api.core.runtime_channel import AgentConnectionManager
+from vibing_api.core.runtime_channel import AgentRegistry
 from vibing_api.repositories.runtime_events import RuntimeEventRepository
 
 AGENT_WS_URL = "/api/v1/runtime/agent/ws"
@@ -97,12 +97,12 @@ def test_agent_event_persisted(client: TestClient) -> None:
         assert events[0].source == "devcontainer_runtime_agent"
 
 
-# --- AgentConnectionManager unit tests (AC7) ---
+# --- AgentRegistry unit tests (AC7) ---
 
 
 @pytest.fixture
-def manager() -> AgentConnectionManager:
-    return AgentConnectionManager()
+def manager() -> AgentRegistry:
+    return AgentRegistry()
 
 
 def _ws() -> MagicMock:
@@ -111,28 +111,28 @@ def _ws() -> MagicMock:
     return ws
 
 
-def test_register_succeeds(manager: AgentConnectionManager) -> None:
+def test_register_succeeds(manager: AgentRegistry) -> None:
     ws = _ws()
-    assert manager.register_agent("dc-1", ws) is True
-    assert manager.is_agent_connected("dc-1")
+    assert manager.register("dc-1", ws) is True
+    assert manager.is_connected("dc-1")
 
 
-def test_reject_missing_id(manager: AgentConnectionManager) -> None:
-    # Simulate the route rejecting it: is_agent_connected("") should be False by default
-    assert not manager.is_agent_connected("")
-    assert not manager.is_agent_connected("dc-nonexistent")
+def test_reject_missing_id(manager: AgentRegistry) -> None:
+    # Simulate the route rejecting it: is_connected("") should be False by default
+    assert not manager.is_connected("")
+    assert not manager.is_connected("dc-nonexistent")
 
 
-def test_reject_duplicate(manager: AgentConnectionManager) -> None:
+def test_reject_duplicate(manager: AgentRegistry) -> None:
     ws1, ws2 = _ws(), _ws()
-    assert manager.register_agent("dc-1", ws1) is True
-    assert manager.register_agent("dc-1", ws2) is False
+    assert manager.register("dc-1", ws1) is True
+    assert manager.register("dc-1", ws2) is False
 
 
-def test_route_to_match(manager: AgentConnectionManager) -> None:
+def test_route_to_match(manager: AgentRegistry) -> None:
     ws1, ws2 = _ws(), _ws()
-    manager.register_agent("dc-1", ws1)
-    manager.register_agent("dc-2", ws2)
+    manager.register("dc-1", ws1)
+    manager.register("dc-2", ws2)
     from vibing_protocol import Command
     import asyncio
 
@@ -142,17 +142,17 @@ def test_route_to_match(manager: AgentConnectionManager) -> None:
     ws2.send_json.assert_not_called()
 
 
-def test_unavailable_when_none(manager: AgentConnectionManager) -> None:
+def test_unavailable_when_none(manager: AgentRegistry) -> None:
     from vibing_protocol import Command
     import asyncio
 
     cmd = Command(type="start_agent_session", devcontainer_id="dc-missing")
-    with pytest.raises(RuntimeError, match="No Devcontainer Runtime Agent"):
+    with pytest.raises(RuntimeError, match="No runtime connection registered"):
         asyncio.run(manager.send_command(cmd))
 
 
-def test_unregister(manager: AgentConnectionManager) -> None:
+def test_unregister(manager: AgentRegistry) -> None:
     ws = _ws()
-    manager.register_agent("dc-1", ws)
-    manager.unregister_agent("dc-1", ws)
-    assert not manager.is_agent_connected("dc-1")
+    manager.register("dc-1", ws)
+    manager.unregister("dc-1", ws)
+    assert not manager.is_connected("dc-1")

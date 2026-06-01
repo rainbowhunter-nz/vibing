@@ -1,8 +1,8 @@
 """Runtime WebSocket channel routes (ADR-0003): runtime -> Control Plane intake.
 
-Two WebSocket endpoints:
-- `/runtime/ws` — host worker slot (single connection, RuntimeConnectionManager)
-- `/runtime/agent/ws` — per-devcontainer agent slot (AgentConnectionManager, keyed by devcontainer_id)
+Two WebSocket endpoints, each backed by a `ConnectionRegistry`:
+- `/runtime/ws` — host worker slot (single connection, WORKER_SLOT)
+- `/runtime/agent/ws` — per-devcontainer agent slot (keyed by devcontainer_id)
 
 Malformed JSON, malformed envelopes, and unsupported types are ignored.
 """
@@ -16,8 +16,9 @@ from pydantic import ValidationError
 from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope
 
 from vibing_api.core.runtime_channel import (
-    AgentConnectionManager,
-    RuntimeConnectionManager,
+    WORKER_SLOT,
+    AgentRegistry,
+    WorkerRegistry,
     persist_runtime_event,
 )
 
@@ -84,23 +85,23 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
 
 @router.websocket("/ws")
 async def runtime_ws(websocket: WebSocket) -> None:
-    manager: RuntimeConnectionManager = websocket.app.state.runtime_manager
+    manager: WorkerRegistry = websocket.app.state.runtime_manager
 
     async def register(message: dict[str, Any]) -> Callable[[], None] | None:
         try:
             RegisterEnvelope.model_validate(message)
         except ValidationError:
             return None
-        if not manager.register_worker(websocket):
+        if not manager.register(WORKER_SLOT, websocket):
             raise _Reject(_WORKER_ALREADY_CONNECTED)
-        return lambda: manager.unregister_worker(websocket)
+        return lambda: manager.unregister(WORKER_SLOT, websocket)
 
     await _serve(websocket, register)
 
 
 @router.websocket("/agent/ws")
 async def agent_ws(websocket: WebSocket) -> None:
-    manager: AgentConnectionManager = websocket.app.state.agent_manager
+    manager: AgentRegistry = websocket.app.state.agent_manager
 
     async def register(message: dict[str, Any]) -> Callable[[], None] | None:
         try:
@@ -109,9 +110,9 @@ async def agent_ws(websocket: WebSocket) -> None:
             return None
         if envelope.source != "devcontainer_runtime_agent" or not envelope.devcontainer_id:
             raise _Reject(_AGENT_MISSING_ID)
-        if not manager.register_agent(envelope.devcontainer_id, websocket):
+        if not manager.register(envelope.devcontainer_id, websocket):
             raise _Reject(_AGENT_ALREADY_CONNECTED)
         devcontainer_id = envelope.devcontainer_id
-        return lambda: manager.unregister_agent(devcontainer_id, websocket)
+        return lambda: manager.unregister(devcontainer_id, websocket)
 
     await _serve(websocket, register)

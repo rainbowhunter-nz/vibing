@@ -13,7 +13,7 @@ from vibing_api.core.errors import (
     InvalidDevcontainerStateError,
     RuntimeUnavailableError,
 )
-from vibing_api.core.runtime_channel import RuntimeConnectionManager
+from vibing_api.core.runtime_channel import WORKER_SLOT, WorkerRegistry
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 router = APIRouter(tags=["devcontainers"], prefix="/devcontainers")
@@ -101,8 +101,8 @@ async def _dispatch_lifecycle(
     if devcontainer.status not in allowed_from:
         raise InvalidDevcontainerStateError(action, devcontainer.status, allowed_from)
 
-    manager: RuntimeConnectionManager = request.app.state.runtime_manager
-    if not manager.is_worker_connected():
+    manager: WorkerRegistry = request.app.state.runtime_manager
+    if not manager.is_connected(WORKER_SLOT):
         raise RuntimeUnavailableError()
 
     await manager.send_command(
