@@ -1,4 +1,4 @@
-// Backend response shapes (apps/api/src/vibing_api/api/routes/*).
+// Backend response shapes (src/vibing_api/api/routes/*).
 
 export interface HealthResponse {
   status: string
@@ -55,7 +55,7 @@ export interface DiagnosticsResponse {
   checks: DiagnosticCheck[]
 }
 
-// Backend error envelope (apps/api/src/vibing_api/core/errors.py).
+// Backend error envelope (src/vibing_api/core/errors.py).
 
 export interface ApiErrorBody {
   code: string

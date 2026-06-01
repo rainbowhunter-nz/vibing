@@ -2,7 +2,7 @@
 
 `runtime_events` is the single append-only source of truth for everything a Runtime reports. All derived read-model state is a projection over that stream, written only by the Control Plane:
 
-- **Inbox** — for the four notable event types (`claude_asked_question`, `approval_requested`, `session_completed`, `session_failed`) the reducer writes one `inbox_event` carrying `unread`/`read`/`resolved` state. The two vocabularies map 1:1 through a single documented function.
+- **Inbox** — for the four notable event types (`agent_asked_question`, `approval_requested`, `session_completed`, `session_failed`) the reducer writes one `inbox_event` carrying `unread`/`read`/`resolved` state. The two vocabularies map 1:1 through a single documented function.
 - **Agent Session status** — the same reducer advances `agent_sessions.status` (`starting` → `running` ⇄ `waiting_for_approval` → `completed`/`failed`/`stopped`).
 - **Devcontainer status**, **approval-request status**, and **session summaries** are likewise projections, written only by the reducer in response to events. In-progress states such as `starting` and `stopping` are also projected from Runtime Events (`devcontainer_starting`, `devcontainer_stopping`), not written directly when a Command is sent.
 

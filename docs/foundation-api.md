@@ -2,19 +2,19 @@
 
 Short request/response examples for the foundation HTTP surface, so frontend and
 backend stay aligned. Field names are canonical (see [`CONTEXT.md`](../CONTEXT.md));
-schemas live in `apps/api/src/vibing_api/api/`.
+schemas live in `src/vibing_api/api/`.
 
 All routes are served under `/api/v1` (`VIBING_API_V1_PREFIX`). Examples below use
 that full path. Bodies are JSON; the error envelope is shared (see [Errors](#errors)).
 
-> **Metadata APIs vs. runtime APIs.** Everything here is the **metadata** surface:
-> read-only config/health plus Devcontainer CRUD. It records intent and state — it
-> does **not** drive runtime behavior. **Runtime APIs** (Commands like
-> `start_devcontainer` / `start_agent_session`, Runtime Event ingestion, Session
-> Output streaming) are a separate, future surface and are not exposed here. The
-> forward-looking fields below — `runtime` in `/settings`, and the
-> `docker`/`podman`/`devcontainer_cli`/`claude_code` diagnostics — exist now but
-> report `null`/`unknown` until detection lands in a later ticket.
+> **Metadata APIs vs. runtime APIs.** Most routes here are the **metadata**
+> surface: read-only config/health plus Devcontainer CRUD. Lifecycle routes
+> record user intent by sending Commands to connected runtimes; read-model state
+> still changes only after Runtime Events are emitted back and projected. Session
+> Output streaming remains deferred. The forward-looking fields below —
+> `runtime` in `/settings`, and the `docker`/`podman`/`devcontainer_cli`/
+> `claude_code` diagnostics — exist now but report `null`/`unknown` until
+> detection lands in a later ticket.
 
 ## Health & status
 
@@ -95,9 +95,9 @@ The Devcontainer is the central entity (the domain term for what a user calls a
 "workspace"). A Devcontainer is bound to one `local_path` ([ADR-0001](adr/0001-devcontainer-source-is-a-single-local-path.md)).
 `status` is one of `created` | `starting` | `running` | `stopping` | `stopped` | `error`.
 
-These routes are metadata CRUD only. Creating a Devcontainer does **not** start a
-container, and `PATCH`-ing `status` records intent — it does not perform the
-lifecycle transition. Actual start/stop is a future runtime API.
+Creating a Devcontainer does **not** start a container, and `PATCH`-ing `status`
+records metadata only. Use the lifecycle routes below to send start/stop Commands
+to a connected Host Runtime Worker.
 
 ### `POST /api/v1/devcontainers` → `201`
 
@@ -158,6 +158,37 @@ Response: the full updated `Devcontainer`, or `404` if unknown.
 ### `DELETE /api/v1/devcontainers/{id}` → `204`
 
 Empty body on success; `404` if unknown.
+
+### `POST /api/v1/devcontainers/{id}/start` → `202`
+
+Requires a connected Host Runtime Worker (`uv run vibing host-runtime`) and a
+Devcontainer currently in `created`, `stopped`, or `error`. Returns the current
+Devcontainer read model unchanged; `starting`/`running`/`error` arrives later via
+Runtime Events.
+
+### `POST /api/v1/devcontainers/{id}/stop` → `202`
+
+Requires a connected Host Runtime Worker and a Devcontainer currently in
+`running` or `error`. Returns the current Devcontainer read model unchanged;
+`stopping`/`stopped`/`error` arrives later via Runtime Events.
+
+### `POST /api/v1/devcontainers/{id}/agent-sessions` → `202`
+
+Requires the Devcontainer to be `running` and its Devcontainer Runtime Agent to
+be connected. Sends `start_agent_session` to that agent and returns the created
+Agent Session read model.
+
+Request:
+
+```json
+{ "prompt": "Implement the failing test" }
+```
+
+### `POST /api/v1/devcontainers/{id}/agent-sessions/{session_id}/stop` → `202`
+
+Requires the Agent Session to be active and the Devcontainer Runtime Agent to be
+connected. Sends `stop_agent_session` to that agent and returns the current Agent
+Session read model unchanged; final status arrives later via Runtime Events.
 
 ## Sample data
 

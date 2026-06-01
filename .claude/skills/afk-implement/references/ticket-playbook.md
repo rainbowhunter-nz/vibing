@@ -114,8 +114,8 @@ package. Instruct it to:
    Python (never hand-edit `pyproject.toml`), ADRs, minimal+clean (Simplicity First), strictly
    in scope.
 3. **Verify** (`verification-before-completion`, evidence not assertions):
-   - **Checks pass** (mirror CI): Python (`apps/api`, `packages/*`) `uv run ruff check . &&
-     uv run ruff format --check .`, `uv run mypy src` (api), `uv run pytest -q`; web (`apps/web`)
+   - **Checks pass** (mirror CI): Python from repo root `uv run ruff check src tests &&
+     uv run ruff format --check src tests`, `uv run mypy src`, `uv run pytest -q`; web (`apps/web`)
      `pnpm lint`, `pnpm typecheck`, `pnpm test`.
    - **ACs met** — green checks aren't enough (it wrote the tests); confirm each AC with concrete
      evidence.

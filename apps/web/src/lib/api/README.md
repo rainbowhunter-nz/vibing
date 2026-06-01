@@ -1,6 +1,6 @@
 # Frontend API client
 
-All backend calls live under `/api/v1` (see `apps/api/src/vibing_api/main.py`). In dev, Vite proxies that prefix to `http://localhost:8000` (`apps/web/vite.config.ts`); in production the same path is served from the FastAPI process. **Never hardcode `http://localhost:8000`** — always call through this module.
+All backend calls live under `/api/v1` (see `src/vibing_api/main.py`). In dev, Vite proxies that prefix to `http://localhost:8000` (`apps/web/vite.config.ts`); in production the same path is served from the FastAPI process. **Never hardcode `http://localhost:8000`** — always call through this module.
 
 ## Calling endpoints
 

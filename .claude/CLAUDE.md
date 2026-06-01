@@ -15,7 +15,21 @@ You are running in a devcontainer. The devcontainer is configured to be docker-o
 
 Containers started by the stack are published on the host. To reach them from inside this devcontainer, use `host.docker.internal` (not `localhost`).
 
-This project uses `uv` for managing python package. Please avoid modifing `pyproject.toml`. Use `uv` instead. load the `uv` skill for detail usage.
+This project uses one root `uv` Python package. Python source lives in `src/`,
+tests live in `tests/`, and frontend source lives in `apps/web/`. The installed
+CLI is `vibing`, wired by `src/vibing_cli`; runtime commands are subcommands
+(`vibing host-runtime`, `vibing devcontainer-runtime`). Please avoid manually
+editing dependency metadata in `pyproject.toml`; use `uv` for dependency changes
+and load the `uv` skill for details.
+
+Python checks run from the repo root:
+
+```bash
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run mypy src
+uv run pytest -q
+```
 
 
 ## Simplicity First

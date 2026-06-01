@@ -86,8 +86,8 @@ Early MVP — foundation implemented; core decisions landed.
 - Schema simplified to a single `local_path` column (ADR-0001); the `"deleted"` status is gone; status/event vocabularies are typed `Literal`s.
 - Persistence is behind per-entity repository modules; route handlers contain no SQL.
 - Read-model state (devcontainer/agent-session status, inbox, approvals, summaries) is produced by a single projection reducer over the `runtime_events` stream (ADR-0002) — the sole writer of derived state.
-- The runtime transport (ADR-0003) is in place for the Devcontainer lifecycle: the Control Plane exposes a runtime WebSocket, and the **Host Runtime Worker** (`vibing-host-runtime`) connects, registers, and drives `devcontainer up`/`stop` via the official Dev Container CLI (see [Local development](#3-host-runtime-worker-vibing-host-runtime)).
-- **Still pending:** the Devcontainer Runtime Agent (Agent Session lifecycle) and Session Output (live terminal stream) are deferred.
+- The runtime transport (ADR-0003/ADR-0004) is in place for Devcontainer and Agent Session lifecycles: the Control Plane exposes host and agent runtime WebSockets, the **Host Runtime Worker** (`vibing host-runtime`) drives `devcontainer up`/`stop`, and the **Devcontainer Runtime Agent** (`vibing devcontainer-runtime`) handles agent-session start/stop Commands.
+- **Still pending:** Session Output (live terminal stream) is deferred.
 
 ## Local development
 
@@ -104,7 +104,6 @@ You need two terminals: one for backend, one for frontend.
 ### 1. Backend (FastAPI Control Plane)
 
 ```bash
-cd apps/api
 uv sync
 uv run uvicorn vibing_api.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -132,15 +131,14 @@ Dev server: `http://localhost:5173`. It proxies `/api/v1/*` to `http://localhost
 
 Open `http://localhost:5173`; the page shows "Connected to `vibing-api`" once both servers run.
 
-### 3. Host Runtime Worker (`vibing-host-runtime`)
+### 3. Host Runtime Worker (`vibing host-runtime`)
 
 The Host Runtime Worker owns the Devcontainer lifecycle on the host. It's a separate process that connects to the Control Plane over a single WebSocket (ADR-0003), registers as the one host worker, and serially runs the lifecycle Commands the Control Plane sends — shelling out to the official `devcontainer` CLI and emitting Runtime Events back.
 
 Start it in a third terminal, after the backend is up:
 
 ```bash
-cd packages/host_runtime
-uv run vibing-host-runtime
+uv run vibing host-runtime
 ```
 
 With no arguments it uses the defaults:
@@ -157,7 +155,7 @@ The official [Dev Container CLI](https://github.com/devcontainers/cli) (`devcont
 
 #### Auto-launch of Devcontainer Runtime Agent
 
-After a successful `devcontainer up`, the worker automatically launches the Devcontainer Runtime Agent inside the container via a detached `devcontainer exec`. The agent (`vibing-devcontainer-runtime`) **must be pre-installed in the Devcontainer image**.
+After a successful `devcontainer up`, the worker automatically launches the Devcontainer Runtime Agent inside the container via a detached `devcontainer exec`. The `vibing` package **must be pre-installed in the Devcontainer image** so the agent can start with `vibing devcontainer-runtime`.
 
 The agent connects to the Control Plane at `/api/v1/runtime/agent/ws` (ADR-0004) using `host.docker.internal` (not `127.0.0.1`) — hence the separate `--agent-control-plane-url` flag. Launch is best-effort: failure logs a `WARNING` and leaves `devcontainer_started` intact; a missing agent surfaces later as `409` on `start_agent_session`.
 
@@ -182,7 +180,7 @@ There is no `restart_devcontainer` Command; restart is a stop followed by a star
 
 ### Environment variables
 
-All backend settings use the `VIBING_` prefix. Set them in the shell or in `apps/api/.env` (auto-loaded by `pydantic-settings`).
+All backend settings use the `VIBING_` prefix. Set them in the shell or in a root `.env` file (auto-loaded by `pydantic-settings`).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -200,7 +198,6 @@ The frontend has no env vars — it always calls `/api/v1/*` via the proxy.
 Populate the dashboard, inbox, and approval queue with curated sample rows for UI validation:
 
 ```bash
-cd apps/api
 uv run vibing dev sample_data seed
 uv run vibing dev sample_data status
 uv run vibing dev sample_data reset
@@ -221,14 +218,13 @@ Serves the built frontend and API from one container. DB lives in the `vibing-da
 
 Run these before opening a PR. CI (`.github/workflows/ci.yml`) runs the same set on every push to `main` and pull request; none of them require the devcontainer/host runtime.
 
-**Backend** — run per Python project (`apps/api`, `packages/protocol`, `packages/host_runtime`, `packages/devcontainer_runtime`); `uv run` syncs deps on first use:
+**Backend/runtime Python package** — run from the repo root; `uv run` syncs deps on first use:
 
 ```bash
-cd apps/api            # or any packages/* dir
-uv run ruff check .            # lint
-uv run ruff format --check .   # format (drop --check to apply)
-uv run pytest -q               # tests (protocol has none)
-uv run mypy src                # type-check (apps/api only)
+uv run ruff check src tests            # lint
+uv run ruff format --check src tests   # format (drop --check to apply)
+uv run pytest -q                       # tests
+uv run mypy src                        # type-check
 ```
 
 **Frontend** (`apps/web`):
@@ -244,5 +240,5 @@ pnpm test        # vitest
 
 Both lockfiles are committed and must stay in sync with their manifests:
 
-- `apps/api/uv.lock`
+- `uv.lock`
 - `apps/web/pnpm-lock.yaml`
