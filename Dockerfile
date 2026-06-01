@@ -9,7 +9,7 @@ RUN pnpm build
 
 # Stage 2: run backend + serve built frontend
 FROM python:3.13-slim AS final
-COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /usr/local/bin/uv
 WORKDIR /repo
 
 # Install Python dependencies (separate layer for cache efficiency)
@@ -29,4 +29,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 VOLUME /data
 
-CMD ["uv", "run", "uvicorn", "vibing_api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "--no-dev", "--frozen", "uvicorn", "vibing_api.main:app", "--host", "0.0.0.0", "--port", "8080"]

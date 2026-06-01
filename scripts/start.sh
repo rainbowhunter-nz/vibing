@@ -26,4 +26,17 @@ docker run -d \
   -v vibing-data:/data \
   "$IMAGE"
 
-echo "Vibing is running at http://localhost:${PORT}"
+# Reach the published port via host.docker.internal (docker-outside-of-docker)
+HEALTH="http://host.docker.internal:${PORT}/api/v1/health"
+echo "Waiting for Vibing to become ready..."
+for _ in $(seq 1 30); do
+  if curl -fsS "$HEALTH" >/dev/null 2>&1; then
+    echo "Vibing is running at http://localhost:${PORT}"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "Vibing did not become ready in time. Recent logs:" >&2
+docker logs --tail 30 "$CONTAINER" >&2
+exit 1
