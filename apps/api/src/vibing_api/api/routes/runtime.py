@@ -8,6 +8,7 @@ Malformed JSON, malformed envelopes, and unsupported types are ignored.
 """
 
 import json
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -26,6 +27,16 @@ _WORKER_ALREADY_CONNECTED = 4409
 _AGENT_MISSING_ID = 4400
 _AGENT_ALREADY_CONNECTED = 4409
 
+# A register callback validates the `runtime_registered` message and claims a slot.
+# Returns an unregister thunk on success, None to keep waiting (invalid envelope),
+# or raises _Reject to close the connection with a code.
+Register = Callable[[dict[str, Any]], Awaitable[Callable[[], None] | None]]
+
+
+class _Reject(Exception):
+    def __init__(self, code: int) -> None:
+        self.code = code
+
 
 def _parse(raw: str) -> dict[str, Any] | None:
     try:
@@ -35,11 +46,10 @@ def _parse(raw: str) -> dict[str, Any] | None:
     return message if isinstance(message, dict) else None
 
 
-@router.websocket("/ws")
-async def runtime_ws(websocket: WebSocket) -> None:
-    manager: RuntimeConnectionManager = websocket.app.state.runtime_manager
+async def _serve(websocket: WebSocket, register: Register) -> None:
+    """Shared registration + RuntimeEvent intake loop for both runtime channels."""
     await websocket.accept()
-    registered = False
+    unregister: Callable[[], None] | None = None
     try:
         while True:
             message = _parse(await websocket.receive_text())
@@ -48,20 +58,14 @@ async def runtime_ws(websocket: WebSocket) -> None:
             msg_type = message.get("type")
 
             if msg_type == "runtime_registered":
-                if registered:
+                if unregister is not None:
                     continue
-                try:
-                    RegisterEnvelope.model_validate(message)
-                except ValidationError:
-                    continue
-                if not manager.register_worker(websocket):
-                    await websocket.close(code=_WORKER_ALREADY_CONNECTED)
-                    return
-                registered = True
-                await websocket.send_json({"type": "registered"})
+                unregister = await register(message)
+                if unregister is not None:
+                    await websocket.send_json({"type": "registered"})
                 continue
 
-            if not registered or msg_type != "runtime_event":
+            if unregister is None or msg_type != "runtime_event":
                 continue
 
             try:
@@ -71,52 +75,43 @@ async def runtime_ws(websocket: WebSocket) -> None:
             persist_runtime_event(envelope.event)
     except WebSocketDisconnect:
         pass
+    except _Reject as reject:
+        await websocket.close(code=reject.code)
     finally:
-        if registered:
-            manager.unregister_worker(websocket)
+        if unregister is not None:
+            unregister()
+
+
+@router.websocket("/ws")
+async def runtime_ws(websocket: WebSocket) -> None:
+    manager: RuntimeConnectionManager = websocket.app.state.runtime_manager
+
+    async def register(message: dict[str, Any]) -> Callable[[], None] | None:
+        try:
+            RegisterEnvelope.model_validate(message)
+        except ValidationError:
+            return None
+        if not manager.register_worker(websocket):
+            raise _Reject(_WORKER_ALREADY_CONNECTED)
+        return lambda: manager.unregister_worker(websocket)
+
+    await _serve(websocket, register)
 
 
 @router.websocket("/agent/ws")
 async def agent_ws(websocket: WebSocket) -> None:
     manager: AgentConnectionManager = websocket.app.state.agent_manager
-    await websocket.accept()
-    registered = False
-    devcontainer_id: str | None = None
-    try:
-        while True:
-            message = _parse(await websocket.receive_text())
-            if message is None:
-                continue
-            msg_type = message.get("type")
 
-            if msg_type == "runtime_registered":
-                if registered:
-                    continue
-                try:
-                    envelope = RegisterEnvelope.model_validate(message)
-                except ValidationError:
-                    continue
-                if envelope.source != "devcontainer_runtime_agent" or not envelope.devcontainer_id:
-                    await websocket.close(code=_AGENT_MISSING_ID)
-                    return
-                if not manager.register_agent(envelope.devcontainer_id, websocket):
-                    await websocket.close(code=_AGENT_ALREADY_CONNECTED)
-                    return
-                devcontainer_id = envelope.devcontainer_id
-                registered = True
-                await websocket.send_json({"type": "registered"})
-                continue
+    async def register(message: dict[str, Any]) -> Callable[[], None] | None:
+        try:
+            envelope = RegisterEnvelope.model_validate(message)
+        except ValidationError:
+            return None
+        if envelope.source != "devcontainer_runtime_agent" or not envelope.devcontainer_id:
+            raise _Reject(_AGENT_MISSING_ID)
+        if not manager.register_agent(envelope.devcontainer_id, websocket):
+            raise _Reject(_AGENT_ALREADY_CONNECTED)
+        devcontainer_id = envelope.devcontainer_id
+        return lambda: manager.unregister_agent(devcontainer_id, websocket)
 
-            if not registered or msg_type != "runtime_event":
-                continue
-
-            try:
-                env = RuntimeEventEnvelope.model_validate(message)
-            except ValidationError:
-                continue
-            persist_runtime_event(env.event)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        if registered and devcontainer_id is not None:
-            manager.unregister_agent(devcontainer_id, websocket)
+    await _serve(websocket, register)
