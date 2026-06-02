@@ -14,6 +14,8 @@ RUNTIME_UNAVAILABLE = "RUNTIME_UNAVAILABLE"
 AGENT_SESSION_ACTIVE = "AGENT_SESSION_ACTIVE"
 AGENT_SESSION_NOT_FOUND = "AGENT_SESSION_NOT_FOUND"
 AGENT_SESSION_NOT_ACTIVE = "AGENT_SESSION_NOT_ACTIVE"
+INBOX_EVENT_NOT_FOUND = "INBOX_EVENT_NOT_FOUND"
+APPROVAL_REQUEST_NOT_FOUND = "APPROVAL_REQUEST_NOT_FOUND"
 INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -77,6 +79,22 @@ class InactiveAgentSessionError(APIError):
 
     def __init__(self, session_id: str) -> None:
         super().__init__(f"Agent session is not active: {session_id}")
+
+
+class InboxEventNotFoundError(APIError):
+    status_code = 404
+    code = INBOX_EVENT_NOT_FOUND
+
+    def __init__(self, inbox_event_id: str) -> None:
+        super().__init__(f"Inbox event not found: {inbox_event_id}")
+
+
+class ApprovalRequestNotFoundError(APIError):
+    status_code = 404
+    code = APPROVAL_REQUEST_NOT_FOUND
+
+    def __init__(self, approval_request_id: str) -> None:
+        super().__init__(f"Approval request not found: {approval_request_id}")
 
 
 def _envelope(code: str, message: str, details: Any | None = None) -> dict[str, Any]:

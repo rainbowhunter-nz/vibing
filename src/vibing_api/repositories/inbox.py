@@ -84,6 +84,31 @@ class InboxRepository:
         ).fetchone()
         return _row_to_inbox(row) if row is not None else None
 
+    def list(
+        self,
+        *,
+        status: str | None = None,
+        devcontainer_id: str | None = None,
+        agent_session_id: str | None = None,
+    ) -> list[InboxEvent]:
+        conditions: list[str] = []
+        params: list[str] = []
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+        if devcontainer_id is not None:
+            conditions.append("devcontainer_id = ?")
+            params.append(devcontainer_id)
+        if agent_session_id is not None:
+            conditions.append("agent_session_id = ?")
+            params.append(agent_session_id)
+        where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        rows = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM inbox_events{where} ORDER BY created_at",
+            params,
+        ).fetchall()
+        return [_row_to_inbox(row) for row in rows]
+
     def get_by_approval(self, approval_request_id: str) -> InboxEvent | None:
         row = self._conn.execute(
             f"SELECT {_COLUMNS} FROM inbox_events WHERE approval_request_id = ?",

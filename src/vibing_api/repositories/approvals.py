@@ -75,6 +75,27 @@ class ApprovalRepository:
         ).fetchone()
         return _row_to_approval(row) if row is not None else None
 
+    def list(
+        self,
+        *,
+        status: str | None = None,
+        devcontainer_id: str | None = None,
+    ) -> list[ApprovalRequest]:
+        conditions: list[str] = []
+        params: list[str] = []
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+        if devcontainer_id is not None:
+            conditions.append("devcontainer_id = ?")
+            params.append(devcontainer_id)
+        where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        rows = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM approval_requests{where} ORDER BY created_at",
+            params,
+        ).fetchall()
+        return [_row_to_approval(row) for row in rows]
+
     def get_pending_by_session(self, agent_session_id: str) -> ApprovalRequest | None:
         row = self._conn.execute(
             f"SELECT {_COLUMNS} FROM approval_requests "

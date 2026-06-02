@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from vibing_api.core.vocabularies import AgentSessionStatus
 
@@ -8,6 +8,8 @@ class AgentSessionStartRequest(BaseModel):
 
 
 class AgentSession(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     devcontainer_id: str
     status: AgentSessionStatus

@@ -9,10 +9,12 @@ from starlette.types import Scope
 
 from vibing_api.api.routes import (
     agent_sessions,
+    approvals,
     config,
     devcontainers,
     diagnostics,
     health,
+    inbox,
     runtime,
     settings as settings_route,
     status,
@@ -56,6 +58,8 @@ def create_app() -> FastAPI:
         config.router,
         devcontainers.router,
         agent_sessions.router,
+        inbox.router,
+        approvals.router,
         settings_route.router,
         diagnostics.router,
         runtime.router,
