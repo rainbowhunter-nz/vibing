@@ -45,6 +45,40 @@ describe('useApiQuery', () => {
     expect(fn).toHaveBeenCalledTimes(2)
   })
 
+  it('repeated refetch increments fn call count and resolves to latest value', async () => {
+    let call = 0
+    const fn = vi.fn().mockImplementation(() => Promise.resolve(++call))
+    const { result } = renderHook(() => useApiQuery(fn, []))
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 1 }))
+    act(() => result.current.refetch())
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 2 }))
+    act(() => result.current.refetch())
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 3 }))
+    expect(fn).toHaveBeenCalledTimes(3)
+  })
+
+  it('refetch into error transitions state to error', async () => {
+    const err = new ApiError(500, 'SERVER_ERROR', 'boom')
+    let call = 0
+    const fn = vi.fn().mockImplementation(() =>
+      ++call === 1 ? Promise.resolve({ ok: true }) : Promise.reject(err),
+    )
+    const { result } = renderHook(() => useApiQuery(fn, []))
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: { ok: true } }))
+    act(() => result.current.refetch())
+    expect(result.current.state).toEqual({ kind: 'loading' })
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'error', error: err }))
+  })
+
+  it('refetch has stable identity across re-renders', async () => {
+    const fn = vi.fn().mockResolvedValue(42)
+    const { result, rerender } = renderHook(() => useApiQuery(fn, []))
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 42 }))
+    const refetchBefore = result.current.refetch
+    rerender()
+    expect(result.current.refetch).toBe(refetchBefore)
+  })
+
   it('unmount before resolution does not call setState', async () => {
     const d = deferred<string>()
     const fn = vi.fn().mockReturnValue(d.promise)

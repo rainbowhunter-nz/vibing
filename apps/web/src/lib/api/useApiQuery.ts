@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ApiError, NetworkError } from './client'
 
 export type QueryState<T> =
@@ -32,11 +32,10 @@ export function useApiQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryResu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, refetchToken])
 
-  return {
-    state,
-    refetch: () => {
-      setState({ kind: 'loading' })
-      setRefetchToken((n) => n + 1)
-    },
-  }
+  const refetch = useCallback(() => {
+    setState({ kind: 'loading' })
+    setRefetchToken((n) => n + 1)
+  }, [])
+
+  return { state, refetch }
 }
