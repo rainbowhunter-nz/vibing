@@ -16,13 +16,25 @@ export interface ConfigResponse {
   api_v1_prefix: string
 }
 
+export type DevcontainerStatus = 'created' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
+
 export interface Devcontainer {
   id: string
   name: string
   local_path: string
-  status: string
+  status: DevcontainerStatus
   created_at: string
   updated_at: string
+}
+
+export interface DevcontainerCreateBody {
+  name: string
+  local_path: string
+}
+
+export interface DevcontainerUpdateBody {
+  name?: string
+  status?: DevcontainerStatus
 }
 
 export interface DevcontainerList {

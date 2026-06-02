@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Devcontainers } from '../Devcontainers'
 import { fetchDevcontainers } from '../../lib/api'
+import type { Devcontainer } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
 const mockFetch = vi.mocked(fetchDevcontainers)
@@ -17,7 +18,7 @@ function renderPage() {
 
 beforeEach(() => vi.clearAllMocks())
 
-const sample = {
+const sample: Devcontainer = {
   id: 'dc1',
   name: 'my-project',
   local_path: '/home/me/my-project',
