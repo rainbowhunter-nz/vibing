@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from vibing_api.core.vocabularies import AgentSessionStatus
@@ -10,6 +12,11 @@ class AgentSessionStartRequest(BaseModel):
 class UserInputRequest(BaseModel):
     inbox_event_id: str = Field(min_length=1)
     text: str = Field(min_length=1)
+
+
+class ApprovalResolutionRequest(BaseModel):
+    approval_request_id: str = Field(min_length=1)
+    resolution: Literal["approved", "rejected"]
 
 
 class AgentSession(BaseModel):

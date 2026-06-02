@@ -71,10 +71,15 @@ def test_reduce_approval_requested() -> None:
 
 
 def test_reduce_approval_resolved() -> None:
-    updates = reduce(_event("approval_resolved", payload={"resolution": "approved"}))
+    updates = reduce(
+        _event(
+            "approval_resolved", payload={"resolution": "approved", "approval_request_id": "ar-1"}
+        )
+    )
     assert updates == ProjectionUpdates(
         session_status="running",
         resolve_approval="approved",
+        resolve_approval_id="ar-1",
         resolve_linked_inbox=True,
     )
 
@@ -186,7 +191,13 @@ def test_approval_round_trip_approved(conn: sqlite3.Connection, seeded: tuple[st
     assert linked.event_type == "approval_request"
     assert linked.status == "unread"
 
-    _emit(conn, dc_id, session_id, "approval_resolved", {"resolution": "approved"})
+    _emit(
+        conn,
+        dc_id,
+        session_id,
+        "approval_resolved",
+        {"resolution": "approved", "approval_request_id": pending.id},
+    )
     assert sessions.get(session_id).status == "running"
     assert approvals.get(pending.id).status == "approved"
     assert approvals.get(pending.id).decided_at is not None
@@ -203,7 +214,13 @@ def test_approval_round_trip_rejected(conn: sqlite3.Connection, seeded: tuple[st
     pending = approvals.get_pending_by_session(session_id)
     linked = inbox.get_by_approval(pending.id)
 
-    _emit(conn, dc_id, session_id, "approval_resolved", {"resolution": "rejected"})
+    _emit(
+        conn,
+        dc_id,
+        session_id,
+        "approval_resolved",
+        {"resolution": "rejected", "approval_request_id": pending.id},
+    )
     assert approvals.get(pending.id).status == "rejected"
     assert inbox.get(linked.id).status == "resolved"
     assert AgentSessionRepository(conn).get(session_id).status == "running"
@@ -213,13 +230,16 @@ def test_approval_resolved_without_pending_is_noop(
     conn: sqlite3.Connection, seeded: tuple[str, str]
 ) -> None:
     dc_id, session_id = seeded
-    approvals = ApprovalRepository(conn)
-    assert approvals.get_pending_by_session(session_id) is None
 
-    # valid resolution so it reaches the (empty) approval lookup
-    _emit(conn, dc_id, session_id, "approval_resolved", {"resolution": "approved"})
+    # unknown approval_request_id → no-op (tolerate out-of-order / missing rows)
+    _emit(
+        conn,
+        dc_id,
+        session_id,
+        "approval_resolved",
+        {"resolution": "approved", "approval_request_id": "does-not-exist"},
+    )
 
-    assert approvals.get_pending_by_session(session_id) is None
     rows = conn.execute(
         "SELECT id FROM approval_requests WHERE agent_session_id = ?", (session_id,)
     ).fetchall()
@@ -329,3 +349,64 @@ def test_session_stopped_no_inbox(conn: sqlite3.Connection, seeded: tuple[str, s
         "SELECT id FROM inbox_events WHERE agent_session_id = ?", (session_id,)
     ).fetchall()
     assert rows == []
+
+
+# --- Explicit target: resolves EXACT approval by id, not just any pending ---
+
+
+def test_approval_resolved_targets_exact_approval_approve(
+    conn: sqlite3.Connection, seeded: tuple[str, str]
+) -> None:
+    """Resolving approval A by id leaves approval B untouched."""
+    dc_id, session_id = seeded
+    approvals = ApprovalRepository(conn)
+    inbox = InboxRepository(conn)
+
+    # Seed two approvals directly (bypassing the event path to avoid session-status conflicts)
+    approval_a = approvals.create(dc_id, session_id, "action A")
+    inbox_a = inbox.create(dc_id, "approval_request", "unread", session_id, approval_a.id)
+    approval_b = approvals.create(dc_id, session_id, "action B")
+    inbox_b = inbox.create(dc_id, "approval_request", "unread", session_id, approval_b.id)
+
+    # Resolve only approval A
+    _emit(
+        conn,
+        dc_id,
+        session_id,
+        "approval_resolved",
+        {"resolution": "approved", "approval_request_id": approval_a.id},
+    )
+
+    assert approvals.get(approval_a.id).status == "approved"
+    assert inbox.get(inbox_a.id).status == "resolved"
+    # approval B untouched
+    assert approvals.get(approval_b.id).status == "pending"
+    assert inbox.get(inbox_b.id).status == "unread"
+
+
+def test_approval_resolved_targets_exact_approval_reject(
+    conn: sqlite3.Connection, seeded: tuple[str, str]
+) -> None:
+    """Resolving approval B by id leaves approval A untouched."""
+    dc_id, session_id = seeded
+    approvals = ApprovalRepository(conn)
+    inbox = InboxRepository(conn)
+
+    approval_a = approvals.create(dc_id, session_id, "action A")
+    inbox_a = inbox.create(dc_id, "approval_request", "unread", session_id, approval_a.id)
+    approval_b = approvals.create(dc_id, session_id, "action B")
+    inbox_b = inbox.create(dc_id, "approval_request", "unread", session_id, approval_b.id)
+
+    _emit(
+        conn,
+        dc_id,
+        session_id,
+        "approval_resolved",
+        {"resolution": "rejected", "approval_request_id": approval_b.id},
+    )
+
+    assert approvals.get(approval_b.id).status == "rejected"
+    assert inbox.get(inbox_b.id).status == "resolved"
+    # approval A untouched
+    assert approvals.get(approval_a.id).status == "pending"
+    assert inbox.get(inbox_a.id).status == "unread"

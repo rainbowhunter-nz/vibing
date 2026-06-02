@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from vibing_api.core.database import get_connection
 from vibing_api.repositories.agent_sessions import AgentSessionRepository
+from vibing_api.repositories.approvals import ApprovalRepository
 from vibing_api.repositories.inbox import InboxRepository
 
 AGENT_WS_URL = "/api/v1/runtime/agent/ws"
@@ -575,4 +576,253 @@ def test_user_input_guard_runtime_unavailable(client: TestClient) -> None:
 def test_user_input_empty_body_rejected(client: TestClient) -> None:
     dc_id = _create_dc(client)
     resp = client.post(_user_input_url(dc_id, "sess-1"), json={})
+    assert resp.status_code == 422
+
+
+# ============================================================
+# POST /devcontainers/{id}/agent-sessions/{session_id}/approval-resolution
+# ============================================================
+
+
+def _seed_pending_approval(session_id: str, devcontainer_id: str) -> str:
+    """Create a pending approval request with linked inbox event; return approval id."""
+    with get_connection() as conn:
+        approval = ApprovalRepository(conn).create(
+            devcontainer_id=devcontainer_id,
+            agent_session_id=session_id,
+            requested_action="some action",
+        )
+        InboxRepository(conn).create(
+            devcontainer_id=devcontainer_id,
+            event_type="approval_request",
+            status="unread",
+            agent_session_id=session_id,
+            approval_request_id=approval.id,
+        )
+        conn.commit()
+    return approval.id
+
+
+def _approval_resolution_url(dc_id: str, session_id: str) -> str:
+    return f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session_id}/approval-resolution"
+
+
+# --- Happy path approve ---
+
+
+def test_approval_resolution_approve_returns_202_and_sends_command(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        conn.commit()
+    approval_id = _seed_pending_approval(session.id, dc_id)
+
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+
+        resp = client.post(
+            _approval_resolution_url(dc_id, session.id),
+            json={"approval_request_id": approval_id, "resolution": "approved"},
+        )
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["id"] == session.id
+        assert body["devcontainer_id"] == dc_id
+
+        cmd = ws.receive_json()
+        assert cmd["type"] == "command"
+        assert cmd["command"]["type"] == "resolve_approval"
+        assert cmd["command"]["devcontainer_id"] == dc_id
+        assert cmd["command"]["agent_session_id"] == session.id
+        assert cmd["command"]["payload"] == {
+            "approval_request_id": approval_id,
+            "resolution": "approved",
+        }
+
+
+# --- Happy path reject ---
+
+
+def test_approval_resolution_reject_returns_202_and_sends_command(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        conn.commit()
+    approval_id = _seed_pending_approval(session.id, dc_id)
+
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+
+        resp = client.post(
+            _approval_resolution_url(dc_id, session.id),
+            json={"approval_request_id": approval_id, "resolution": "rejected"},
+        )
+        assert resp.status_code == 202
+
+        cmd = ws.receive_json()
+        assert cmd["command"]["type"] == "resolve_approval"
+        assert cmd["command"]["payload"]["resolution"] == "rejected"
+
+
+# --- ADR-0002: approval still pending after HTTP call ---
+
+
+def test_approval_resolution_does_not_resolve_approval_by_http(client: TestClient) -> None:
+    """ADR-0002: HTTP call must NOT resolve the approval; only the projected event does."""
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        conn.commit()
+    approval_id = _seed_pending_approval(session.id, dc_id)
+
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+
+        client.post(
+            _approval_resolution_url(dc_id, session.id),
+            json={"approval_request_id": approval_id, "resolution": "approved"},
+        )
+        ws.receive_json()  # consume command
+
+    with get_connection() as conn:
+        approval = ApprovalRepository(conn).get(approval_id)
+    assert approval is not None
+    assert approval.status == "pending"  # still pending — not resolved by HTTP
+
+
+# --- Guard 1: devcontainer not found ---
+
+
+def test_approval_resolution_guard_devcontainer_not_found(client: TestClient) -> None:
+    resp = client.post(
+        "/api/v1/devcontainers/ghost/agent-sessions/sess-1/approval-resolution",
+        json={"approval_request_id": "ar-1", "resolution": "approved"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
+
+
+# --- Guard 2: session not found ---
+
+
+def test_approval_resolution_guard_session_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.post(
+        _approval_resolution_url(dc_id, "ghost-session"),
+        json={"approval_request_id": "ar-1", "resolution": "approved"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"
+
+
+# --- Guard 3: session not active ---
+
+
+@pytest.mark.parametrize("terminal_status", ["completed", "failed", "stopped"])
+def test_approval_resolution_guard_session_not_active(
+    client: TestClient, terminal_status: str
+) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="starting")
+        AgentSessionRepository(conn).set_status(session.id, terminal_status)  # type: ignore[arg-type]
+        conn.commit()
+    resp = client.post(
+        _approval_resolution_url(dc_id, session.id),
+        json={"approval_request_id": "ar-1", "resolution": "approved"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_ACTIVE"
+
+
+# --- Guard 4: approval not found ---
+
+
+def test_approval_resolution_guard_approval_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        conn.commit()
+    resp = client.post(
+        _approval_resolution_url(dc_id, session.id),
+        json={"approval_request_id": "does-not-exist", "resolution": "approved"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "APPROVAL_REQUEST_NOT_FOUND"
+
+
+def test_approval_resolution_guard_approval_wrong_session(client: TestClient) -> None:
+    """Approval belonging to a different session is treated as not found."""
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session1 = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        session2 = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        conn.commit()
+    approval_id = _seed_pending_approval(session1.id, dc_id)
+    resp = client.post(
+        _approval_resolution_url(dc_id, session2.id),
+        json={"approval_request_id": approval_id, "resolution": "approved"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "APPROVAL_REQUEST_NOT_FOUND"
+
+
+# --- Guard 5: approval not pending ---
+
+
+def test_approval_resolution_guard_approval_not_pending(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        # Create an already-resolved approval
+        approval = ApprovalRepository(conn).create(
+            devcontainer_id=dc_id,
+            agent_session_id=session.id,
+            requested_action="x",
+        )
+        ApprovalRepository(conn).resolve(approval.id, "approved")
+        conn.commit()
+    resp = client.post(
+        _approval_resolution_url(dc_id, session.id),
+        json={"approval_request_id": approval.id, "resolution": "approved"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "APPROVAL_REQUEST_NOT_PENDING"
+
+
+# --- Guard 6: runtime unavailable ---
+
+
+def test_approval_resolution_guard_runtime_unavailable(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="waiting_for_approval")
+        conn.commit()
+    approval_id = _seed_pending_approval(session.id, dc_id)
+    resp = client.post(
+        _approval_resolution_url(dc_id, session.id),
+        json={"approval_request_id": approval_id, "resolution": "approved"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+
+
+# --- Validation: invalid resolution ---
+
+
+def test_approval_resolution_invalid_resolution_rejected(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.post(
+        _approval_resolution_url(dc_id, "sess-1"),
+        json={"approval_request_id": "ar-1", "resolution": "maybe"},
+    )
+    assert resp.status_code == 422
+
+
+def test_approval_resolution_empty_body_rejected(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.post(_approval_resolution_url(dc_id, "sess-1"), json={})
     assert resp.status_code == 422

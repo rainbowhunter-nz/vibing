@@ -27,6 +27,8 @@ class AgentCommandHandler:
             await self._stop_agent_session(command, emit)
         elif command.type == "send_user_input":
             await self._send_user_input(command, emit)
+        elif command.type == "resolve_approval":
+            await self._resolve_approval(command, emit)
         else:
             logger.info("Ignoring unsupported command type: %s", command.type)
 
@@ -89,6 +91,21 @@ class AgentCommandHandler:
                 devcontainer_id=command.devcontainer_id,
                 agent_session_id=command.agent_session_id,
                 payload={"inbox_event_id": payload.get("inbox_event_id")},
+            )
+        )
+
+    async def _resolve_approval(self, command: Command, emit: EmitFn) -> None:
+        payload = command.payload or {}
+        await emit(
+            RuntimeEvent(
+                event_type="approval_resolved",
+                source=_SOURCE,
+                devcontainer_id=command.devcontainer_id,
+                agent_session_id=command.agent_session_id,
+                payload={
+                    "approval_request_id": payload.get("approval_request_id"),
+                    "resolution": payload.get("resolution"),
+                },
             )
         )
 

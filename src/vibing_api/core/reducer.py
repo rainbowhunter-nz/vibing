@@ -44,6 +44,7 @@ class ProjectionUpdates:
     create_approval: bool = False
     requested_action: str = ""
     resolve_approval: ApprovalStatus | None = None
+    resolve_approval_id: str | None = None
     inbox_event_type: InboxEventType | None = None
     resolve_linked_inbox: bool = False
     resolve_inbox_event_id: str | None = None
@@ -86,6 +87,7 @@ def reduce(event: RuntimeEvent) -> ProjectionUpdates:
         return ProjectionUpdates(
             session_status="running",
             resolve_approval=resolution,
+            resolve_approval_id=payload.get("approval_request_id"),
             resolve_linked_inbox=True,
         )
     if event_type == "agent_asked_question":
@@ -139,13 +141,13 @@ def project(event: RuntimeEvent, conn: sqlite3.Connection) -> None:
             )
             created_approval_id = approval.id
 
-    if updates.resolve_approval is not None and event.agent_session_id is not None:
-        pending = approvals.get_pending_by_session(event.agent_session_id)
+    if updates.resolve_approval is not None and updates.resolve_approval_id is not None:
+        target = approvals.get(updates.resolve_approval_id)
         # tolerate out-of-order events: skip if the referenced row isn't present yet
-        if pending is not None:
-            approvals.resolve(pending.id, updates.resolve_approval)
+        if target is not None:
+            approvals.resolve(target.id, updates.resolve_approval)
             if updates.resolve_linked_inbox:
-                linked = inbox.get_by_approval(pending.id)
+                linked = inbox.get_by_approval(target.id)
                 # tolerate out-of-order events: skip if the referenced row isn't present yet
                 if linked is not None:
                     inbox.resolve(linked.id)

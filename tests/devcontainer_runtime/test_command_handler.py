@@ -165,11 +165,65 @@ def test_unsupported_command_emits_nothing():
 
     asyncio.run(
         handler.handle(
-            Command(type="resolve_approval", devcontainer_id="dc-1"),  # type: ignore[arg-type]
+            Command(type="start_devcontainer", devcontainer_id="dc-1"),  # type: ignore[arg-type]
             emit,
         )
     )
     assert events == []
+
+
+# --- resolve_approval: emits approval_resolved ---
+
+
+def test_resolve_approval_emits_approval_resolved():
+    runner = _make_runner(ClaudeSuccess(result=""))
+    handler = AgentCommandHandler(runner)
+    events: list[RuntimeEvent] = []
+
+    async def emit(event: RuntimeEvent) -> None:
+        events.append(event)
+
+    asyncio.run(
+        handler.handle(
+            Command(
+                type="resolve_approval",  # type: ignore[arg-type]
+                devcontainer_id="dc-1",
+                agent_session_id="sess-1",
+                payload={"approval_request_id": "ar-abc", "resolution": "approved"},
+            ),
+            emit,
+        )
+    )
+    assert len(events) == 1
+    evt = events[0]
+    assert evt.event_type == "approval_resolved"
+    assert evt.source == "devcontainer_runtime_agent"
+    assert evt.devcontainer_id == "dc-1"
+    assert evt.agent_session_id == "sess-1"
+    assert evt.payload == {"approval_request_id": "ar-abc", "resolution": "approved"}
+
+
+def test_resolve_approval_rejected_emits_approval_resolved():
+    runner = _make_runner(ClaudeSuccess(result=""))
+    handler = AgentCommandHandler(runner)
+    events: list[RuntimeEvent] = []
+
+    async def emit(event: RuntimeEvent) -> None:
+        events.append(event)
+
+    asyncio.run(
+        handler.handle(
+            Command(
+                type="resolve_approval",  # type: ignore[arg-type]
+                devcontainer_id="dc-1",
+                agent_session_id="sess-1",
+                payload={"approval_request_id": "ar-xyz", "resolution": "rejected"},
+            ),
+            emit,
+        )
+    )
+    assert len(events) == 1
+    assert events[0].payload == {"approval_request_id": "ar-xyz", "resolution": "rejected"}
 
 
 # --- send_user_input: emits user_input_sent ---

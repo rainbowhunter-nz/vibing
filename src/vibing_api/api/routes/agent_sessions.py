@@ -4,12 +4,15 @@ from vibing_protocol import Command
 from vibing_api.api.schemas.agent_sessions import (
     AgentSession,
     AgentSessionStartRequest,
+    ApprovalResolutionRequest,
     UserInputRequest,
 )
 from vibing_api.core.database import get_connection
 from vibing_api.core.errors import (
     ActiveAgentSessionError,
     AgentSessionNotFoundError,
+    ApprovalRequestNotFoundError,
+    ApprovalRequestNotPendingError,
     DevcontainerNotFoundError,
     InactiveAgentSessionError,
     InboxEventNotActionableError,
@@ -19,6 +22,7 @@ from vibing_api.core.errors import (
 )
 from vibing_api.core.runtime_channel import AgentRegistry
 from vibing_api.repositories.agent_sessions import AgentSessionRepository
+from vibing_api.repositories.approvals import ApprovalRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 from vibing_api.repositories.inbox import InboxRepository
 
@@ -152,6 +156,59 @@ async def send_user_input(
             devcontainer_id=devcontainer_id,
             agent_session_id=session_id,
             payload={"inbox_event_id": body.inbox_event_id, "text": body.text},
+        )
+    )
+    return AgentSession(**vars(session))
+
+
+@router.post(
+    "/{devcontainer_id}/agent-sessions/{session_id}/approval-resolution",
+    response_model=AgentSession,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def resolve_approval(
+    devcontainer_id: str, session_id: str, body: ApprovalResolutionRequest, request: Request
+) -> AgentSession:
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).get(session_id)
+    if session is None or session.devcontainer_id != devcontainer_id:
+        raise AgentSessionNotFoundError(session_id)
+
+    if session.status not in _ACTIVE_STATUSES:
+        raise InactiveAgentSessionError(session_id)
+
+    with get_connection() as conn:
+        approval = ApprovalRepository(conn).get(body.approval_request_id)
+    if (
+        approval is None
+        or approval.agent_session_id != session_id
+        or approval.devcontainer_id != devcontainer_id
+    ):
+        raise ApprovalRequestNotFoundError(body.approval_request_id)
+
+    if approval.status != "pending":
+        raise ApprovalRequestNotPendingError(body.approval_request_id)
+
+    agent_manager: AgentRegistry = request.app.state.agent_manager
+    if not agent_manager.is_connected(devcontainer_id):
+        raise RuntimeUnavailableError(
+            f"No Devcontainer Runtime Agent is connected for devcontainer: {devcontainer_id}"
+        )
+
+    await agent_manager.send_command(
+        Command(
+            type="resolve_approval",
+            devcontainer_id=devcontainer_id,
+            agent_session_id=session_id,
+            payload={
+                "approval_request_id": body.approval_request_id,
+                "resolution": body.resolution,
+            },
         )
     )
     return AgentSession(**vars(session))

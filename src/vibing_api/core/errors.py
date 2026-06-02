@@ -17,6 +17,7 @@ AGENT_SESSION_NOT_ACTIVE = "AGENT_SESSION_NOT_ACTIVE"
 INBOX_EVENT_NOT_FOUND = "INBOX_EVENT_NOT_FOUND"
 INBOX_EVENT_NOT_ACTIONABLE = "INBOX_EVENT_NOT_ACTIONABLE"
 APPROVAL_REQUEST_NOT_FOUND = "APPROVAL_REQUEST_NOT_FOUND"
+APPROVAL_REQUEST_NOT_PENDING = "APPROVAL_REQUEST_NOT_PENDING"
 INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -104,6 +105,14 @@ class ApprovalRequestNotFoundError(APIError):
 
     def __init__(self, approval_request_id: str) -> None:
         super().__init__(f"Approval request not found: {approval_request_id}")
+
+
+class ApprovalRequestNotPendingError(APIError):
+    status_code = 409
+    code = APPROVAL_REQUEST_NOT_PENDING
+
+    def __init__(self, approval_request_id: str) -> None:
+        super().__init__(f"Approval request is not pending: {approval_request_id}")
 
 
 def _envelope(code: str, message: str, details: Any | None = None) -> dict[str, Any]:
