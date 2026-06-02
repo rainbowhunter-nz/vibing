@@ -4,8 +4,10 @@ from vibing_protocol import Command, CommandType
 from vibing_api.api.schemas.devcontainers import (
     Devcontainer,
     DevcontainerCreateRequest,
-    DevcontainerList,
     DevcontainerUpdateRequest,
+    DevcontainerView,
+    DevcontainerViewList,
+    RuntimeConnection,
 )
 from vibing_api.core.database import get_connection
 from vibing_api.core.errors import (
@@ -13,7 +15,7 @@ from vibing_api.core.errors import (
     InvalidDevcontainerStateError,
     RuntimeUnavailableError,
 )
-from vibing_api.core.runtime_channel import WORKER_SLOT, WorkerRegistry
+from vibing_api.core.runtime_channel import WORKER_SLOT, AgentRegistry, WorkerRegistry
 from vibing_api.core.vocabularies import DevcontainerStatus
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
@@ -33,20 +35,44 @@ def create_devcontainer(payload: DevcontainerCreateRequest) -> Devcontainer:
     return devcontainer
 
 
-@router.get("", response_model=DevcontainerList)
-def list_devcontainers() -> DevcontainerList:
+def _with_runtime(
+    devcontainer: Devcontainer, *, worker_connected: bool, agent_manager: AgentRegistry
+) -> DevcontainerView:
+    """Merge ephemeral runtime connection state into a Devcontainer response view."""
+    runtime = RuntimeConnection(
+        worker_connected=worker_connected,
+        agent_connected=agent_manager.is_connected(devcontainer.id),
+    )
+    return DevcontainerView(**devcontainer.model_dump(), runtime=runtime)
+
+
+@router.get("", response_model=DevcontainerViewList)
+def list_devcontainers(request: Request) -> DevcontainerViewList:
     with get_connection() as conn:
         items = DevcontainerRepository(conn).list()
-    return DevcontainerList(items=items)
+    worker_manager: WorkerRegistry = request.app.state.runtime_manager
+    agent_manager: AgentRegistry = request.app.state.agent_manager
+    worker_connected = worker_manager.is_connected(WORKER_SLOT)
+    views = [
+        _with_runtime(item, worker_connected=worker_connected, agent_manager=agent_manager)
+        for item in items
+    ]
+    return DevcontainerViewList(items=views)
 
 
-@router.get("/{devcontainer_id}", response_model=Devcontainer)
-def get_devcontainer(devcontainer_id: str) -> Devcontainer:
+@router.get("/{devcontainer_id}", response_model=DevcontainerView)
+def get_devcontainer(devcontainer_id: str, request: Request) -> DevcontainerView:
     with get_connection() as conn:
         devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
     if devcontainer is None:
         raise DevcontainerNotFoundError(devcontainer_id)
-    return devcontainer
+    worker_manager: WorkerRegistry = request.app.state.runtime_manager
+    worker_connected = worker_manager.is_connected(WORKER_SLOT)
+    return _with_runtime(
+        devcontainer,
+        worker_connected=worker_connected,
+        agent_manager=request.app.state.agent_manager,
+    )
 
 
 @router.patch("/{devcontainer_id}", response_model=Devcontainer)

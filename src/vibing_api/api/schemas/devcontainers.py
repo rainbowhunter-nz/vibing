@@ -24,3 +24,16 @@ class Devcontainer(BaseModel):
 
 class DevcontainerList(BaseModel):
     items: list[Devcontainer]
+
+
+class RuntimeConnection(BaseModel):
+    worker_connected: bool
+    agent_connected: bool
+
+
+class DevcontainerView(Devcontainer):
+    runtime: RuntimeConnection
+
+
+class DevcontainerViewList(BaseModel):
+    items: list[DevcontainerView]
