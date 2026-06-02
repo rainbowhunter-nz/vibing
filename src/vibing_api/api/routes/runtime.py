@@ -15,6 +15,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope, RuntimeEventSource
 
+from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.runtime_channel import (
     WORKER_SLOT,
     AgentRegistry,
@@ -37,6 +38,13 @@ Register = Callable[[dict[str, Any]], Awaitable[Callable[[], None] | None]]
 class _Reject(Exception):
     def __init__(self, code: int) -> None:
         self.code = code
+
+
+def _broadcast_connection(websocket: WebSocket, ids: list[str]) -> None:
+    """Publish a runtime connection invalidation if a broadcaster is available."""
+    broadcaster = getattr(websocket.app.state, "broadcaster", None)
+    if broadcaster is not None:
+        broadcaster.publish(SseEvent(scope="runtime", ids=ids))
 
 
 def _parse(raw: str) -> dict[str, Any] | None:
@@ -95,7 +103,13 @@ async def runtime_ws(websocket: WebSocket) -> None:
             return None
         if not manager.register(WORKER_SLOT, websocket):
             raise _Reject(_WORKER_ALREADY_CONNECTED)
-        return lambda: manager.unregister(WORKER_SLOT, websocket)
+        _broadcast_connection(websocket, ids=[])
+
+        def unregister() -> None:
+            manager.unregister(WORKER_SLOT, websocket)
+            _broadcast_connection(websocket, ids=[])
+
+        return unregister
 
     await _serve(websocket, register)
 
@@ -117,6 +131,12 @@ async def agent_ws(websocket: WebSocket) -> None:
         if not manager.register(envelope.devcontainer_id, websocket):
             raise _Reject(_AGENT_ALREADY_CONNECTED)
         devcontainer_id = envelope.devcontainer_id
-        return lambda: manager.unregister(devcontainer_id, websocket)
+        _broadcast_connection(websocket, ids=[devcontainer_id])
+
+        def unregister() -> None:
+            manager.unregister(devcontainer_id, websocket)
+            _broadcast_connection(websocket, ids=[devcontainer_id])
+
+        return unregister
 
     await _serve(websocket, register)
