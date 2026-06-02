@@ -1,0 +1,18 @@
+services:
+  vibing:
+    build: .
+    image: vibing
+    ports:
+      - "8080:8080"
+    volumes:
+      - vibing-data:/data
+      # Identical-path passthrough: host projects dir mounted at the SAME absolute
+      # path inside the container so devcontainer bind-mounts resolve on the host.
+      - ${PROJECTS_DIR}:${PROJECTS_DIR}
+      # Container engine socket. Edit the SOURCE side for Podman — see .env.example.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PROJECTS_DIR=${PROJECTS_DIR}
+
+volumes:
+  vibing-data:

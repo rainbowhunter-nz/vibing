@@ -93,6 +93,9 @@ Production-like container preview:
 ./scripts/start.sh --stop
 ```
 
+For a full single-container deployment (control plane + frontend + host-runtime)
+via docker compose, see [`docs/deployment.md`](docs/deployment.md).
+
 ## Test And Check
 
 Python:
