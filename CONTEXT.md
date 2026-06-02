@@ -40,6 +40,10 @@ _Avoid_: notification, alert, message
 A pending action an Agent Session needs the user to approve or reject before proceeding. Status: `pending → approved | rejected`. No expiry state — if the session ends, an outstanding request is left `pending` and hidden.
 _Avoid_: permission, confirmation, prompt; "denied" (use `rejected`)
 
+**User Intervention**:
+A human response required for an Agent Session to continue, such as answering a question or approving/rejecting an Approval Request. The intervention is the user action; an Inbox Event is only the projected notification for it.
+_Avoid_: notification, inbox item, alert
+
 **Session Summary**:
 The final record of a terminated Agent Session (one per session), written on its terminal event. Outlives nothing — it is a projection, not a separate source of truth.
 _Avoid_: report, recap
