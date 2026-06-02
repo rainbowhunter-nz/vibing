@@ -82,6 +82,16 @@ class DevcontainerCommandHandler:
         )
         result = await adapter_method(local_path)
         if isinstance(result, DevcontainerFailure):
+            logger.error(
+                "devcontainer %s failed (devcontainer=%s, exit_code=%s): %s\n"
+                "  command: %s\n  stderr:\n%s",
+                operation,
+                command.devcontainer_id,
+                result.exit_code,
+                result.message,
+                " ".join(result.command),
+                result.stderr_tail or "(empty)",
+            )
             await emit(
                 RuntimeEvent(
                     event_type=EventType.DEVCONTAINER_FAILED,
