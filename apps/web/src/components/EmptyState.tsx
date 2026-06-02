@@ -5,6 +5,7 @@ interface EmptyStateProps {
   icon: ReactNode
   title: string
   helper: string
+  action?: ReactNode
 }
 
 export function EmptyState(props: EmptyStateProps) {

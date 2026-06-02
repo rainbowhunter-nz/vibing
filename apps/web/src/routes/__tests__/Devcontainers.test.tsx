@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { Devcontainers } from '../Devcontainers'
-import { fetchDevcontainers, startDevcontainer, stopDevcontainer, deleteDevcontainer } from '../../lib/api'
+import { fetchDevcontainers, startDevcontainer, stopDevcontainer, deleteDevcontainer, createDevcontainer, updateDevcontainer } from '../../lib/api'
 import type { Devcontainer } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
@@ -12,6 +12,8 @@ const mockFetch = vi.mocked(fetchDevcontainers)
 const mockStart = vi.mocked(startDevcontainer)
 const mockStop = vi.mocked(stopDevcontainer)
 const mockDelete = vi.mocked(deleteDevcontainer)
+const mockCreate = vi.mocked(createDevcontainer)
+const mockUpdate = vi.mocked(updateDevcontainer)
 
 // ---------------------------------------------------------------------------
 // MockEventSource
@@ -262,6 +264,72 @@ describe('Devcontainers lifecycle buttons', () => {
     renderPage()
     await screen.findByText('error-project')
     expect(screen.getByTitle('Start').hasAttribute('disabled')).toBe(false)
+  })
+})
+
+describe('Devcontainers create/edit entry points', () => {
+  it('opens the create modal from the header Add button', async () => {
+    mockFetch.mockResolvedValue({ items: [sample] })
+    renderPage()
+    await screen.findByText('my-project')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Add' }))
+    expect(screen.getByRole('dialog', { name: 'New devcontainer' })).toBeTruthy()
+  })
+
+  it('opens the create modal from the empty-state CTA', async () => {
+    mockFetch.mockResolvedValue({ items: [] })
+    renderPage()
+    await screen.findByText('No devcontainers yet')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add devcontainer' }))
+    expect(screen.getByRole('dialog', { name: 'New devcontainer' })).toBeTruthy()
+  })
+
+  it('opens the edit modal prefilled from the row pencil', async () => {
+    mockFetch.mockResolvedValue({ items: [sample] })
+    renderPage()
+    await screen.findByText('my-project')
+
+    await userEvent.click(screen.getByTitle('Edit'))
+    expect(screen.getByRole('dialog', { name: 'Edit devcontainer' })).toBeTruthy()
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('my-project')
+  })
+
+  it('closes the modal and refetches after a successful create', async () => {
+    mockFetch.mockResolvedValue({ items: [sample] })
+    mockCreate.mockResolvedValue(sample)
+    renderPage()
+    await screen.findByText('my-project')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Add' }))
+    await userEvent.type(screen.getByLabelText('Name'), 'new-one')
+    await userEvent.type(screen.getByLabelText('Local path'), '/home/me/new-one')
+
+    const callsBefore = mockFetch.mock.calls.length
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore))
+  })
+
+  it('closes the modal and refetches after a successful edit', async () => {
+    mockFetch.mockResolvedValue({ items: [sample] })
+    mockUpdate.mockResolvedValue({ ...sample, name: 'renamed' })
+    renderPage()
+    await screen.findByText('my-project')
+
+    await userEvent.click(screen.getByTitle('Edit'))
+    const nameInput = screen.getByLabelText('Name')
+    await userEvent.clear(nameInput)
+    await userEvent.type(nameInput, 'renamed')
+
+    const callsBefore = mockFetch.mock.calls.length
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('dc1', { name: 'renamed' }))
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore))
   })
 })
 

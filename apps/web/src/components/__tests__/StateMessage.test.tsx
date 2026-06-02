@@ -17,4 +17,16 @@ describe('StateMessage', () => {
     rerender(<StateMessage icon={<svg />} title="t" helper="h" tone="error" />)
     expect(container.querySelector('.bg-red-100')).toBeTruthy()
   })
+
+  it('renders an action when provided', () => {
+    render(
+      <StateMessage
+        icon={<span>i</span>}
+        title="No devcontainers yet"
+        helper="helper"
+        action={<button>Add devcontainer</button>}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Add devcontainer' })).toBeTruthy()
+  })
 })

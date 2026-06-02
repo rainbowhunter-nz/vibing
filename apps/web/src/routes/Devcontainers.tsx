@@ -3,6 +3,7 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
+import { DevcontainerFormModal } from '../components/DevcontainerFormModal'
 import {
   fetchDevcontainers,
   startDevcontainer,
@@ -40,6 +41,13 @@ const trashIcon = (
     <path d="M10 11v6" />
     <path d="M14 11v6" />
     <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </svg>
+)
+
+const editIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
   </svg>
 )
 
@@ -103,12 +111,14 @@ function DevcontainerTable({
   onStart,
   onStop,
   onDelete,
+  onEdit,
 }: {
   items: Devcontainer[]
   pending: PendingAction | null
   onStart: (id: string) => void
   onStop: (id: string) => void
   onDelete: (id: string) => void
+  onEdit: (devcontainer: Devcontainer) => void
 }) {
   return (
     <div>
@@ -153,6 +163,19 @@ function DevcontainerTable({
             </span>
             <span className="text-xs text-text-muted">{formatRelativeTime(devcontainer.updated_at)}</span>
             <div className="flex items-center justify-end gap-0.5">
+              <button
+                title="Edit"
+                disabled={isBusy}
+                onClick={() => onEdit(devcontainer)}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-[5px]',
+                  isBusy
+                    ? 'cursor-not-allowed text-text-muted opacity-[0.4]'
+                    : 'cursor-pointer text-text-muted hover:bg-surface-muted',
+                )}
+              >
+                {editIcon}
+              </button>
               <button
                 title="Start"
                 disabled={isBusy || !canStart}
@@ -205,6 +228,7 @@ export function Devcontainers() {
   const { register } = useSseInvalidation()
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'edit'; dc: Devcontainer } | null>(null)
 
   useEffect(() => register('devcontainers', refetch), [register, refetch])
   const crumbs = state.kind === 'ready' ? countLabel(state.data.items.length) : undefined
@@ -222,9 +246,18 @@ export function Devcontainers() {
     }
   }
 
+  const addButton = (
+    <button
+      onClick={() => setModal({ mode: 'create' })}
+      className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white"
+    >
+      + Add
+    </button>
+  )
+
   return (
     <>
-      <PageHeader title="Devcontainers" crumbs={crumbs} />
+      <PageHeader title="Devcontainers" crumbs={crumbs} action={addButton} />
       <div className="flex-1 overflow-auto">
         {actionError && (
           <div className="px-4 pt-3">
@@ -237,7 +270,15 @@ export function Devcontainers() {
               <EmptyState
                 icon={folderIcon}
                 title="No devcontainers yet"
-                helper="Devcontainers will appear here once you add a local folder."
+                helper="Add a local folder to get started."
+                action={
+                  <button
+                    onClick={() => setModal({ mode: 'create' })}
+                    className="rounded-md bg-accent px-3.5 py-2 text-xs font-semibold text-white"
+                  >
+                    Add devcontainer
+                  </button>
+                }
               />
             ) : (
               <DevcontainerTable
@@ -246,11 +287,27 @@ export function Devcontainers() {
                 onStart={(id) => handleAction(id, 'start', () => startDevcontainer(id))}
                 onStop={(id) => handleAction(id, 'stop', () => stopDevcontainer(id))}
                 onDelete={(id) => handleAction(id, 'delete', () => deleteDevcontainer(id))}
+                onEdit={(dc) => setModal({ mode: 'edit', dc })}
               />
             )
           }
         </QueryBoundary>
       </div>
+      {modal &&
+        (modal.mode === 'create' ? (
+          <DevcontainerFormModal
+            mode="create"
+            onClose={() => setModal(null)}
+            onSuccess={() => { setModal(null); refetch() }}
+          />
+        ) : (
+          <DevcontainerFormModal
+            mode="edit"
+            devcontainer={modal.dc}
+            onClose={() => setModal(null)}
+            onSuccess={() => { setModal(null); refetch() }}
+          />
+        ))}
     </>
   )
 }

@@ -6,6 +6,7 @@ interface StateMessageProps {
   title: string
   helper: string
   tone?: 'muted' | 'error'
+  action?: ReactNode
 }
 
 const TONE_CHIP: Record<'muted' | 'error', string> = {
@@ -13,7 +14,7 @@ const TONE_CHIP: Record<'muted' | 'error', string> = {
   error: 'bg-red-100 text-bad',
 }
 
-export function StateMessage({ icon, title, helper, tone = 'muted' }: StateMessageProps) {
+export function StateMessage({ icon, title, helper, tone = 'muted', action }: StateMessageProps) {
   return (
     <div className="flex h-full items-center justify-center p-8">
       <div className="max-w-[320px] text-center">
@@ -28,6 +29,7 @@ export function StateMessage({ icon, title, helper, tone = 'muted' }: StateMessa
         </div>
         <h2 className="mb-1.5 text-[15px] font-semibold text-text">{title}</h2>
         <p className="text-[13px] text-text-muted">{helper}</p>
+        {action && <div className="mt-4 flex justify-center">{action}</div>}
       </div>
     </div>
   )
