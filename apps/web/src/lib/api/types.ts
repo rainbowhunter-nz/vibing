@@ -67,6 +67,41 @@ export interface DiagnosticsResponse {
   checks: DiagnosticCheck[]
 }
 
+export type AgentSessionStatus =
+  | 'starting'
+  | 'running'
+  | 'waiting_for_approval'
+  | 'completed'
+  | 'failed'
+  | 'stopped'
+
+export interface AgentSession {
+  id: string
+  devcontainer_id: string
+  status: AgentSessionStatus
+  started_at: string | null
+  ended_at: string | null
+  last_event_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentSessionStartBody {
+  prompt: string
+}
+
+export interface AgentSessionUserInputBody {
+  inbox_event_id: string
+  text: string
+}
+
+export type ApprovalResolution = 'approved' | 'rejected'
+
+export interface AgentSessionApprovalBody {
+  approval_request_id: string
+  resolution: ApprovalResolution
+}
+
 // Backend error envelope (src/vibing_api/core/errors.py).
 
 export interface ApiErrorBody {

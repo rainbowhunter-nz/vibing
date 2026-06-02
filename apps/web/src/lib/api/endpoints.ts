@@ -1,5 +1,9 @@
 import { getJson, sendJson } from './client'
 import type {
+  AgentSession,
+  AgentSessionApprovalBody,
+  AgentSessionStartBody,
+  AgentSessionUserInputBody,
   ConfigResponse,
   Devcontainer,
   DevcontainerCreateBody,
@@ -35,3 +39,15 @@ export const startDevcontainer = (id: string): Promise<Devcontainer> =>
 
 export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
   sendJson<Devcontainer>(`/devcontainers/${encodeURIComponent(id)}/stop`, 'POST') as Promise<Devcontainer>
+
+export const startAgentSession = (devcontainerId: string, body: AgentSessionStartBody): Promise<AgentSession> =>
+  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions`, 'POST', body) as Promise<AgentSession>
+
+export const stopAgentSession = (devcontainerId: string, sessionId: string): Promise<AgentSession> =>
+  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/stop`, 'POST') as Promise<AgentSession>
+
+export const sendAgentSessionUserInput = (devcontainerId: string, sessionId: string, body: AgentSessionUserInputBody): Promise<AgentSession> =>
+  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/user-input`, 'POST', body) as Promise<AgentSession>
+
+export const resolveAgentSessionApproval = (devcontainerId: string, sessionId: string, body: AgentSessionApprovalBody): Promise<AgentSession> =>
+  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/approval-resolution`, 'POST', body) as Promise<AgentSession>
