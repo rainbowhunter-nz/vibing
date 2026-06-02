@@ -12,8 +12,9 @@ from abc import ABC, abstractmethod
 from fastapi import WebSocket
 from vibing_protocol import Command, CommandEnvelope, RuntimeEvent
 
+from vibing_api.core.broadcaster import Broadcaster
 from vibing_api.core.database import get_connection
-from vibing_api.core.reducer import project
+from vibing_api.core.reducer import invalidations_for, project
 from vibing_api.repositories.runtime_events import RuntimeEventRepository
 
 
@@ -68,8 +69,8 @@ class AgentRegistry(ConnectionRegistry):
         return command.devcontainer_id or ""
 
 
-def persist_runtime_event(event: RuntimeEvent) -> None:
-    """Record an inbound RuntimeEvent and project it within one transaction."""
+def persist_runtime_event(event: RuntimeEvent, broadcaster: Broadcaster | None = None) -> None:
+    """Record an inbound RuntimeEvent, project it, commit, then broadcast invalidations."""
     with get_connection() as conn:
         recorded = RuntimeEventRepository(conn).record(
             event_type=event.event_type,
@@ -80,3 +81,6 @@ def persist_runtime_event(event: RuntimeEvent) -> None:
         )
         project(recorded, conn)
         conn.commit()
+    if broadcaster is not None:
+        for sse_event in invalidations_for(recorded):
+            broadcaster.publish(sse_event)

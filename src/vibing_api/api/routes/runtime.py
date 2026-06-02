@@ -73,7 +73,8 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
                 envelope = RuntimeEventEnvelope.model_validate(message)
             except ValidationError:
                 continue
-            persist_runtime_event(envelope.event)
+            broadcaster = getattr(websocket.app.state, "broadcaster", None)
+            persist_runtime_event(envelope.event, broadcaster)
     except WebSocketDisconnect:
         pass
     except _Reject as reject:

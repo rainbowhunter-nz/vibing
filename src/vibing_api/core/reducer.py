@@ -1,8 +1,8 @@
 """Projection reducer: the sole writer of state derived from runtime events.
 
 Two layers live here:
-- a pure layer (`reduce`, `inbox_event_type_for`) that maps an event to intended
-  writes with no I/O, and
+- a pure layer (`reduce`, `inbox_event_type_for`, `invalidations_for`) that maps an
+  event to intended writes / SSE invalidations with no I/O, and
 - a persistence wrapper (`project`) that applies those writes via the repositories
   inside the caller's transaction (it does not commit).
 """
@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from vibing_protocol import EventType, RuntimeEvent
 
+from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.vocabularies import (
     AgentSessionStatus,
     ApprovalStatus,
@@ -175,3 +176,43 @@ def project(event: RuntimeEvent, conn: sqlite3.Connection) -> None:
             ended_at=event.created_at,
             started_at=session.started_at if session is not None else None,
         )
+
+
+def invalidations_for(event: RuntimeEvent) -> list[SseEvent]:
+    """Pure mapping from a RuntimeEvent to the SSE invalidations to broadcast.
+
+    Returns one SseEvent per affected scope. Derives scopes from the same
+    ProjectionUpdates that drive `project()`, keeping derivation consistent.
+    """
+    updates = reduce(event)
+    result: list[SseEvent] = []
+
+    if updates.devcontainer_status is not None:
+        dc_ids = [event.devcontainer_id] if event.devcontainer_id else []
+        result.append(SseEvent(scope="devcontainers", ids=dc_ids))
+
+    if updates.session_status is not None:
+        session_ids = [event.agent_session_id] if event.agent_session_id else []
+        result.append(SseEvent(scope="agent_sessions", ids=session_ids))
+
+    if updates.create_approval or updates.resolve_approval is not None:
+        approval_ids: list[str] = []
+        if updates.resolve_approval_id:
+            approval_ids = [updates.resolve_approval_id]
+        result.append(SseEvent(scope="approvals", ids=approval_ids))
+
+    touches_inbox = (
+        updates.inbox_event_type is not None
+        or updates.resolve_linked_inbox
+        or event.event_type == EventType.USER_INPUT_SENT
+    )
+    if touches_inbox:
+        if updates.resolve_inbox_event_id:
+            inbox_ids = [updates.resolve_inbox_event_id]
+        elif event.agent_session_id:
+            inbox_ids = [event.agent_session_id]
+        else:
+            inbox_ids = [event.devcontainer_id] if event.devcontainer_id else []
+        result.append(SseEvent(scope="inbox", ids=inbox_ids))
+
+    return result
