@@ -826,3 +826,94 @@ def test_approval_resolution_empty_body_rejected(client: TestClient) -> None:
     dc_id = _create_dc(client)
     resp = client.post(_approval_resolution_url(dc_id, "sess-1"), json={})
     assert resp.status_code == 422
+
+
+# ============================================================
+# GET /devcontainers/{id}/agent-sessions  (list)
+# GET /devcontainers/{id}/agent-sessions/{session_id}  (detail)
+# ============================================================
+
+
+def _seed_session(dc_id: str) -> str:
+    with get_connection() as conn:
+        s = AgentSessionRepository(conn).create(dc_id)
+        conn.commit()
+    return s.id
+
+
+# --- LIST ---
+
+
+def test_list_sessions_empty(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.get(f"/api/v1/devcontainers/{dc_id}/agent-sessions")
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+def test_list_sessions_returns_all_for_devcontainer(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    sid1 = _seed_session(dc_id)
+    sid2 = _seed_session(dc_id)
+    resp = client.get(f"/api/v1/devcontainers/{dc_id}/agent-sessions")
+    assert resp.status_code == 200
+    ids = [s["id"] for s in resp.json()["items"]]
+    assert sid1 in ids
+    assert sid2 in ids
+    assert len(ids) == 2
+
+
+def test_list_sessions_excludes_other_devcontainer(client: TestClient) -> None:
+    dc_a = _create_dc(client)
+    dc_b = _create_dc(client)
+    sid_a = _seed_session(dc_a)
+    _seed_session(dc_b)
+    resp = client.get(f"/api/v1/devcontainers/{dc_a}/agent-sessions")
+    assert resp.status_code == 200
+    ids = [s["id"] for s in resp.json()["items"]]
+    assert ids == [sid_a]
+
+
+def test_list_sessions_devcontainer_not_found(client: TestClient) -> None:
+    resp = client.get("/api/v1/devcontainers/ghost/agent-sessions")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
+
+
+# --- DETAIL ---
+
+
+def test_get_session_returns_correct_fields(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    sid = _seed_session(dc_id)
+    resp = client.get(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{sid}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == sid
+    assert body["devcontainer_id"] == dc_id
+    assert body["status"] == "starting"
+    assert "created_at" in body
+    assert "updated_at" in body
+
+
+def test_get_session_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.get(f"/api/v1/devcontainers/{dc_id}/agent-sessions/ghost-session")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"
+
+
+def test_get_session_devcontainer_not_found(client: TestClient) -> None:
+    resp = client.get("/api/v1/devcontainers/ghost/agent-sessions/some-session")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
+
+
+def test_get_session_ownership_mismatch(client: TestClient) -> None:
+    """Session exists under dc_a but requested under dc_b → 404 AGENT_SESSION_NOT_FOUND."""
+    dc_a = _create_dc(client)
+    dc_b = _create_dc(client)
+    sid = _seed_session(dc_a)
+    resp = client.get(f"/api/v1/devcontainers/{dc_b}/agent-sessions/{sid}")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"

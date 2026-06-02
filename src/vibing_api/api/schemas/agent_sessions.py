@@ -30,3 +30,7 @@ class AgentSession(BaseModel):
     last_event_at: str | None
     created_at: str
     updated_at: str
+
+
+class AgentSessionList(BaseModel):
+    items: list[AgentSession]

@@ -3,6 +3,7 @@ from vibing_protocol import Command, CommandType
 
 from vibing_api.api.schemas.agent_sessions import (
     AgentSession,
+    AgentSessionList,
     AgentSessionStartRequest,
     ApprovalResolutionRequest,
     UserInputRequest,
@@ -41,6 +42,41 @@ _ACTIVE_STATUSES = frozenset(
         AgentSessionStatus.WAITING_FOR_APPROVAL,
     }
 )
+
+
+@router.get(
+    "/{devcontainer_id}/agent-sessions",
+    response_model=AgentSessionList,
+    status_code=status.HTTP_200_OK,
+)
+def list_agent_sessions(devcontainer_id: str) -> AgentSessionList:
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+
+    with get_connection() as conn:
+        sessions = AgentSessionRepository(conn).list_by_devcontainer(devcontainer_id)
+    return AgentSessionList(items=[AgentSession(**vars(s)) for s in sessions])
+
+
+@router.get(
+    "/{devcontainer_id}/agent-sessions/{session_id}",
+    response_model=AgentSession,
+    status_code=status.HTTP_200_OK,
+)
+def get_agent_session(devcontainer_id: str, session_id: str) -> AgentSession:
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).get(session_id)
+    if session is None or session.devcontainer_id != devcontainer_id:
+        raise AgentSessionNotFoundError(session_id)
+
+    return AgentSession(**vars(session))
 
 
 @router.post(

@@ -89,6 +89,13 @@ class AgentSessionRepository:
         ).fetchone()
         return _row_to_session(row) if row is not None else None
 
+    def list_by_devcontainer(self, devcontainer_id: str) -> list[AgentSession]:
+        rows = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM agent_sessions WHERE devcontainer_id = ? ORDER BY created_at",
+            (devcontainer_id,),
+        ).fetchall()
+        return [_row_to_session(row) for row in rows]
+
     def set_status(self, session_id: str, status: AgentSessionStatus) -> AgentSession | None:
         if self.get(session_id) is None:
             return None
