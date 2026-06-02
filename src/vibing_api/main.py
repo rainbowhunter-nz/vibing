@@ -13,12 +13,14 @@ from vibing_api.api.routes import (
     config,
     devcontainers,
     diagnostics,
+    events,
     health,
     inbox,
     runtime,
     settings as settings_route,
     status,
 )
+from vibing_api.core.broadcaster import Broadcaster
 from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
 from vibing_api.core.errors import register_error_handlers
@@ -51,6 +53,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.state.runtime_manager = WorkerRegistry()
     app.state.agent_manager = AgentRegistry()
+    app.state.broadcaster = Broadcaster()
     register_error_handlers(app)
     for router in (
         health.router,
@@ -63,6 +66,7 @@ def create_app() -> FastAPI:
         settings_route.router,
         diagnostics.router,
         runtime.router,
+        events.router,
     ):
         app.include_router(router, prefix=settings.api_v1_prefix)
     if settings.static_dir:
