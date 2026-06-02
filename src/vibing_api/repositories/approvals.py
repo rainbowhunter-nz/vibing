@@ -43,7 +43,7 @@ class ApprovalRepository:
         devcontainer_id: str,
         agent_session_id: str,
         requested_action: str,
-        status: ApprovalStatus = "pending",
+        status: ApprovalStatus = ApprovalStatus.PENDING,
     ) -> ApprovalRequest:
         approval = ApprovalRequest(
             id=str(uuid.uuid4()),

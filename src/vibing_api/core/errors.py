@@ -7,6 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from vibing_api.core.vocabularies import DevcontainerStatus
+
 VALIDATION_ERROR = "VALIDATION_ERROR"
 DEVCONTAINER_NOT_FOUND = "DEVCONTAINER_NOT_FOUND"
 INVALID_DEVCONTAINER_STATE = "INVALID_DEVCONTAINER_STATE"
@@ -51,7 +53,7 @@ class InvalidDevcontainerStateError(APIError):
     status_code = 409
     code = INVALID_DEVCONTAINER_STATE
 
-    def __init__(self, action: str, current: str, allowed: frozenset[str]) -> None:
+    def __init__(self, action: str, current: str, allowed: frozenset[DevcontainerStatus]) -> None:
         super().__init__(
             f"Cannot {action} devcontainer in status {current!r}; allowed from: {sorted(allowed)}"
         )

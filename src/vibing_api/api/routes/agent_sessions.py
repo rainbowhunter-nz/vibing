@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, status
-from vibing_protocol import Command
+from vibing_protocol import Command, CommandType
 
 from vibing_api.api.schemas.agent_sessions import (
     AgentSession,
@@ -21,6 +21,12 @@ from vibing_api.core.errors import (
     RuntimeUnavailableError,
 )
 from vibing_api.core.runtime_channel import AgentRegistry
+from vibing_api.core.vocabularies import (
+    AgentSessionStatus,
+    ApprovalStatus,
+    DevcontainerStatus,
+    InboxEventType,
+)
 from vibing_api.repositories.agent_sessions import AgentSessionRepository
 from vibing_api.repositories.approvals import ApprovalRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
@@ -28,7 +34,13 @@ from vibing_api.repositories.inbox import InboxRepository
 
 router = APIRouter(tags=["agent-sessions"], prefix="/devcontainers")
 
-_ACTIVE_STATUSES = frozenset({"starting", "running", "waiting_for_approval"})
+_ACTIVE_STATUSES = frozenset(
+    {
+        AgentSessionStatus.STARTING,
+        AgentSessionStatus.RUNNING,
+        AgentSessionStatus.WAITING_FOR_APPROVAL,
+    }
+)
 
 
 @router.post(
@@ -43,9 +55,9 @@ async def start_agent_session(
         devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
     if devcontainer is None:
         raise DevcontainerNotFoundError(devcontainer_id)
-    if devcontainer.status != "running":
+    if devcontainer.status != DevcontainerStatus.RUNNING:
         raise InvalidDevcontainerStateError(
-            "start agent session", devcontainer.status, frozenset({"running"})
+            "start agent session", devcontainer.status, frozenset({DevcontainerStatus.RUNNING})
         )
 
     agent_manager: AgentRegistry = request.app.state.agent_manager
@@ -65,7 +77,7 @@ async def start_agent_session(
 
     await agent_manager.send_command(
         Command(
-            type="start_agent_session",
+            type=CommandType.START_AGENT_SESSION,
             devcontainer_id=devcontainer_id,
             agent_session_id=session.id,
             payload={"prompt": payload.prompt},
@@ -103,7 +115,7 @@ async def stop_agent_session(
 
     await agent_manager.send_command(
         Command(
-            type="stop_agent_session",
+            type=CommandType.STOP_AGENT_SESSION,
             devcontainer_id=devcontainer_id,
             agent_session_id=session_id,
         )
@@ -141,7 +153,7 @@ async def send_user_input(
     ):
         raise InboxEventNotFoundError(body.inbox_event_id)
 
-    if inbox_event.event_type != "question" or inbox_event.status == "resolved":
+    if inbox_event.event_type != InboxEventType.QUESTION or inbox_event.status == "resolved":
         raise InboxEventNotActionableError(body.inbox_event_id)
 
     agent_manager: AgentRegistry = request.app.state.agent_manager
@@ -152,7 +164,7 @@ async def send_user_input(
 
     await agent_manager.send_command(
         Command(
-            type="send_user_input",
+            type=CommandType.SEND_USER_INPUT,
             devcontainer_id=devcontainer_id,
             agent_session_id=session_id,
             payload={"inbox_event_id": body.inbox_event_id, "text": body.text},
@@ -191,7 +203,7 @@ async def resolve_approval(
     ):
         raise ApprovalRequestNotFoundError(body.approval_request_id)
 
-    if approval.status != "pending":
+    if approval.status != ApprovalStatus.PENDING:
         raise ApprovalRequestNotPendingError(body.approval_request_id)
 
     agent_manager: AgentRegistry = request.app.state.agent_manager
@@ -202,7 +214,7 @@ async def resolve_approval(
 
     await agent_manager.send_command(
         Command(
-            type="resolve_approval",
+            type=CommandType.RESOLVE_APPROVAL,
             devcontainer_id=devcontainer_id,
             agent_session_id=session_id,
             payload={

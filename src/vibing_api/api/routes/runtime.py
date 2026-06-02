@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
-from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope
+from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope, RuntimeEventSource
 
 from vibing_api.core.runtime_channel import (
     WORKER_SLOT,
@@ -108,7 +108,10 @@ async def agent_ws(websocket: WebSocket) -> None:
             envelope = RegisterEnvelope.model_validate(message)
         except ValidationError:
             return None
-        if envelope.source != "devcontainer_runtime_agent" or not envelope.devcontainer_id:
+        if (
+            envelope.source != RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT
+            or not envelope.devcontainer_id
+        ):
             raise _Reject(_AGENT_MISSING_ID)
         if not manager.register(envelope.devcontainer_id, websocket):
             raise _Reject(_AGENT_ALREADY_CONNECTED)

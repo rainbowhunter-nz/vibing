@@ -25,10 +25,10 @@ from vibing_api.repositories.inbox import InboxRepository
 from vibing_api.repositories.summaries import SessionSummaryRepository
 
 _INBOX_EVENT_TYPE: dict[EventType, InboxEventType] = {
-    "agent_asked_question": "question",
-    "approval_requested": "approval_request",
-    "session_completed": "completion",
-    "session_failed": "failure",
+    EventType.AGENT_ASKED_QUESTION: InboxEventType.QUESTION,
+    EventType.APPROVAL_REQUESTED: InboxEventType.APPROVAL_REQUEST,
+    EventType.SESSION_COMPLETED: InboxEventType.COMPLETION,
+    EventType.SESSION_FAILED: InboxEventType.FAILURE,
 }
 
 
@@ -57,59 +57,59 @@ def reduce(event: RuntimeEvent) -> ProjectionUpdates:
     payload = event.payload or {}
     inbox_event_type = inbox_event_type_for(event_type)
 
-    if event_type == "devcontainer_starting":
-        return ProjectionUpdates(devcontainer_status="starting")
-    if event_type == "devcontainer_started":
-        return ProjectionUpdates(devcontainer_status="running")
-    if event_type == "devcontainer_stopping":
-        return ProjectionUpdates(devcontainer_status="stopping")
-    if event_type == "devcontainer_stopped":
-        return ProjectionUpdates(devcontainer_status="stopped")
-    if event_type == "devcontainer_failed":
-        return ProjectionUpdates(devcontainer_status="error")
-    if event_type == "agent_session_started":
-        return ProjectionUpdates(session_status="running")
-    if event_type == "approval_requested":
+    if event_type == EventType.DEVCONTAINER_STARTING:
+        return ProjectionUpdates(devcontainer_status=DevcontainerStatus.STARTING)
+    if event_type == EventType.DEVCONTAINER_STARTED:
+        return ProjectionUpdates(devcontainer_status=DevcontainerStatus.RUNNING)
+    if event_type == EventType.DEVCONTAINER_STOPPING:
+        return ProjectionUpdates(devcontainer_status=DevcontainerStatus.STOPPING)
+    if event_type == EventType.DEVCONTAINER_STOPPED:
+        return ProjectionUpdates(devcontainer_status=DevcontainerStatus.STOPPED)
+    if event_type == EventType.DEVCONTAINER_FAILED:
+        return ProjectionUpdates(devcontainer_status=DevcontainerStatus.ERROR)
+    if event_type == EventType.AGENT_SESSION_STARTED:
+        return ProjectionUpdates(session_status=AgentSessionStatus.RUNNING)
+    if event_type == EventType.APPROVAL_REQUESTED:
         return ProjectionUpdates(
-            session_status="waiting_for_approval",
+            session_status=AgentSessionStatus.WAITING_FOR_APPROVAL,
             create_approval=True,
             requested_action=payload.get("requested_action", ""),
             inbox_event_type=inbox_event_type,
         )
-    if event_type == "approval_resolved":
+    if event_type == EventType.APPROVAL_RESOLVED:
         # requested_action is optional/informational; resolution is required.
         resolution = payload.get("resolution")
-        if resolution not in ("approved", "rejected"):
+        if resolution not in (ApprovalStatus.APPROVED, ApprovalStatus.REJECTED):
             raise ValueError(
                 "approval_resolved requires payload.resolution in "
                 f"approved/rejected, got: {resolution!r}"
             )
         return ProjectionUpdates(
-            session_status="running",
-            resolve_approval=resolution,
+            session_status=AgentSessionStatus.RUNNING,
+            resolve_approval=ApprovalStatus(resolution),
             resolve_approval_id=payload.get("approval_request_id"),
             resolve_linked_inbox=True,
         )
-    if event_type == "agent_asked_question":
+    if event_type == EventType.AGENT_ASKED_QUESTION:
         return ProjectionUpdates(inbox_event_type=inbox_event_type)
-    if event_type == "user_input_sent":
+    if event_type == EventType.USER_INPUT_SENT:
         return ProjectionUpdates(resolve_inbox_event_id=payload.get("inbox_event_id"))
-    if event_type == "session_completed":
+    if event_type == EventType.SESSION_COMPLETED:
         return ProjectionUpdates(
-            session_status="completed",
-            final_status="completed",
+            session_status=AgentSessionStatus.COMPLETED,
+            final_status=AgentSessionStatus.COMPLETED,
             inbox_event_type=inbox_event_type,
         )
-    if event_type == "session_failed":
+    if event_type == EventType.SESSION_FAILED:
         return ProjectionUpdates(
-            session_status="failed",
-            final_status="failed",
+            session_status=AgentSessionStatus.FAILED,
+            final_status=AgentSessionStatus.FAILED,
             inbox_event_type=inbox_event_type,
         )
-    if event_type == "session_stopped":
+    if event_type == EventType.SESSION_STOPPED:
         return ProjectionUpdates(
-            session_status="stopped",
-            final_status="stopped",
+            session_status=AgentSessionStatus.STOPPED,
+            final_status=AgentSessionStatus.STOPPED,
         )
     return ProjectionUpdates()
 

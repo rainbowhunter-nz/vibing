@@ -4,12 +4,12 @@ Shared typed contract between API, runtimes, and frontend docs.
 
 ## Files
 
-- `commands.py`: control-plane command literals and model.
-- `runtime_events.py`: runtime event/source literals and model.
+- `commands.py`: `CommandType` StrEnum + `Command` model.
+- `runtime_events.py`: `EventType`/`RuntimeEventSource` StrEnums + `RuntimeEvent` model.
 - `messages.py`: WebSocket register/command/event envelopes.
 
 ## Context
 
-- Keep literals explicit.
-- When adding a command/event: update handlers, reducer, tests, docs.
+- Vocabularies are `StrEnum`s (values = wire strings via `auto()`). Compare and construct with members, not raw strings.
+- When adding a command/event: add the enum member, then update handlers, reducer, tests, docs.
 - Keep dependencies light: Pydantic + stdlib.

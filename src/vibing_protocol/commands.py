@@ -5,20 +5,24 @@ runtime (host or devcontainer). This module defines the allowed command types
 and the typed message shape. Dispatch and execution live in consumers.
 """
 
-from typing import Any, Literal, get_args
+from enum import StrEnum, auto
+from typing import Any
 
 from pydantic import BaseModel
 
-CommandType = Literal[
-    "start_devcontainer",
-    "stop_devcontainer",
-    "start_agent_session",
-    "stop_agent_session",
-    "send_user_input",
-    "resolve_approval",
-]
 
-COMMAND_TYPES: frozenset[str] = frozenset(get_args(CommandType))
+class CommandType(StrEnum):
+    """Control-plane command vocabulary. Values are the wire strings."""
+
+    START_DEVCONTAINER = auto()
+    STOP_DEVCONTAINER = auto()
+    START_AGENT_SESSION = auto()
+    STOP_AGENT_SESSION = auto()
+    SEND_USER_INPUT = auto()
+    RESOLVE_APPROVAL = auto()
+
+
+COMMAND_TYPES: frozenset[CommandType] = frozenset(CommandType)
 
 
 class Command(BaseModel):

@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import get_args
 
 import pytest
 from fastapi.testclient import TestClient
@@ -148,10 +147,10 @@ def test_seeded_sample_devcontainers_visible_via_api(client: TestClient) -> None
 
 
 def test_sample_rows_use_valid_vocabulary_values() -> None:
-    dc_statuses = get_args(DevcontainerStatus)
-    session_statuses = get_args(AgentSessionStatus)
-    approval_statuses = get_args(ApprovalStatus)
-    inbox_event_types = get_args(InboxEventType)
+    dc_statuses = frozenset(DevcontainerStatus)
+    session_statuses = frozenset(AgentSessionStatus)
+    approval_statuses = frozenset(ApprovalStatus)
+    inbox_event_types = frozenset(InboxEventType)
 
     for row in SAMPLE_DEVCONTAINERS:
         assert row["status"] in dc_statuses, f"bad devcontainer status: {row['status']}"

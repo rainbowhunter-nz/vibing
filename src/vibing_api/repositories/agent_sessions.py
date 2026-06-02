@@ -42,7 +42,9 @@ class AgentSessionRepository:
         self._conn = conn
         self._conn.row_factory = sqlite3.Row
 
-    def create(self, devcontainer_id: str, status: AgentSessionStatus = "starting") -> AgentSession:
+    def create(
+        self, devcontainer_id: str, status: AgentSessionStatus = AgentSessionStatus.STARTING
+    ) -> AgentSession:
         session_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         session = AgentSession(

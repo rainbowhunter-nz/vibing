@@ -5,11 +5,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from logzero import logger
-from vibing_protocol import Command, EventType, RuntimeEvent, RuntimeEventSource
+from vibing_protocol import Command, CommandType, EventType, RuntimeEvent, RuntimeEventSource
 
 from vibing_host_runtime.devcontainer_cli import DevcontainerCliAdapter, DevcontainerFailure
 
-_SOURCE: RuntimeEventSource = "host_runtime_worker"
+_SOURCE: RuntimeEventSource = RuntimeEventSource.HOST_RUNTIME_WORKER
 
 EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
 
@@ -26,22 +26,22 @@ class DevcontainerCommandHandler:
         self._launcher = launcher
 
     async def handle(self, command: Command, emit: EmitFn) -> None:
-        if command.type == "start_devcontainer":
+        if command.type == CommandType.START_DEVCONTAINER:
             await self._dispatch(
                 command,
                 emit,
                 "start",
-                "devcontainer_starting",
-                "devcontainer_started",
+                EventType.DEVCONTAINER_STARTING,
+                EventType.DEVCONTAINER_STARTED,
                 self._adapter.start,
             )
-        elif command.type == "stop_devcontainer":
+        elif command.type == CommandType.STOP_DEVCONTAINER:
             await self._dispatch(
                 command,
                 emit,
                 "stop",
-                "devcontainer_stopping",
-                "devcontainer_stopped",
+                EventType.DEVCONTAINER_STOPPING,
+                EventType.DEVCONTAINER_STOPPED,
                 self._adapter.stop,
             )
         else:
@@ -61,7 +61,7 @@ class DevcontainerCommandHandler:
             if command.devcontainer_id:
                 await emit(
                     RuntimeEvent(
-                        event_type="devcontainer_failed",
+                        event_type=EventType.DEVCONTAINER_FAILED,
                         source=_SOURCE,
                         devcontainer_id=command.devcontainer_id,
                         payload={"operation": operation, "message": "missing local_path"},
@@ -75,7 +75,7 @@ class DevcontainerCommandHandler:
 
         await emit(
             RuntimeEvent(
-                event_type=pre_event,  # type: ignore[arg-type]
+                event_type=pre_event,
                 source=_SOURCE,
                 devcontainer_id=command.devcontainer_id,
             )
@@ -84,7 +84,7 @@ class DevcontainerCommandHandler:
         if isinstance(result, DevcontainerFailure):
             await emit(
                 RuntimeEvent(
-                    event_type="devcontainer_failed",
+                    event_type=EventType.DEVCONTAINER_FAILED,
                     source=_SOURCE,
                     devcontainer_id=command.devcontainer_id,
                     payload=dataclasses.asdict(result),
@@ -94,7 +94,7 @@ class DevcontainerCommandHandler:
             payload = result.payload if operation == "start" else None
             await emit(
                 RuntimeEvent(
-                    event_type=success_event,  # type: ignore[arg-type]
+                    event_type=success_event,
                     source=_SOURCE,
                     devcontainer_id=command.devcontainer_id,
                     payload=payload or None,

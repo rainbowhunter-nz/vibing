@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from vibing_api.api.schemas.devcontainers import Devcontainer
 from vibing_api.core.vocabularies import DevcontainerStatus
 
-_INITIAL_STATUS: DevcontainerStatus = "created"
+_INITIAL_STATUS: DevcontainerStatus = DevcontainerStatus.CREATED
 _COLUMNS = "id, name, local_path, status, created_at, updated_at"
 
 

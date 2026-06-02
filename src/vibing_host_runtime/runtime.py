@@ -7,12 +7,12 @@ and a skeleton implementation. No Docker, Podman, or Dev Container CLI calls.
 
 from typing import Protocol
 
-from vibing_protocol import Command, RuntimeEvent
+from vibing_protocol import Command, CommandType, RuntimeEvent
 
-HOST_COMMAND_TYPES: frozenset[str] = frozenset(
+HOST_COMMAND_TYPES: frozenset[CommandType] = frozenset(
     {
-        "start_devcontainer",
-        "stop_devcontainer",
+        CommandType.START_DEVCONTAINER,
+        CommandType.STOP_DEVCONTAINER,
     }
 )
 

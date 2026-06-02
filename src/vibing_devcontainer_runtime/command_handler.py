@@ -4,11 +4,11 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 from logzero import logger
-from vibing_protocol import Command, RuntimeEvent, RuntimeEventSource
+from vibing_protocol import Command, CommandType, EventType, RuntimeEvent, RuntimeEventSource
 
 from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner, ClaudeFailure, ClaudeProcess
 
-_SOURCE: RuntimeEventSource = "devcontainer_runtime_agent"
+_SOURCE: RuntimeEventSource = RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT
 
 EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
 
@@ -21,13 +21,13 @@ class AgentCommandHandler:
         self._session_tasks: dict[str, asyncio.Task] = {}
 
     async def handle(self, command: Command, emit: EmitFn) -> None:
-        if command.type == "start_agent_session":
+        if command.type == CommandType.START_AGENT_SESSION:
             await self._start_agent_session(command, emit)
-        elif command.type == "stop_agent_session":
+        elif command.type == CommandType.STOP_AGENT_SESSION:
             await self._stop_agent_session(command, emit)
-        elif command.type == "send_user_input":
+        elif command.type == CommandType.SEND_USER_INPUT:
             await self._send_user_input(command, emit)
-        elif command.type == "resolve_approval":
+        elif command.type == CommandType.RESOLVE_APPROVAL:
             await self._resolve_approval(command, emit)
         else:
             logger.info("Ignoring unsupported command type: %s", command.type)
@@ -35,7 +35,7 @@ class AgentCommandHandler:
     async def _start_agent_session(self, command: Command, emit: EmitFn) -> None:
         await emit(
             RuntimeEvent(
-                event_type="agent_session_started",
+                event_type=EventType.AGENT_SESSION_STARTED,
                 source=_SOURCE,
                 devcontainer_id=command.devcontainer_id,
                 agent_session_id=command.agent_session_id,
@@ -64,7 +64,7 @@ class AgentCommandHandler:
         if isinstance(result, ClaudeFailure):
             await emit(
                 RuntimeEvent(
-                    event_type="session_failed",
+                    event_type=EventType.SESSION_FAILED,
                     source=_SOURCE,
                     devcontainer_id=command.devcontainer_id,
                     agent_session_id=command.agent_session_id,
@@ -74,7 +74,7 @@ class AgentCommandHandler:
         else:
             await emit(
                 RuntimeEvent(
-                    event_type="session_completed",
+                    event_type=EventType.SESSION_COMPLETED,
                     source=_SOURCE,
                     devcontainer_id=command.devcontainer_id,
                     agent_session_id=command.agent_session_id,
@@ -86,7 +86,7 @@ class AgentCommandHandler:
         payload = command.payload or {}
         await emit(
             RuntimeEvent(
-                event_type="user_input_sent",
+                event_type=EventType.USER_INPUT_SENT,
                 source=_SOURCE,
                 devcontainer_id=command.devcontainer_id,
                 agent_session_id=command.agent_session_id,
@@ -98,7 +98,7 @@ class AgentCommandHandler:
         payload = command.payload or {}
         await emit(
             RuntimeEvent(
-                event_type="approval_resolved",
+                event_type=EventType.APPROVAL_RESOLVED,
                 source=_SOURCE,
                 devcontainer_id=command.devcontainer_id,
                 agent_session_id=command.agent_session_id,
@@ -125,7 +125,7 @@ class AgentCommandHandler:
 
         await emit(
             RuntimeEvent(
-                event_type="session_stopped",
+                event_type=EventType.SESSION_STOPPED,
                 source=_SOURCE,
                 devcontainer_id=command.devcontainer_id,
                 agent_session_id=command.agent_session_id,

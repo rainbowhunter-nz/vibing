@@ -8,14 +8,14 @@ launches, no PTY, no I/O.
 
 from typing import Protocol
 
-from vibing_protocol import Command, RuntimeEvent
+from vibing_protocol import Command, CommandType, RuntimeEvent
 
-DEVCONTAINER_COMMAND_TYPES: frozenset[str] = frozenset(
+DEVCONTAINER_COMMAND_TYPES: frozenset[CommandType] = frozenset(
     {
-        "start_agent_session",
-        "stop_agent_session",
-        "send_user_input",
-        "resolve_approval",
+        CommandType.START_AGENT_SESSION,
+        CommandType.STOP_AGENT_SESSION,
+        CommandType.SEND_USER_INPUT,
+        CommandType.RESOLVE_APPROVAL,
     }
 )
 

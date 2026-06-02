@@ -18,7 +18,7 @@ class RegisterEnvelope(BaseModel):
     """A runtime announcing itself on the channel."""
 
     type: Literal["runtime_registered"] = "runtime_registered"
-    source: RuntimeEventSource = "host_runtime_worker"
+    source: RuntimeEventSource = RuntimeEventSource.HOST_RUNTIME_WORKER
     devcontainer_id: str | None = None
 
 

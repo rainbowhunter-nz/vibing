@@ -14,12 +14,15 @@ from vibing_api.core.errors import (
     RuntimeUnavailableError,
 )
 from vibing_api.core.runtime_channel import WORKER_SLOT, WorkerRegistry
+from vibing_api.core.vocabularies import DevcontainerStatus
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 router = APIRouter(tags=["devcontainers"], prefix="/devcontainers")
 
-_START_ALLOWED_FROM = frozenset({"created", "stopped", "error"})
-_STOP_ALLOWED_FROM = frozenset({"running", "error"})
+_START_ALLOWED_FROM = frozenset(
+    {DevcontainerStatus.CREATED, DevcontainerStatus.STOPPED, DevcontainerStatus.ERROR}
+)
+_STOP_ALLOWED_FROM = frozenset({DevcontainerStatus.RUNNING, DevcontainerStatus.ERROR})
 
 
 @router.post("", response_model=Devcontainer, status_code=status.HTTP_201_CREATED)
@@ -71,14 +74,14 @@ def delete_devcontainer(devcontainer_id: str) -> Response:
 @router.post("/{devcontainer_id}/start", response_model=Devcontainer, status_code=202)
 async def start_devcontainer(devcontainer_id: str, request: Request) -> Devcontainer:
     return await _dispatch_lifecycle(
-        devcontainer_id, request, "start", "start_devcontainer", _START_ALLOWED_FROM
+        devcontainer_id, request, "start", CommandType.START_DEVCONTAINER, _START_ALLOWED_FROM
     )
 
 
 @router.post("/{devcontainer_id}/stop", response_model=Devcontainer, status_code=202)
 async def stop_devcontainer(devcontainer_id: str, request: Request) -> Devcontainer:
     return await _dispatch_lifecycle(
-        devcontainer_id, request, "stop", "stop_devcontainer", _STOP_ALLOWED_FROM
+        devcontainer_id, request, "stop", CommandType.STOP_DEVCONTAINER, _STOP_ALLOWED_FROM
     )
 
 
@@ -87,7 +90,7 @@ async def _dispatch_lifecycle(
     request: Request,
     action: str,
     command_type: CommandType,
-    allowed_from: frozenset[str],
+    allowed_from: frozenset[DevcontainerStatus],
 ) -> Devcontainer:
     """Validate state + worker availability, then send the lifecycle Command.
 

@@ -8,7 +8,7 @@ import asyncio
 
 import typer
 from logzero import logger
-from vibing_protocol import RegisterEnvelope
+from vibing_protocol import RegisterEnvelope, RuntimeEventSource
 from vibing_runtime_client import RuntimeChannelClient
 
 from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner
@@ -36,7 +36,7 @@ def serve(
         devcontainer_id,
     )
     register = RegisterEnvelope(
-        source="devcontainer_runtime_agent", devcontainer_id=devcontainer_id
+        source=RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT, devcontainer_id=devcontainer_id
     )
     handler = AgentCommandHandler(ClaudeCodeRunner()).handle
     client = RuntimeChannelClient(control_plane_url, register, handler)

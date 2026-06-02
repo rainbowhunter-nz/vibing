@@ -9,7 +9,7 @@ import asyncio
 
 import typer
 from logzero import logger
-from vibing_protocol import RegisterEnvelope
+from vibing_protocol import RegisterEnvelope, RuntimeEventSource
 from vibing_runtime_client import RuntimeChannelClient
 
 from vibing_host_runtime.client import (
@@ -65,7 +65,7 @@ def run_worker(config: WorkerConfig) -> None:
         agent_control_plane_url=config.agent_control_plane_url,
     )
     handler = DevcontainerCommandHandler(adapter, launcher=launcher)
-    register = RegisterEnvelope(source="host_runtime_worker")
+    register = RegisterEnvelope(source=RuntimeEventSource.HOST_RUNTIME_WORKER)
     client = RuntimeChannelClient(config.control_plane_url, register, handler.handle)
     asyncio.run(client.run())
 

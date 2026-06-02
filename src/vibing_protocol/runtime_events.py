@@ -7,33 +7,39 @@ literal, and the typed message shape. Persistence lives in consumers.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Literal, get_args
+from enum import StrEnum, auto
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-EventType = Literal[
-    "devcontainer_starting",
-    "devcontainer_started",
-    "devcontainer_stopping",
-    "devcontainer_stopped",
-    "devcontainer_failed",
-    "agent_session_started",
-    "agent_asked_question",
-    "approval_requested",
-    "approval_resolved",
-    "user_input_sent",
-    "session_completed",
-    "session_failed",
-    "session_stopped",
-]
 
-RuntimeEventSource = Literal[
-    "host_runtime_worker",
-    "devcontainer_runtime_agent",
-]
+class EventType(StrEnum):
+    """Runtime-event vocabulary. Values are the wire strings."""
 
-EVENT_TYPES: frozenset[str] = frozenset(get_args(EventType))
-RUNTIME_EVENT_SOURCES: frozenset[str] = frozenset(get_args(RuntimeEventSource))
+    DEVCONTAINER_STARTING = auto()
+    DEVCONTAINER_STARTED = auto()
+    DEVCONTAINER_STOPPING = auto()
+    DEVCONTAINER_STOPPED = auto()
+    DEVCONTAINER_FAILED = auto()
+    AGENT_SESSION_STARTED = auto()
+    AGENT_ASKED_QUESTION = auto()
+    APPROVAL_REQUESTED = auto()
+    APPROVAL_RESOLVED = auto()
+    USER_INPUT_SENT = auto()
+    SESSION_COMPLETED = auto()
+    SESSION_FAILED = auto()
+    SESSION_STOPPED = auto()
+
+
+class RuntimeEventSource(StrEnum):
+    """Origin of a runtime event. Values are the wire strings."""
+
+    HOST_RUNTIME_WORKER = auto()
+    DEVCONTAINER_RUNTIME_AGENT = auto()
+
+
+EVENT_TYPES: frozenset[EventType] = frozenset(EventType)
+RUNTIME_EVENT_SOURCES: frozenset[RuntimeEventSource] = frozenset(RuntimeEventSource)
 
 
 class InvalidRuntimeEventError(ValueError):
