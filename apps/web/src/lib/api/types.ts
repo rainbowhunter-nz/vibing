@@ -102,6 +102,45 @@ export interface AgentSessionApprovalBody {
   resolution: ApprovalResolution
 }
 
+export type InboxEventType = 'question' | 'approval_request' | 'completion' | 'failure'
+
+export interface InboxEvent {
+  id: string
+  devcontainer_id: string
+  agent_session_id: string | null
+  approval_request_id: string | null
+  event_type: InboxEventType
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface InboxEventDetail extends InboxEvent {
+  devcontainer: Devcontainer
+  agent_session: AgentSession | null
+  approval_request: ApprovalRequest | null
+}
+
+export interface InboxEventList {
+  items: InboxEvent[]
+}
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
+
+export interface ApprovalRequest {
+  id: string
+  devcontainer_id: string
+  agent_session_id: string
+  status: ApprovalStatus
+  requested_action: string
+  created_at: string
+  decided_at: string | null
+}
+
+export interface ApprovalRequestList {
+  items: ApprovalRequest[]
+}
+
 // Backend error envelope (src/vibing_api/core/errors.py).
 
 export interface ApiErrorBody {

@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createDevcontainer,
   deleteDevcontainer,
+  fetchApprovalRequest,
   fetchDevcontainer,
+  fetchInboxEvent,
+  listApprovalRequests,
+  listInboxEvents,
   resolveAgentSessionApproval,
   sendAgentSessionUserInput,
   startAgentSession,
@@ -213,5 +217,137 @@ describe('resolveAgentSessionApproval', () => {
     await resolveAgentSessionApproval('dc 1', 'sess/2', { approval_request_id: 'apr-1', resolution: 'rejected' })
     const [url] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/v1/devcontainers/dc%201/agent-sessions/sess%2F2/approval-resolution')
+  })
+})
+
+const approvalRequest = {
+  id: 'apr-1',
+  devcontainer_id: 'dc-1',
+  agent_session_id: 'sess-1',
+  status: 'pending' as const,
+  requested_action: 'run tests',
+  created_at: '2024-01-01T00:00:00Z',
+  decided_at: null,
+}
+
+const inboxEvent = {
+  id: 'evt-1',
+  devcontainer_id: 'dc-1',
+  agent_session_id: 'sess-1',
+  approval_request_id: null,
+  event_type: 'completion' as const,
+  status: 'unread',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+}
+
+describe('listInboxEvents', () => {
+  it('GETs /inbox-events with no filters → bare path', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [inboxEvent] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await listInboxEvents()
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/inbox-events')
+    expect(result).toEqual({ items: [inboxEvent] })
+  })
+
+  it('GETs /inbox-events with status filter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await listInboxEvents({ status: 'unread' })
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/inbox-events?status=unread')
+  })
+
+  it('GETs /inbox-events with multiple filters using exact backend param names', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await listInboxEvents({ status: 'unread', devcontainerId: 'dc-1', agentSessionId: 'sess-1' })
+    const [url] = fetchMock.mock.calls[0]
+    const parsed = new URL(url, 'http://x')
+    expect(parsed.pathname).toBe('/api/v1/inbox-events')
+    expect(parsed.searchParams.get('status')).toBe('unread')
+    expect(parsed.searchParams.get('devcontainer_id')).toBe('dc-1')
+    expect(parsed.searchParams.get('agent_session_id')).toBe('sess-1')
+  })
+
+  it('omits undefined filters', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await listInboxEvents({ devcontainerId: 'dc-1' })
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/inbox-events?devcontainer_id=dc-1')
+    expect(url).not.toContain('status')
+    expect(url).not.toContain('agent_session_id')
+  })
+})
+
+describe('fetchInboxEvent', () => {
+  it('GETs /inbox-events/{id} with encoded id', async () => {
+    const detail = {
+      ...inboxEvent,
+      devcontainer,
+      agent_session: agentSession,
+      approval_request: null,
+    }
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, detail))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await fetchInboxEvent('evt 1/x')
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/inbox-events/evt%201%2Fx')
+    expect(result).toEqual(detail)
+    expect(result.devcontainer).toEqual(devcontainer)
+    expect(result.agent_session).toEqual(agentSession)
+    expect(result.approval_request).toBeNull()
+  })
+})
+
+describe('listApprovalRequests', () => {
+  it('GETs /approval-requests with no filters → bare path', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [approvalRequest] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await listApprovalRequests()
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/approval-requests')
+    expect(result).toEqual({ items: [approvalRequest] })
+  })
+
+  it('GETs /approval-requests with status filter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await listApprovalRequests({ status: 'pending' })
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/approval-requests?status=pending')
+  })
+
+  it('GETs /approval-requests with multiple filters using exact backend param names', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await listApprovalRequests({ status: 'pending', devcontainerId: 'dc-1' })
+    const [url] = fetchMock.mock.calls[0]
+    const parsed = new URL(url, 'http://x')
+    expect(parsed.pathname).toBe('/api/v1/approval-requests')
+    expect(parsed.searchParams.get('status')).toBe('pending')
+    expect(parsed.searchParams.get('devcontainer_id')).toBe('dc-1')
+  })
+
+  it('omits undefined filters', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await listApprovalRequests({ devcontainerId: 'dc-2' })
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/approval-requests?devcontainer_id=dc-2')
+    expect(url).not.toContain('status')
+  })
+})
+
+describe('fetchApprovalRequest', () => {
+  it('GETs /approval-requests/{id} with encoded id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, approvalRequest))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await fetchApprovalRequest('apr 1/x')
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/approval-requests/apr%201%2Fx')
+    expect(result).toEqual(approvalRequest)
   })
 })

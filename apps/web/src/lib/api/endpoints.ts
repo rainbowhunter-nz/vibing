@@ -4,6 +4,9 @@ import type {
   AgentSessionApprovalBody,
   AgentSessionStartBody,
   AgentSessionUserInputBody,
+  ApprovalRequest,
+  ApprovalRequestList,
+  ApprovalStatus,
   ConfigResponse,
   Devcontainer,
   DevcontainerCreateBody,
@@ -11,9 +14,18 @@ import type {
   DevcontainerUpdateBody,
   DiagnosticsResponse,
   HealthResponse,
+  InboxEventDetail,
+  InboxEventList,
   SettingsResponse,
   StatusResponse,
 } from './types'
+
+const buildQuery = (params: Record<string, string | undefined>): string => {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) if (v !== undefined) q.set(k, v)
+  const s = q.toString()
+  return s ? `?${s}` : ''
+}
 
 export const fetchHealth = (): Promise<HealthResponse> => getJson('/health')
 export const fetchStatus = (): Promise<StatusResponse> => getJson('/status')
@@ -51,3 +63,22 @@ export const sendAgentSessionUserInput = (devcontainerId: string, sessionId: str
 
 export const resolveAgentSessionApproval = (devcontainerId: string, sessionId: string, body: AgentSessionApprovalBody): Promise<AgentSession> =>
   sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/approval-resolution`, 'POST', body) as Promise<AgentSession>
+
+export const listInboxEvents = (filters?: {
+  status?: string
+  devcontainerId?: string
+  agentSessionId?: string
+}): Promise<InboxEventList> =>
+  getJson(`/inbox-events${buildQuery({ status: filters?.status, devcontainer_id: filters?.devcontainerId, agent_session_id: filters?.agentSessionId })}`)
+
+export const fetchInboxEvent = (id: string): Promise<InboxEventDetail> =>
+  getJson(`/inbox-events/${encodeURIComponent(id)}`)
+
+export const listApprovalRequests = (filters?: {
+  status?: ApprovalStatus
+  devcontainerId?: string
+}): Promise<ApprovalRequestList> =>
+  getJson(`/approval-requests${buildQuery({ status: filters?.status, devcontainer_id: filters?.devcontainerId })}`)
+
+export const fetchApprovalRequest = (id: string): Promise<ApprovalRequest> =>
+  getJson(`/approval-requests/${encodeURIComponent(id)}`)
