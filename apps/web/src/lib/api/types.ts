@@ -86,6 +86,10 @@ export interface AgentSession {
   updated_at: string
 }
 
+export interface AgentSessionList {
+  items: AgentSession[]
+}
+
 export interface AgentSessionStartBody {
   prompt: string
 }

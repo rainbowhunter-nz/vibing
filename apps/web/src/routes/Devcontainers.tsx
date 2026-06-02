@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
@@ -11,6 +11,7 @@ import {
   useApiQuery,
   type Devcontainer,
 } from '../lib/api'
+import { useSseInvalidation } from '../lib/events'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 
@@ -201,8 +202,11 @@ function DevcontainerTable({
 
 export function Devcontainers() {
   const { state, refetch } = useApiQuery(fetchDevcontainers, [])
+  const { register } = useSseInvalidation()
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  useEffect(() => register('devcontainers', refetch), [register, refetch])
   const crumbs = state.kind === 'ready' ? countLabel(state.data.items.length) : undefined
 
   async function handleAction(id: string, action: PendingAction['action'], fn: () => Promise<unknown>) {

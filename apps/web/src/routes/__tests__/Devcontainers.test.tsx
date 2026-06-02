@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, act, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
+import { SseProvider } from '../../lib/events'
 import { Devcontainers } from '../Devcontainers'
 import { fetchDevcontainers, startDevcontainer, stopDevcontainer, deleteDevcontainer } from '../../lib/api'
 import type { Devcontainer } from '../../lib/api/types'
@@ -12,16 +13,75 @@ const mockStart = vi.mocked(startDevcontainer)
 const mockStop = vi.mocked(stopDevcontainer)
 const mockDelete = vi.mocked(deleteDevcontainer)
 
-function renderPage() {
-  return render(
-    <MemoryRouter>
-      <Devcontainers />
-    </MemoryRouter>,
-  )
+// ---------------------------------------------------------------------------
+// MockEventSource
+// ---------------------------------------------------------------------------
+
+class MockEventSource {
+  static instances: MockEventSource[] = []
+
+  readonly url: string
+  readyState: 0 | 1 | 2 = 0
+
+  onopen: (() => void) | null = null
+  onerror: ((e: Event) => void) | null = null
+
+  private listeners: Record<string, Set<EventListener>> = {}
+
+  constructor(url: string) {
+    this.url = url
+    MockEventSource.instances.push(this)
+  }
+
+  addEventListener(type: string, listener: EventListener) {
+    if (!this.listeners[type]) this.listeners[type] = new Set()
+    this.listeners[type].add(listener)
+  }
+
+  removeEventListener(type: string, listener: EventListener) {
+    this.listeners[type]?.delete(listener)
+  }
+
+  simulateOpen() {
+    this.readyState = 1
+    this.onopen?.()
+  }
+
+  simulateEvent(type: string, data: unknown) {
+    const e = Object.assign(new Event(type), { data: JSON.stringify(data) }) as MessageEvent
+    this.listeners[type]?.forEach((l) => l(e))
+  }
+
+  simulateError() {
+    this.readyState = 0
+    this.onerror?.(new Event('error'))
+  }
+
+  close() {
+    this.readyState = 2
+  }
 }
 
-beforeEach(() => vi.clearAllMocks())
-afterEach(() => cleanup())
+beforeEach(() => {
+  MockEventSource.instances = []
+  vi.stubGlobal('EventSource', MockEventSource)
+  vi.clearAllMocks()
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  cleanup()
+})
+
+function renderPage() {
+  return render(
+    <SseProvider>
+      <MemoryRouter>
+        <Devcontainers />
+      </MemoryRouter>
+    </SseProvider>,
+  )
+}
 
 const sample: Devcontainer = {
   id: 'dc1',
@@ -202,5 +262,45 @@ describe('Devcontainers lifecycle buttons', () => {
     renderPage()
     await screen.findByText('error-project')
     expect(screen.getByTitle('Start').hasAttribute('disabled')).toBe(false)
+  })
+})
+
+describe('Devcontainers SSE invalidation', () => {
+  it('AC1+AC3+AC4: refetches and updates status on devcontainers invalidation', async () => {
+    // First call returns stopped, second returns running
+    mockFetch
+      .mockResolvedValueOnce({ items: [{ ...sample, status: 'stopped' }] })
+      .mockResolvedValueOnce({ items: [{ ...sample, status: 'running' }] })
+
+    renderPage()
+    await screen.findByText('stopped')
+
+    const callsBefore = mockFetch.mock.calls.length
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'devcontainers', ids: ['dc1'] })
+    })
+
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore))
+    await waitFor(() => expect(screen.getByText('running')).toBeTruthy())
+  })
+
+  it('AC: single invalidation triggers exactly one refetch', async () => {
+    mockFetch.mockResolvedValue({ items: [sample] })
+
+    renderPage()
+    await screen.findByText('my-project')
+
+    const callsBefore = mockFetch.mock.calls.length
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'devcontainers', ids: [] })
+    })
+
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBe(callsBefore + 1))
   })
 })
