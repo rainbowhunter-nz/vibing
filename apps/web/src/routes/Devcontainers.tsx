@@ -1,8 +1,16 @@
+import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
-import { fetchDevcontainers, useApiQuery, type Devcontainer } from '../lib/api'
+import {
+  fetchDevcontainers,
+  startDevcontainer,
+  stopDevcontainer,
+  deleteDevcontainer,
+  useApiQuery,
+  type Devcontainer,
+} from '../lib/api'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 
@@ -32,6 +40,10 @@ const trashIcon = (
     <path d="M14 11v6" />
     <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
   </svg>
+)
+
+const spinnerIcon = (
+  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent" />
 )
 
 const RUNNING_STATUSES = new Set(['running', 'starting', 'stopping'])
@@ -82,7 +94,21 @@ function countLabel(n: number): string {
 
 const COLUMNS = 'grid grid-cols-[1fr_110px_100px_150px_80px]'
 
-function DevcontainerTable({ items }: { items: Devcontainer[] }) {
+type PendingAction = { id: string; action: 'start' | 'stop' | 'delete' }
+
+function DevcontainerTable({
+  items,
+  pending,
+  onStart,
+  onStop,
+  onDelete,
+}: {
+  items: Devcontainer[]
+  pending: PendingAction | null
+  onStart: (id: string) => void
+  onStop: (id: string) => void
+  onDelete: (id: string) => void
+}) {
   return (
     <div>
       <div
@@ -99,6 +125,10 @@ function DevcontainerTable({ items }: { items: Devcontainer[] }) {
       </div>
       {items.map((devcontainer) => {
         const running = isRunning(devcontainer.status)
+        const isBusy = pending?.id === devcontainer.id
+        const canStart = !running
+        const canStop = devcontainer.status === 'running'
+
         return (
           <div
             key={devcontainer.id}
@@ -124,23 +154,42 @@ function DevcontainerTable({ items }: { items: Devcontainer[] }) {
             <div className="flex items-center justify-end gap-0.5">
               <button
                 title="Start"
-                disabled
-                className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-[5px] text-text-muted opacity-[0.4]"
+                disabled={isBusy || !canStart}
+                onClick={() => onStart(devcontainer.id)}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-[5px]',
+                  isBusy || !canStart
+                    ? 'cursor-not-allowed text-text-muted opacity-[0.4]'
+                    : 'cursor-pointer text-text-muted hover:bg-surface-muted',
+                )}
               >
-                {playIcon}
+                {isBusy && pending?.action === 'start' ? spinnerIcon : playIcon}
               </button>
               <button
                 title="Stop"
-                disabled
-                className="flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-[5px] text-text-muted opacity-[0.4]"
+                disabled={isBusy || !canStop}
+                onClick={() => onStop(devcontainer.id)}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-[5px]',
+                  isBusy || !canStop
+                    ? 'cursor-not-allowed text-text-muted opacity-[0.4]'
+                    : 'cursor-pointer text-text-muted hover:bg-surface-muted',
+                )}
               >
-                {stopIcon}
+                {isBusy && pending?.action === 'stop' ? spinnerIcon : stopIcon}
               </button>
               <button
                 title="Delete"
-                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] text-bad hover:bg-surface-muted"
+                disabled={isBusy}
+                onClick={() => onDelete(devcontainer.id)}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-[5px]',
+                  isBusy
+                    ? 'cursor-not-allowed text-bad opacity-[0.4]'
+                    : 'cursor-pointer text-bad hover:bg-surface-muted',
+                )}
               >
-                {trashIcon}
+                {isBusy && pending?.action === 'delete' ? spinnerIcon : trashIcon}
               </button>
             </div>
           </div>
@@ -151,13 +200,33 @@ function DevcontainerTable({ items }: { items: Devcontainer[] }) {
 }
 
 export function Devcontainers() {
-  const { state } = useApiQuery(fetchDevcontainers, [])
+  const { state, refetch } = useApiQuery(fetchDevcontainers, [])
+  const [pending, setPending] = useState<PendingAction | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const crumbs = state.kind === 'ready' ? countLabel(state.data.items.length) : undefined
+
+  async function handleAction(id: string, action: PendingAction['action'], fn: () => Promise<unknown>) {
+    setPending({ id, action })
+    setActionError(null)
+    try {
+      await fn()
+      refetch()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPending(null)
+    }
+  }
 
   return (
     <>
       <PageHeader title="Devcontainers" crumbs={crumbs} />
       <div className="flex-1 overflow-auto">
+        {actionError && (
+          <div className="px-4 pt-3">
+            <ErrorState title="Action failed" helper={actionError} />
+          </div>
+        )}
         <QueryBoundary state={state} error={<ErrorState {...loadError('devcontainers')} />}>
           {(data) =>
             data.items.length === 0 ? (
@@ -167,7 +236,13 @@ export function Devcontainers() {
                 helper="Devcontainers will appear here once you add a local folder."
               />
             ) : (
-              <DevcontainerTable items={data.items} />
+              <DevcontainerTable
+                items={data.items}
+                pending={pending}
+                onStart={(id) => handleAction(id, 'start', () => startDevcontainer(id))}
+                onStop={(id) => handleAction(id, 'stop', () => stopDevcontainer(id))}
+                onDelete={(id) => handleAction(id, 'delete', () => deleteDevcontainer(id))}
+              />
             )
           }
         </QueryBoundary>
