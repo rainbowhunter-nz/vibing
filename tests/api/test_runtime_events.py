@@ -31,6 +31,20 @@ def _insert_session(conn, session_id: str, devcontainer_id: str) -> None:
     )
 
 
+def test_user_input_sent_in_event_vocabulary() -> None:
+    from vibing_protocol.runtime_events import EVENT_TYPES, RuntimeEvent
+
+    assert "user_input_sent" in EVENT_TYPES
+    evt = RuntimeEvent(
+        event_type="user_input_sent",
+        source="devcontainer_runtime_agent",
+        devcontainer_id="dc-1",
+        agent_session_id="sess-1",
+        payload={"inbox_event_id": "inbox-42"},
+    )
+    assert evt.event_type == "user_input_sent"
+
+
 def test_record_runtime_event_persists_row(initialized_db: Path) -> None:
     with get_connection() as conn:
         _insert_devcontainer(conn, "dc1")

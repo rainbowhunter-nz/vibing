@@ -38,6 +38,7 @@ def test_inbox_event_type_for_unmapped_returns_none() -> None:
         "devcontainer_failed",
         "agent_session_started",
         "approval_resolved",
+        "user_input_sent",
         "session_stopped",
     ):
         assert inbox_event_type_for(event_type) is None
@@ -223,6 +224,48 @@ def test_approval_resolved_without_pending_is_noop(
         "SELECT id FROM approval_requests WHERE agent_session_id = ?", (session_id,)
     ).fetchall()
     assert rows == []
+
+
+def test_user_input_sent_resolves_question_inbox(
+    conn: sqlite3.Connection, seeded: tuple[str, str]
+) -> None:
+    dc_id, session_id = seeded
+    sessions = AgentSessionRepository(conn)
+    inbox = InboxRepository(conn)
+
+    # Seed a question inbox event via agent_asked_question
+    _emit(conn, dc_id, session_id, "agent_asked_question")
+    question = inbox.list(agent_session_id=session_id)[0]
+    assert question.event_type == "question"
+    assert question.status == "unread"
+
+    # Session is still running (agent_asked_question does not change session status)
+    _emit(conn, dc_id, session_id, "agent_session_started")
+
+    # user_input_sent should resolve the inbox event, not change session status
+    _emit(conn, dc_id, session_id, "user_input_sent", {"inbox_event_id": question.id})
+
+    assert inbox.get(question.id).status == "resolved"
+    # session status unchanged
+    assert sessions.get(session_id).status == "running"
+
+
+def test_user_input_sent_missing_inbox_event_is_noop(
+    conn: sqlite3.Connection, seeded: tuple[str, str]
+) -> None:
+    dc_id, session_id = seeded
+    # emit with a non-existent inbox_event_id — tolerate gracefully
+    _emit(conn, dc_id, session_id, "user_input_sent", {"inbox_event_id": "does-not-exist"})
+    # No exception, no state change
+    rows = conn.execute(
+        "SELECT id FROM inbox_events WHERE agent_session_id = ?", (session_id,)
+    ).fetchall()
+    assert rows == []
+
+
+def test_reduce_user_input_sent() -> None:
+    updates = reduce(_event("user_input_sent", payload={"inbox_event_id": "inbox-42"}))
+    assert updates == ProjectionUpdates(resolve_inbox_event_id="inbox-42")
 
 
 def test_inbox_event_skipped_when_devcontainer_id_absent(conn: sqlite3.Connection) -> None:

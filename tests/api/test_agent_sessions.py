@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from vibing_api.core.database import get_connection
 from vibing_api.repositories.agent_sessions import AgentSessionRepository
+from vibing_api.repositories.inbox import InboxRepository
 
 AGENT_WS_URL = "/api/v1/runtime/agent/ws"
 
@@ -354,3 +355,224 @@ def test_reducer_projects_session_stopped(client: TestClient) -> None:
     assert updated.status == "stopped"
     assert summary is not None
     assert summary.final_status == "stopped"
+
+
+# ============================================================
+# POST /devcontainers/{id}/agent-sessions/{session_id}/user-input
+# ============================================================
+
+
+def _seed_question_inbox(session_id: str, devcontainer_id: str) -> str:
+    """Create an unread question inbox event; return its id."""
+    with get_connection() as conn:
+        event = InboxRepository(conn).create(
+            devcontainer_id=devcontainer_id,
+            event_type="question",
+            status="unread",
+            agent_session_id=session_id,
+        )
+        conn.commit()
+    return event.id
+
+
+def _user_input_url(dc_id: str, session_id: str) -> str:
+    return f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session_id}/user-input"
+
+
+# --- Happy path ---
+
+
+def test_user_input_returns_202_and_sends_command(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+    inbox_id = _seed_question_inbox(session.id, dc_id)
+
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+
+        resp = client.post(
+            _user_input_url(dc_id, session.id),
+            json={"inbox_event_id": inbox_id, "text": "my answer"},
+        )
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["id"] == session.id
+        assert body["devcontainer_id"] == dc_id
+
+        cmd = ws.receive_json()
+        assert cmd["type"] == "command"
+        assert cmd["command"]["type"] == "send_user_input"
+        assert cmd["command"]["devcontainer_id"] == dc_id
+        assert cmd["command"]["agent_session_id"] == session.id
+        assert cmd["command"]["payload"] == {"inbox_event_id": inbox_id, "text": "my answer"}
+
+
+def test_user_input_inbox_event_not_resolved_by_http(client: TestClient) -> None:
+    """ADR-0002: HTTP call must NOT resolve the inbox event; only the projected event does."""
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+    inbox_id = _seed_question_inbox(session.id, dc_id)
+
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+
+        client.post(
+            _user_input_url(dc_id, session.id),
+            json={"inbox_event_id": inbox_id, "text": "answer"},
+        )
+        ws.receive_json()  # consume command
+
+    with get_connection() as conn:
+        inbox_event = InboxRepository(conn).get(inbox_id)
+    assert inbox_event is not None
+    assert inbox_event.status == "unread"  # still unread — not resolved by HTTP
+
+
+# --- Guard 1: devcontainer not found ---
+
+
+def test_user_input_guard_devcontainer_not_found(client: TestClient) -> None:
+    resp = client.post(
+        "/api/v1/devcontainers/ghost/agent-sessions/sess-1/user-input",
+        json={"inbox_event_id": "inbox-1", "text": "x"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
+
+
+# --- Guard 2: session not found ---
+
+
+def test_user_input_guard_session_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.post(
+        _user_input_url(dc_id, "ghost-session"),
+        json={"inbox_event_id": "inbox-1", "text": "x"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"
+
+
+# --- Guard 3: session not active ---
+
+
+@pytest.mark.parametrize("terminal_status", ["completed", "failed", "stopped"])
+def test_user_input_guard_session_not_active(client: TestClient, terminal_status: str) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="starting")
+        AgentSessionRepository(conn).set_status(session.id, terminal_status)  # type: ignore[arg-type]
+        conn.commit()
+    resp = client.post(
+        _user_input_url(dc_id, session.id),
+        json={"inbox_event_id": "inbox-1", "text": "x"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_ACTIVE"
+
+
+# --- Guard 4: inbox event not found ---
+
+
+def test_user_input_guard_inbox_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+    resp = client.post(
+        _user_input_url(dc_id, session.id),
+        json={"inbox_event_id": "does-not-exist", "text": "x"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "INBOX_EVENT_NOT_FOUND"
+
+
+def test_user_input_guard_inbox_wrong_session(client: TestClient) -> None:
+    """Inbox event belonging to a different session is treated as not found."""
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session1 = AgentSessionRepository(conn).create(dc_id, status="running")
+        session2 = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+    inbox_id = _seed_question_inbox(session1.id, dc_id)
+    resp = client.post(
+        _user_input_url(dc_id, session2.id),
+        json={"inbox_event_id": inbox_id, "text": "x"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "INBOX_EVENT_NOT_FOUND"
+
+
+# --- Guard 5: inbox event not actionable ---
+
+
+def test_user_input_guard_inbox_wrong_type(client: TestClient) -> None:
+    """An approval_request inbox event is not actionable for user-input."""
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        approval_inbox = InboxRepository(conn).create(
+            devcontainer_id=dc_id,
+            event_type="approval_request",
+            status="unread",
+            agent_session_id=session.id,
+        )
+        conn.commit()
+    resp = client.post(
+        _user_input_url(dc_id, session.id),
+        json={"inbox_event_id": approval_inbox.id, "text": "yes"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INBOX_EVENT_NOT_ACTIONABLE"
+
+
+def test_user_input_guard_inbox_already_resolved(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        inbox_event = InboxRepository(conn).create(
+            devcontainer_id=dc_id,
+            event_type="question",
+            status="unread",
+            agent_session_id=session.id,
+        )
+        InboxRepository(conn).resolve(inbox_event.id)
+        conn.commit()
+    resp = client.post(
+        _user_input_url(dc_id, session.id),
+        json={"inbox_event_id": inbox_event.id, "text": "answer"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INBOX_EVENT_NOT_ACTIONABLE"
+
+
+# --- Guard 6: runtime unavailable ---
+
+
+def test_user_input_guard_runtime_unavailable(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+    inbox_id = _seed_question_inbox(session.id, dc_id)
+    resp = client.post(
+        _user_input_url(dc_id, session.id),
+        json={"inbox_event_id": inbox_id, "text": "x"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+
+
+# --- Validation: empty fields ---
+
+
+def test_user_input_empty_body_rejected(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.post(_user_input_url(dc_id, "sess-1"), json={})
+    assert resp.status_code == 422

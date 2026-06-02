@@ -165,11 +165,42 @@ def test_unsupported_command_emits_nothing():
 
     asyncio.run(
         handler.handle(
-            Command(type="send_user_input", devcontainer_id="dc-1"),  # type: ignore[arg-type]
+            Command(type="resolve_approval", devcontainer_id="dc-1"),  # type: ignore[arg-type]
             emit,
         )
     )
     assert events == []
+
+
+# --- send_user_input: emits user_input_sent ---
+
+
+def test_send_user_input_emits_user_input_sent():
+    runner = _make_runner(ClaudeSuccess(result=""))
+    handler = AgentCommandHandler(runner)
+    events: list[RuntimeEvent] = []
+
+    async def emit(event: RuntimeEvent) -> None:
+        events.append(event)
+
+    asyncio.run(
+        handler.handle(
+            Command(
+                type="send_user_input",
+                devcontainer_id="dc-1",
+                agent_session_id="sess-1",
+                payload={"inbox_event_id": "inbox-abc", "text": "my answer"},
+            ),
+            emit,
+        )
+    )
+    assert len(events) == 1
+    evt = events[0]
+    assert evt.event_type == "user_input_sent"
+    assert evt.source == "devcontainer_runtime_agent"
+    assert evt.devcontainer_id == "dc-1"
+    assert evt.agent_session_id == "sess-1"
+    assert evt.payload == {"inbox_event_id": "inbox-abc"}
 
 
 # ============================================================

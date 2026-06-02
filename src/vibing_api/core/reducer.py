@@ -46,6 +46,7 @@ class ProjectionUpdates:
     resolve_approval: ApprovalStatus | None = None
     inbox_event_type: InboxEventType | None = None
     resolve_linked_inbox: bool = False
+    resolve_inbox_event_id: str | None = None
     final_status: AgentSessionStatus | None = None
 
 
@@ -89,6 +90,8 @@ def reduce(event: RuntimeEvent) -> ProjectionUpdates:
         )
     if event_type == "agent_asked_question":
         return ProjectionUpdates(inbox_event_type=inbox_event_type)
+    if event_type == "user_input_sent":
+        return ProjectionUpdates(resolve_inbox_event_id=payload.get("inbox_event_id"))
     if event_type == "session_completed":
         return ProjectionUpdates(
             session_status="completed",
@@ -146,6 +149,10 @@ def project(event: RuntimeEvent, conn: sqlite3.Connection) -> None:
                 # tolerate out-of-order events: skip if the referenced row isn't present yet
                 if linked is not None:
                     inbox.resolve(linked.id)
+
+    if updates.resolve_inbox_event_id is not None:
+        # tolerate out-of-order events: resolve returns None if absent, which is fine
+        inbox.resolve(updates.resolve_inbox_event_id)
 
     # tolerate out-of-order events: skip if devcontainer_id isn't present yet
     if updates.inbox_event_type is not None and event.devcontainer_id is not None:

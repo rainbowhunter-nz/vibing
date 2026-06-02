@@ -25,6 +25,8 @@ class AgentCommandHandler:
             await self._start_agent_session(command, emit)
         elif command.type == "stop_agent_session":
             await self._stop_agent_session(command, emit)
+        elif command.type == "send_user_input":
+            await self._send_user_input(command, emit)
         else:
             logger.info("Ignoring unsupported command type: %s", command.type)
 
@@ -77,6 +79,18 @@ class AgentCommandHandler:
                     payload={"result": result.result},
                 )
             )
+
+    async def _send_user_input(self, command: Command, emit: EmitFn) -> None:
+        payload = command.payload or {}
+        await emit(
+            RuntimeEvent(
+                event_type="user_input_sent",
+                source=_SOURCE,
+                devcontainer_id=command.devcontainer_id,
+                agent_session_id=command.agent_session_id,
+                payload={"inbox_event_id": payload.get("inbox_event_id")},
+            )
+        )
 
     async def _stop_agent_session(self, command: Command, emit: EmitFn) -> None:
         session_id = command.agent_session_id or ""

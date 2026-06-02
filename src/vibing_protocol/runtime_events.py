@@ -21,6 +21,7 @@ EventType = Literal[
     "agent_asked_question",
     "approval_requested",
     "approval_resolved",
+    "user_input_sent",
     "session_completed",
     "session_failed",
     "session_stopped",

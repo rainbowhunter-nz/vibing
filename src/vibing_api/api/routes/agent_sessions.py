@@ -1,19 +1,26 @@
 from fastapi import APIRouter, Request, status
 from vibing_protocol import Command
 
-from vibing_api.api.schemas.agent_sessions import AgentSession, AgentSessionStartRequest
+from vibing_api.api.schemas.agent_sessions import (
+    AgentSession,
+    AgentSessionStartRequest,
+    UserInputRequest,
+)
 from vibing_api.core.database import get_connection
 from vibing_api.core.errors import (
     ActiveAgentSessionError,
     AgentSessionNotFoundError,
     DevcontainerNotFoundError,
     InactiveAgentSessionError,
+    InboxEventNotActionableError,
+    InboxEventNotFoundError,
     InvalidDevcontainerStateError,
     RuntimeUnavailableError,
 )
 from vibing_api.core.runtime_channel import AgentRegistry
 from vibing_api.repositories.agent_sessions import AgentSessionRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
+from vibing_api.repositories.inbox import InboxRepository
 
 router = APIRouter(tags=["agent-sessions"], prefix="/devcontainers")
 
@@ -95,6 +102,56 @@ async def stop_agent_session(
             type="stop_agent_session",
             devcontainer_id=devcontainer_id,
             agent_session_id=session_id,
+        )
+    )
+    return AgentSession(**vars(session))
+
+
+@router.post(
+    "/{devcontainer_id}/agent-sessions/{session_id}/user-input",
+    response_model=AgentSession,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def send_user_input(
+    devcontainer_id: str, session_id: str, body: UserInputRequest, request: Request
+) -> AgentSession:
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).get(session_id)
+    if session is None or session.devcontainer_id != devcontainer_id:
+        raise AgentSessionNotFoundError(session_id)
+
+    if session.status not in _ACTIVE_STATUSES:
+        raise InactiveAgentSessionError(session_id)
+
+    with get_connection() as conn:
+        inbox_event = InboxRepository(conn).get(body.inbox_event_id)
+    if (
+        inbox_event is None
+        or inbox_event.agent_session_id != session_id
+        or inbox_event.devcontainer_id != devcontainer_id
+    ):
+        raise InboxEventNotFoundError(body.inbox_event_id)
+
+    if inbox_event.event_type != "question" or inbox_event.status == "resolved":
+        raise InboxEventNotActionableError(body.inbox_event_id)
+
+    agent_manager: AgentRegistry = request.app.state.agent_manager
+    if not agent_manager.is_connected(devcontainer_id):
+        raise RuntimeUnavailableError(
+            f"No Devcontainer Runtime Agent is connected for devcontainer: {devcontainer_id}"
+        )
+
+    await agent_manager.send_command(
+        Command(
+            type="send_user_input",
+            devcontainer_id=devcontainer_id,
+            agent_session_id=session_id,
+            payload={"inbox_event_id": body.inbox_event_id, "text": body.text},
         )
     )
     return AgentSession(**vars(session))

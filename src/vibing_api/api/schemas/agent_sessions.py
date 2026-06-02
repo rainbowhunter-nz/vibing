@@ -7,6 +7,11 @@ class AgentSessionStartRequest(BaseModel):
     prompt: str = Field(min_length=1)
 
 
+class UserInputRequest(BaseModel):
+    inbox_event_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
 class AgentSession(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

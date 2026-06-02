@@ -15,6 +15,7 @@ AGENT_SESSION_ACTIVE = "AGENT_SESSION_ACTIVE"
 AGENT_SESSION_NOT_FOUND = "AGENT_SESSION_NOT_FOUND"
 AGENT_SESSION_NOT_ACTIVE = "AGENT_SESSION_NOT_ACTIVE"
 INBOX_EVENT_NOT_FOUND = "INBOX_EVENT_NOT_FOUND"
+INBOX_EVENT_NOT_ACTIONABLE = "INBOX_EVENT_NOT_ACTIONABLE"
 APPROVAL_REQUEST_NOT_FOUND = "APPROVAL_REQUEST_NOT_FOUND"
 INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
@@ -87,6 +88,14 @@ class InboxEventNotFoundError(APIError):
 
     def __init__(self, inbox_event_id: str) -> None:
         super().__init__(f"Inbox event not found: {inbox_event_id}")
+
+
+class InboxEventNotActionableError(APIError):
+    status_code = 409
+    code = INBOX_EVENT_NOT_ACTIONABLE
+
+    def __init__(self, inbox_event_id: str) -> None:
+        super().__init__(f"Inbox event is not actionable: {inbox_event_id}")
 
 
 class ApprovalRequestNotFoundError(APIError):
