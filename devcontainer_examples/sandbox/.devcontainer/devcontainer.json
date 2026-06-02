@@ -1,0 +1,14 @@
+{
+  "name": "vibing-sandbox",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "remoteUser": "node",
+  // Linux: make host.docker.internal resolve so the agent can reach the Control Plane.
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
+  // Pass Claude auth through without mounting host paths (sibling container can't see them).
+  "containerEnv": {
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
+  }
+}
