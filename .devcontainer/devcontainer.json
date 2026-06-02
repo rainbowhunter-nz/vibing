@@ -9,5 +9,15 @@
     "source=${localEnv:HOME}/.claude,target=/mnt/host-claude,type=bind,readonly"
   ],
   "postCreateCommand": "bash .devcontainer/post_create_setup.sh",
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
+  },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "app",
+      "onAutoForward": "silent"
+    }
+  }
 }

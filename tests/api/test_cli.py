@@ -17,8 +17,17 @@ def test_root_cli_exposes_runtime_subcommands() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0, result.output
-    assert "host-runtime" in result.output
-    assert "devcontainer-runtime" in result.output
+    assert "runtime" in result.output
+    assert "host-runtime" not in result.output
+    assert "devcontainer-runtime" not in result.output
+
+
+def test_runtime_group_exposes_host_and_devcontainer() -> None:
+    result = runner.invoke(app, ["runtime", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "host" in result.output
+    assert "devcontainer" in result.output
 
 
 def test_seed_command_inserts_sample_rows(db_path: Path) -> None:

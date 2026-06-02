@@ -1,9 +1,12 @@
 """Dev Container CLI adapter.
 
 Shells out to the official `devcontainer` CLI for Devcontainer lifecycle operations
-(ADR-0003) — never Docker/Podman SDKs directly. Validates only that `local_path` is an
-existing directory; all `devcontainer.json` validation is left to the CLI. Returns a
-structured success/failure result that command handling turns into Runtime Events.
+(ADR-0003) — never Docker/Podman SDKs directly. The CLI has no `stop` command, so stop
+resolves the container by the `devcontainer.local_folder` label the CLI stamps on it and
+stops it via the engine CLI (still shelling out, not a socket library). Validates only that
+`local_path` is an existing directory; all `devcontainer.json` validation is left to the
+CLI. Returns a structured success/failure result that command handling turns into Runtime
+Events.
 """
 
 import asyncio
@@ -72,6 +75,16 @@ def _last_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _missing_dir(operation: str, local_path: str) -> DevcontainerFailure:
+    return DevcontainerFailure(
+        operation=operation,
+        command=[],
+        exit_code=None,
+        stderr_tail="",
+        message=f"local_path is not an existing directory: {local_path}",
+    )
+
+
 def _parse_up_output(stdout: str) -> dict[str, Any]:
     data = _last_json_object(stdout)
     if data is None:
@@ -85,28 +98,44 @@ def _parse_up_output(stdout: str) -> dict[str, Any]:
 
 
 class DevcontainerCliAdapter:
-    """Maps start/stop to `devcontainer up`/`stop` via an injectable runner."""
+    """Starts via `devcontainer up`; stops the container directly via the engine CLI."""
 
-    def __init__(self, cli: str = "devcontainer", *, runner: Runner | None = None) -> None:
+    def __init__(
+        self,
+        cli: str = "devcontainer",
+        *,
+        engine: str = "docker",
+        runner: Runner | None = None,
+    ) -> None:
         self._cli = cli
+        self._engine = engine
         self._runner = runner or _default_runner
 
     async def start(self, local_path: str) -> DevcontainerResult:
-        return await self._run("start", ["up", "--workspace-folder", local_path], local_path)
+        if not Path(local_path).is_dir():
+            return _missing_dir("start", local_path)
+        command = [self._cli, "up", "--workspace-folder", local_path]
+        result = await self._exec("start", command)
+        if isinstance(result, DevcontainerFailure):
+            return result
+        return DevcontainerSuccess(operation="start", payload=_parse_up_output(result.stdout))
 
     async def stop(self, local_path: str) -> DevcontainerResult:
-        return await self._run("stop", ["stop", "--workspace-folder", local_path], local_path)
-
-    async def _run(self, operation: str, args: list[str], local_path: str) -> DevcontainerResult:
-        command = [self._cli, *args]
         if not Path(local_path).is_dir():
-            return DevcontainerFailure(
-                operation=operation,
-                command=command,
-                exit_code=None,
-                stderr_tail="",
-                message=f"local_path is not an existing directory: {local_path}",
-            )
+            return _missing_dir("stop", local_path)
+        label = f"label=devcontainer.local_folder={local_path}"
+        listed = await self._exec("stop", [self._engine, "ps", "-q", "--filter", label])
+        if isinstance(listed, DevcontainerFailure):
+            return listed
+        container_ids = listed.stdout.split()
+        if not container_ids:
+            return DevcontainerSuccess(operation="stop")
+        stopped = await self._exec("stop", [self._engine, "stop", *container_ids])
+        if isinstance(stopped, DevcontainerFailure):
+            return stopped
+        return DevcontainerSuccess(operation="stop")
+
+    async def _exec(self, operation: str, command: list[str]) -> RunResult | DevcontainerFailure:
         try:
             result = await self._runner(command)
         except FileNotFoundError:
@@ -115,7 +144,7 @@ class DevcontainerCliAdapter:
                 command=command,
                 exit_code=None,
                 stderr_tail="",
-                message=f"Dev Container CLI not found: {self._cli}",
+                message=f"CLI not found: {command[0]}",
             )
         if result.returncode != 0:
             return DevcontainerFailure(
@@ -125,5 +154,4 @@ class DevcontainerCliAdapter:
                 stderr_tail=result.stderr[-_STDERR_TAIL_CHARS:],
                 message=f"devcontainer {operation} failed with exit code {result.returncode}",
             )
-        payload = _parse_up_output(result.stdout) if operation == "start" else {}
-        return DevcontainerSuccess(operation=operation, payload=payload)
+        return result

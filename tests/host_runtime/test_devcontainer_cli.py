@@ -37,12 +37,22 @@ def test_start_maps_to_devcontainer_up(tmp_path: Path) -> None:
     assert runner.calls == [["devcontainer", "up", "--workspace-folder", str(tmp_path)]]
 
 
-def test_stop_maps_to_devcontainer_stop_not_down(tmp_path: Path) -> None:
-    runner = FakeRunner(_ok())
-    adapter = DevcontainerCliAdapter(cli="devcontainer", runner=runner)
+def test_stop_resolves_container_by_label_and_stops_via_engine(tmp_path: Path) -> None:
+    runner = FakeRunner(_ok("c1\n"))
+    adapter = DevcontainerCliAdapter(engine="docker", runner=runner)
     asyncio.run(adapter.stop(str(tmp_path)))
-    assert runner.calls == [["devcontainer", "stop", "--workspace-folder", str(tmp_path)]]
-    assert "down" not in runner.calls[0]
+    assert runner.calls == [
+        ["docker", "ps", "-q", "--filter", f"label=devcontainer.local_folder={tmp_path}"],
+        ["docker", "stop", "c1"],
+    ]
+
+
+def test_stop_no_running_container_succeeds_without_stopping(tmp_path: Path) -> None:
+    runner = FakeRunner(_ok(""))
+    adapter = DevcontainerCliAdapter(engine="docker", runner=runner)
+    result = asyncio.run(adapter.stop(str(tmp_path)))
+    assert isinstance(result, DevcontainerSuccess)
+    assert len(runner.calls) == 1  # only the ps lookup, no stop
 
 
 def test_custom_cli_binary_is_used(tmp_path: Path) -> None:
