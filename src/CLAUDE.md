@@ -2,6 +2,9 @@
 
 Single uv Python package. Import packages below are domains, not separate distributions.
 
+## Rules
+- Use typer and rich for python CLI tools. use logzero for logging.
+
 ## Packages
 
 - `vibing_cli`: root `vibing` Typer command.
