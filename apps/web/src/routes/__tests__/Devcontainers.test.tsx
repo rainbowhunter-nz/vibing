@@ -355,6 +355,47 @@ describe('Devcontainers SSE invalidation', () => {
     await waitFor(() => expect(screen.getByText('running')).toBeTruthy())
   })
 
+  it('no flash: keeps the list visible during an invalidation refetch', async () => {
+    const second = new Promise<{ items: Devcontainer[] }>(() => {}) // never settles: hold the in-flight window
+    mockFetch
+      .mockResolvedValueOnce({ items: [{ ...sample, status: 'stopped' }] })
+      .mockReturnValueOnce(second)
+
+    renderPage()
+    await screen.findByText('stopped')
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'devcontainers', ids: [] })
+    })
+
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBe(2))
+    // Background refetch in flight: no page-level spinner, old data still shown.
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByText('stopped')).toBeTruthy()
+  })
+
+  it('background refetch error keeps data visible and shows the inline error', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ items: [{ ...sample, status: 'running' }] })
+      .mockRejectedValueOnce(new Error('refresh failed'))
+
+    renderPage()
+    await screen.findByText('running')
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'devcontainers', ids: [] })
+    })
+
+    await screen.findByText('refresh failed')
+    // Data stays visible; no full-page error state replaces it.
+    expect(screen.getByText('running')).toBeTruthy()
+    expect(screen.queryByText("Couldn't load devcontainers")).toBeNull()
+  })
+
   it('AC: single invalidation triggers exactly one refetch', async () => {
     mockFetch.mockResolvedValue({ items: [sample] })
 

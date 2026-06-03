@@ -217,6 +217,7 @@ export function Devcontainers() {
 
   useEffect(() => register('devcontainers', refetch), [register, refetch])
   const crumbs = state.kind === 'ready' ? countLabel(state.data.items.length) : undefined
+  const refreshError = state.kind === 'ready' ? state.error : undefined
 
   async function handleAction(id: string, action: PendingAction['action'], fn: () => Promise<unknown>) {
     setPending({ id, action })
@@ -247,6 +248,11 @@ export function Devcontainers() {
         {actionError && (
           <div className="px-4 pt-3">
             <ErrorState title="Action failed" helper={actionError} />
+          </div>
+        )}
+        {refreshError && (
+          <div className="px-4 pt-3">
+            <ErrorState title="Couldn't refresh" helper={refreshError.message} />
           </div>
         )}
         <QueryBoundary state={state} error={<ErrorState {...loadError('devcontainers')} />}>

@@ -34,14 +34,24 @@ describe('useApiQuery', () => {
     })
   })
 
-  it('refetch flips back to loading then resolves with the new value', async () => {
-    let call = 0
-    const fn = vi.fn().mockImplementation(() => Promise.resolve(++call))
+  it('same-query refetch keeps current data visible and exposes isFetching', async () => {
+    const first = deferred<number>()
+    const second = deferred<number>()
+    const fn = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
     const { result } = renderHook(() => useApiQuery(fn, []))
-    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 1 }))
+
+    await act(async () => first.resolve(1))
+    expect(result.current.state).toEqual({ kind: 'ready', data: 1 })
+    expect(result.current.isFetching).toBe(false)
+
     act(() => result.current.refetch())
-    expect(result.current.state).toEqual({ kind: 'loading' })
-    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 2 }))
+    // SWR: stays on last-good data, never flips to loading
+    expect(result.current.state).toEqual({ kind: 'ready', data: 1 })
+    expect(result.current.isFetching).toBe(true)
+
+    await act(async () => second.resolve(2))
+    expect(result.current.state).toEqual({ kind: 'ready', data: 2 })
+    expect(result.current.isFetching).toBe(false)
     expect(fn).toHaveBeenCalledTimes(2)
   })
 
@@ -57,7 +67,7 @@ describe('useApiQuery', () => {
     expect(fn).toHaveBeenCalledTimes(3)
   })
 
-  it('refetch into error transitions state to error', async () => {
+  it('error during a background refetch keeps last-good data and attaches the error', async () => {
     const err = new ApiError(500, 'SERVER_ERROR', 'boom')
     let call = 0
     const fn = vi.fn().mockImplementation(() =>
@@ -66,8 +76,44 @@ describe('useApiQuery', () => {
     const { result } = renderHook(() => useApiQuery(fn, []))
     await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: { ok: true } }))
     act(() => result.current.refetch())
-    expect(result.current.state).toEqual({ kind: 'loading' })
+    await waitFor(() => expect(result.current.isFetching).toBe(false))
+    expect(result.current.state).toEqual({ kind: 'ready', data: { ok: true }, error: err })
+  })
+
+  it('first-load error transitions to error (no data to keep)', async () => {
+    const err = new ApiError(500, 'SERVER_ERROR', 'boom')
+    const fn = vi.fn().mockRejectedValue(err)
+    const { result } = renderHook(() => useApiQuery(fn, []))
     await waitFor(() => expect(result.current.state).toEqual({ kind: 'error', error: err }))
+  })
+
+  it('a successful refetch clears a prior background error', async () => {
+    const err = new ApiError(500, 'SERVER_ERROR', 'boom')
+    let call = 0
+    const fn = vi.fn().mockImplementation(() => {
+      call += 1
+      if (call === 2) return Promise.reject(err)
+      return Promise.resolve(call)
+    })
+    const { result } = renderHook(() => useApiQuery(fn, []))
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 1 }))
+    act(() => result.current.refetch())
+    await waitFor(() =>
+      expect(result.current.state).toEqual({ kind: 'ready', data: 1, error: err }),
+    )
+    act(() => result.current.refetch())
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 3 }))
+  })
+
+  it('a deps change still shows loading (different resource)', async () => {
+    const fn = vi.fn().mockImplementation((id: string) => Promise.resolve(`data-${id}`))
+    const { result, rerender } = renderHook(({ id }) => useApiQuery(() => fn(id), [id]), {
+      initialProps: { id: 'a' },
+    })
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 'data-a' }))
+    rerender({ id: 'b' })
+    expect(result.current.state).toEqual({ kind: 'loading' })
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'ready', data: 'data-b' }))
   })
 
   it('refetch has stable identity across re-renders', async () => {

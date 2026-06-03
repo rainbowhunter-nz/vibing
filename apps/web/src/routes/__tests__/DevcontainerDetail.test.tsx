@@ -178,6 +178,25 @@ describe('DevcontainerDetail SSE invalidation', () => {
     await waitFor(() => expect(screen.getByText('running')).toBeTruthy())
   })
 
+  it('no flash: keeps the detail visible during an invalidation refetch', async () => {
+    const second = new Promise<Devcontainer>(() => {}) // never settles: hold the in-flight window
+    mockFetch.mockResolvedValueOnce({ ...sample, status: 'stopped' }).mockReturnValueOnce(second)
+    mockFetchSessions.mockResolvedValue({ items: [] })
+
+    renderPage('dc1')
+    await screen.findByText('stopped')
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'devcontainers', ids: [] })
+    })
+
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBe(2))
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByText('stopped')).toBeTruthy()
+  })
+
   it('AC2+AC3+AC4: refetches and updates agent session status on agent_sessions invalidation', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions
