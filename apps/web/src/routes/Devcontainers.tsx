@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
@@ -128,7 +129,12 @@ function DevcontainerTable({
               running ? 'border-l-[3px] border-l-ok' : 'pl-[19px]',
             )}
           >
-            <span className="text-[13px] font-semibold text-text">{devcontainer.name}</span>
+            <Link
+              to={`/devcontainers/${devcontainer.id}`}
+              className="text-[13px] font-semibold text-text hover:text-accent hover:underline"
+            >
+              {devcontainer.name}
+            </Link>
             <span className="text-xs text-text-muted">Local folder</span>
             <span>
               <span
