@@ -9,6 +9,8 @@ async function bootstrap() {
   if (import.meta.env.VITE_API_MOCKING === 'true') {
     const { worker } = await import('./mock/browser')
     await worker.start({ onUnhandledRequest: 'bypass' })
+    const { installMockEventSource } = await import('./mock/events')
+    installMockEventSource()
   }
 
   createRoot(document.getElementById('root')!).render(
