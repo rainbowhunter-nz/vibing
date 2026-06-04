@@ -3,6 +3,7 @@ import { setupServer } from 'msw/node'
 import { handlers } from '../handlers'
 import { setScenario, resetScenario } from '../scenario'
 import { resetDevcontainers } from '../state/devcontainers'
+import { resetInbox } from '../state/inbox'
 
 const server = setupServer(...handlers)
 
@@ -11,6 +12,7 @@ beforeEach(() => {
   server.resetHandlers()
   resetScenario()
   resetDevcontainers()
+  resetInbox()
 })
 afterAll(() => server.close())
 
