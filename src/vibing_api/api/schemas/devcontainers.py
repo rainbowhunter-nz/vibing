@@ -37,3 +37,7 @@ class DevcontainerView(Devcontainer):
 
 class DevcontainerViewList(BaseModel):
     items: list[DevcontainerView]
+
+
+class RuntimeStatus(BaseModel):
+    worker_connected: bool

@@ -1,41 +1,46 @@
-import { useEffect, useState } from 'react'
-import { fetchConfig, fetchHealth, type ConfigResponse } from '../lib/api'
+import { useEffect } from 'react'
+import { fetchConfig, fetchHealth, fetchRuntimeStatus, useApiQuery, type ConfigResponse } from '../lib/api'
+import { useSseInvalidation } from '../lib/events'
 import { cn } from '../lib/cn'
 
-type State =
+type ApiState =
   | { kind: 'loading' }
   | { kind: 'ok'; config: ConfigResponse }
   | { kind: 'error' }
 
-export function RailBackend() {
-  const [state, setState] = useState<State>({ kind: 'loading' })
+function useApiState(): ApiState {
+  const { state } = useApiQuery(
+    () => Promise.all([fetchHealth(), fetchConfig()]).then(([, config]) => config),
+    [],
+  )
+  if (state.kind === 'loading') return { kind: 'loading' }
+  if (state.kind === 'error') return { kind: 'error' }
+  return { kind: 'ok', config: state.data }
+}
 
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([fetchHealth(), fetchConfig()])
-      .then(([, config]) => {
-        if (!cancelled) setState({ kind: 'ok', config })
-      })
-      .catch(() => {
-        if (!cancelled) setState({ kind: 'error' })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+export function RailBackend() {
+  const apiState = useApiState()
+  const { state: runtimeState, refetch } = useApiQuery(fetchRuntimeStatus, [])
+  const { register } = useSseInvalidation()
+
+  useEffect(() => register('runtime', refetch), [register, refetch])
 
   const dotClass =
-    state.kind === 'ok'
+    apiState.kind === 'ok'
       ? 'bg-ok'
-      : state.kind === 'error'
+      : apiState.kind === 'error'
         ? 'bg-bad'
         : 'bg-text-subtle'
   const statusText =
-    state.kind === 'ok'
+    apiState.kind === 'ok'
       ? 'Connected'
-      : state.kind === 'error'
+      : apiState.kind === 'error'
         ? 'Unreachable'
         : 'Checking…'
+
+  const workerConnected = runtimeState.kind === 'ready' ? runtimeState.data.worker_connected : false
+  const workerDotClass = workerConnected ? 'bg-ok' : 'bg-text-subtle'
+  const workerText = workerConnected ? 'Worker connected' : 'Worker disconnected'
 
   return (
     <section>
@@ -46,15 +51,19 @@ export function RailBackend() {
         <span className={cn('h-2 w-2 rounded-full', dotClass)} />
         {statusText}
       </div>
-      {state.kind === 'ok' && (
+      {apiState.kind === 'ok' && (
         <>
-          <div className="ml-4 text-[11px] text-text-subtle">service: {state.config.app_name}</div>
-          <div className="ml-4 text-[11px] text-text-subtle">api: {state.config.api_v1_prefix}</div>
+          <div className="ml-4 text-[11px] text-text-subtle">service: {apiState.config.app_name}</div>
+          <div className="ml-4 text-[11px] text-text-subtle">api: {apiState.config.api_v1_prefix}</div>
         </>
       )}
-      {state.kind === 'error' && (
+      {apiState.kind === 'error' && (
         <div className="ml-4 text-[11px] text-text-subtle">service: unavailable</div>
       )}
+      <div className="mt-2 flex items-center gap-2 text-[12px] text-text-muted">
+        <span className={cn('h-2 w-2 rounded-full', workerDotClass)} />
+        {workerText}
+      </div>
     </section>
   )
 }

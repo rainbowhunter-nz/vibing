@@ -11,10 +11,11 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope, RuntimeEventSource
 
+from vibing_api.api.schemas.devcontainers import RuntimeStatus
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.runtime_channel import (
     WORKER_SLOT,
@@ -90,6 +91,12 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
     finally:
         if unregister is not None:
             unregister()
+
+
+@router.get("/status", response_model=RuntimeStatus)
+def get_runtime_status(request: Request) -> RuntimeStatus:
+    manager: WorkerRegistry = request.app.state.runtime_manager
+    return RuntimeStatus(worker_connected=manager.is_connected(WORKER_SLOT))
 
 
 @router.websocket("/ws")

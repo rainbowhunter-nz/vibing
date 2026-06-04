@@ -13,11 +13,13 @@ import type {
   DevcontainerCreateBody,
   DevcontainerList,
   DevcontainerUpdateBody,
+  DevcontainerViewList,
   DiagnosticsResponse,
   HealthResponse,
   InboxEvent,
   InboxEventDetail,
   InboxEventList,
+  RuntimeStatus,
   SettingsResponse,
   StatusResponse,
 } from './types'
@@ -33,6 +35,8 @@ export const fetchHealth = (): Promise<HealthResponse> => getJson('/health')
 export const fetchStatus = (): Promise<StatusResponse> => getJson('/status')
 export const fetchConfig = (): Promise<ConfigResponse> => getJson('/config')
 export const fetchDevcontainers = (): Promise<DevcontainerList> => getJson('/devcontainers')
+export const fetchDevcontainerViews = (): Promise<DevcontainerViewList> => getJson('/devcontainers')
+export const fetchRuntimeStatus = (): Promise<RuntimeStatus> => getJson('/runtime/status')
 export const fetchSettings = (): Promise<SettingsResponse> => getJson('/settings')
 export const fetchDiagnostics = (): Promise<DiagnosticsResponse> => getJson('/diagnostics')
 

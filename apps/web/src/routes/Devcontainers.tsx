@@ -6,12 +6,13 @@ import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
 import { DevcontainerFormModal } from '../components/DevcontainerFormModal'
 import {
-  fetchDevcontainers,
+  fetchDevcontainerViews,
   startDevcontainer,
   stopDevcontainer,
   deleteDevcontainer,
   useApiQuery,
   type Devcontainer,
+  type DevcontainerView,
 } from '../lib/api'
 import { useSseInvalidation } from '../lib/events'
 import { loadError } from '../lib/copy'
@@ -93,7 +94,7 @@ function DevcontainerTable({
   onDelete,
   onEdit,
 }: {
-  items: Devcontainer[]
+  items: DevcontainerView[]
   pending: PendingAction | null
   onStart: (id: string) => void
   onStop: (id: string) => void
@@ -146,7 +147,12 @@ function DevcontainerTable({
                 {devcontainer.status}
               </span>
             </span>
-            <span className="text-xs text-text-muted">{formatRelativeTime(devcontainer.updated_at)}</span>
+            <span className="text-xs text-text-muted">
+              {formatRelativeTime(devcontainer.updated_at)}
+              {devcontainer.runtime.agent_connected && (
+                <span title="Agent connected" className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ok align-middle" />
+              )}
+            </span>
             <div className="flex items-center justify-end gap-0.5">
               <button
                 title="Edit"
@@ -209,13 +215,14 @@ function DevcontainerTable({
 }
 
 export function Devcontainers() {
-  const { state, refetch } = useApiQuery(fetchDevcontainers, [])
+  const { state, refetch } = useApiQuery(fetchDevcontainerViews, [])
   const { register } = useSseInvalidation()
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ mode: 'create' } | { mode: 'edit'; dc: Devcontainer } | null>(null)
 
   useEffect(() => register('devcontainers', refetch), [register, refetch])
+  useEffect(() => register('runtime', refetch), [register, refetch])
   const crumbs = state.kind === 'ready' ? countLabel(state.data.items.length) : undefined
   const refreshError = state.kind === 'ready' ? state.error : undefined
 

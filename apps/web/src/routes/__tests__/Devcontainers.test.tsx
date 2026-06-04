@@ -4,11 +4,11 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { Devcontainers } from '../Devcontainers'
-import { fetchDevcontainers, startDevcontainer, stopDevcontainer, deleteDevcontainer, createDevcontainer, updateDevcontainer } from '../../lib/api'
-import type { Devcontainer } from '../../lib/api/types'
+import { fetchDevcontainerViews, startDevcontainer, stopDevcontainer, deleteDevcontainer, createDevcontainer, updateDevcontainer } from '../../lib/api'
+import type { Devcontainer, DevcontainerView } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
-const mockFetch = vi.mocked(fetchDevcontainers)
+const mockFetch = vi.mocked(fetchDevcontainerViews)
 const mockStart = vi.mocked(startDevcontainer)
 const mockStop = vi.mocked(stopDevcontainer)
 const mockDelete = vi.mocked(deleteDevcontainer)
@@ -85,18 +85,19 @@ function renderPage() {
   )
 }
 
-const sample: Devcontainer = {
+const sample: DevcontainerView = {
   id: 'dc1',
   name: 'my-project',
   local_path: '/home/me/my-project',
   status: 'stopped',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
+  runtime: { worker_connected: false, agent_connected: false },
 }
 
-const runningDc: Devcontainer = { ...sample, id: 'dc2', name: 'running-project', status: 'running' }
-const createdDc: Devcontainer = { ...sample, id: 'dc3', name: 'created-project', status: 'created' }
-const errorDc: Devcontainer = { ...sample, id: 'dc4', name: 'error-project', status: 'error' }
+const runningDc: DevcontainerView = { ...sample, id: 'dc2', name: 'running-project', status: 'running' }
+const createdDc: DevcontainerView = { ...sample, id: 'dc3', name: 'created-project', status: 'created' }
+const errorDc: DevcontainerView = { ...sample, id: 'dc4', name: 'error-project', status: 'error' }
 
 describe('Devcontainers', () => {
   it('shows the spinner while loading', () => {
@@ -356,7 +357,7 @@ describe('Devcontainers SSE invalidation', () => {
   })
 
   it('no flash: keeps the list visible during an invalidation refetch', async () => {
-    const second = new Promise<{ items: Devcontainer[] }>(() => {}) // never settles: hold the in-flight window
+    const second = new Promise<{ items: DevcontainerView[] }>(() => {}) // never settles: hold the in-flight window
     mockFetch
       .mockResolvedValueOnce({ items: [{ ...sample, status: 'stopped' }] })
       .mockReturnValueOnce(second)
@@ -411,5 +412,27 @@ describe('Devcontainers SSE invalidation', () => {
     })
 
     await waitFor(() => expect(mockFetch.mock.calls.length).toBe(callsBefore + 1))
+  })
+
+  it('runtime invalidation triggers refetch (AC2: agent_connected updates live)', async () => {
+    const agentConnected: DevcontainerView = { ...sample, runtime: { worker_connected: false, agent_connected: true } }
+    mockFetch
+      .mockResolvedValueOnce({ items: [sample] })
+      .mockResolvedValueOnce({ items: [agentConnected] })
+
+    renderPage()
+    await screen.findByText('my-project')
+
+    const callsBefore = mockFetch.mock.calls.length
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'runtime', ids: ['dc1'] })
+    })
+
+    await waitFor(() => expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore))
+    // Agent-connected dot should now be visible
+    await waitFor(() => expect(screen.getByTitle('Agent connected')).toBeTruthy())
   })
 })

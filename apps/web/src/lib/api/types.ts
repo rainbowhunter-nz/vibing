@@ -27,6 +27,15 @@ export interface Devcontainer {
   updated_at: string
 }
 
+export interface RuntimeConnection {
+  worker_connected: boolean
+  agent_connected: boolean
+}
+
+export interface DevcontainerView extends Devcontainer {
+  runtime: RuntimeConnection
+}
+
 export interface DevcontainerCreateBody {
   name: string
   local_path: string
@@ -39,6 +48,14 @@ export interface DevcontainerUpdateBody {
 
 export interface DevcontainerList {
   items: Devcontainer[]
+}
+
+export interface DevcontainerViewList {
+  items: DevcontainerView[]
+}
+
+export interface RuntimeStatus {
+  worker_connected: boolean
 }
 
 export interface RuntimeDetection {
