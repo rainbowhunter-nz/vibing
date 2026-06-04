@@ -237,6 +237,59 @@ describe('Inbox live updates', () => {
 
     await waitFor(() => expect(screen.getByText('read')).toBeTruthy())
   })
+
+  // AC1: new event projected via SSE updates list rows and needs-attention count
+  it('AC1: creation adds a new row and updates the needs-attention count in place', async () => {
+    mockList
+      .mockResolvedValueOnce({ items: [ev({ id: 'ie1', event_type: 'question' })] })
+      .mockResolvedValueOnce({
+        items: [
+          ev({ id: 'ie1', event_type: 'question' }),
+          ev({ id: 'ie2', event_type: 'question', devcontainer_id: 'dc2' }),
+        ],
+      })
+    renderPage()
+    // Initial render: 1 item, count says "1 need attention"
+    await screen.findByText('1 need attention')
+    expect(screen.queryByText('dc2')).toBeNull()
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: [] })
+    })
+
+    // After refetch: new row appears and count updates — no manual refresh
+    await waitFor(() => expect(screen.getByText('dc2')).toBeTruthy())
+    expect(screen.getByText('2 need attention')).toBeTruthy()
+  })
+
+  // AC2: stale-while-revalidate — no flash during background refetch
+  it('AC2: keeps list visible with no spinner while background refetch is in flight', async () => {
+    // second call never settles — holds the in-flight window open
+    mockList
+      .mockResolvedValueOnce({ items: [ev({ id: 'ie1', event_type: 'question' })] })
+      .mockReturnValueOnce(new Promise(() => {}))
+    renderPage()
+    await screen.findByText('dc1')
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: [] })
+    })
+
+    // Wait until the second call fired so we are genuinely in-flight
+    await waitFor(() => expect(mockList.mock.calls.length).toBe(2))
+
+    // Stale data stays on screen; no page-level loading spinner
+    expect(screen.getByText('dc1')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  // AC3: detail-panel resolved-state-in-place is covered by the existing test
+  // "hides controls and reflects resolved state after an invalidation refetch" in
+  // Inbox intervention actions — no redundant test added here.
 })
 
 describe('Inbox intervention actions', () => {
