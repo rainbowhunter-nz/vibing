@@ -2,9 +2,10 @@ import { http, HttpResponse } from 'msw'
 import type { JsonBodyType, DefaultBodyType } from 'msw'
 import * as f from './fixtures'
 import { getScenario } from './scenario'
-import type { ApiErrorEnvelope, AgentSession, DevcontainerUpdateBody } from '../lib/api/types'
+import type { ApiErrorEnvelope, AgentSession, AgentSessionApprovalBody, DevcontainerUpdateBody } from '../lib/api/types'
 import * as dc from './state/devcontainers'
 import * as inbox from './state/inbox'
+import * as approvals from './state/approvals'
 
 // Wildcard origin so handlers work in both browser (service worker) and Node (vitest/msw node).
 
@@ -46,7 +47,7 @@ function scenarioResponse(happy: JsonBodyType, emptyValue?: JsonBodyType): HttpR
  *
  * notFoundCode — domain-specific code used for the not-found scenario (e.g. 'DEVCONTAINER_NOT_FOUND').
  */
-export function scenarioFailure(notFoundCode?: string): HttpResponse<DefaultBodyType> | null {
+export function scenarioFailure(notFoundCode?: string, staleCode?: string): HttpResponse<DefaultBodyType> | null {
   const scenario = getScenario()
   switch (scenario) {
     case 'api-error':
@@ -54,7 +55,7 @@ export function scenarioFailure(notFoundCode?: string): HttpResponse<DefaultBody
     case 'network-down':
       return HttpResponse.error()
     case 'stale-action':
-      return HttpResponse.json(errorEnvelope('CONFLICT', 'Simulated stale resource'), { status: 409 })
+      return HttpResponse.json(errorEnvelope(staleCode ?? 'CONFLICT', 'Simulated stale resource'), { status: 409 })
     case 'not-found':
       return HttpResponse.json(
         errorEnvelope(notFoundCode ?? 'NOT_FOUND', 'Simulated not found'),
@@ -218,9 +219,6 @@ const inboxHandlers = [
   }),
 ]
 
-// Minimal stubs for agent-session actions (question answer + approval resolution).
-// Mutable approval state is VIB-92; these just return a plausible session so the
-// UI action flow is inspectable without errors.
 const agentSessionActionHandlers = [
   http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/user-input', ({ params }) => {
     const failure = scenarioFailure()
@@ -228,10 +226,30 @@ const agentSessionActionHandlers = [
     return HttpResponse.json(stubSession(params.dc as string, params.sid as string))
   }),
 
-  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/approval-resolution', ({ params }) => {
+  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/approval-resolution', async ({ params, request }) => {
+    const failure = scenarioFailure(undefined, 'APPROVAL_REQUEST_NOT_PENDING')
+    if (failure) return failure
+    const body = await request.json() as AgentSessionApprovalBody
+    try {
+      approvals.resolveApproval(body.approval_request_id, body.resolution)
+    } catch (e) {
+      if (e instanceof approvals.StaleError) {
+        return HttpResponse.json(errorEnvelope('APPROVAL_REQUEST_NOT_PENDING', e.message), { status: 409 })
+      }
+      throw e
+    }
+    return HttpResponse.json(stubSession(params.dc as string, params.sid as string))
+  }),
+]
+
+const approvalHandlers = [
+  http.get('*/api/v1/approval-requests', ({ request }) => {
     const failure = scenarioFailure()
     if (failure) return failure
-    return HttpResponse.json(stubSession(params.dc as string, params.sid as string))
+    const scenario = getScenario()
+    if (scenario === 'empty') return HttpResponse.json({ items: [] })
+    const status = new URL(request.url).searchParams.get('status') ?? undefined
+    return HttpResponse.json(approvals.listApprovalRequests(status as Parameters<typeof approvals.listApprovalRequests>[0]))
   }),
 ]
 
@@ -242,7 +260,7 @@ export const handlers = [
   http.get('*/api/v1/runtime/status', () => scenarioResponse(f.runtimeStatus)),
   http.get('*/api/v1/settings', () => scenarioResponse(f.settings)),
   http.get('*/api/v1/diagnostics', () => scenarioResponse(f.diagnostics)),
-  http.get('*/api/v1/approval-requests', () => scenarioResponse(f.approvalRequests, { items: [] })),
+  ...approvalHandlers,
   ...inboxHandlers,
   ...agentSessionActionHandlers,
   ...devcontainerHandlers,

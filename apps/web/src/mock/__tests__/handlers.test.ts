@@ -4,12 +4,13 @@ import { handlers } from '../handlers'
 import { resetScenario } from '../scenario'
 import { resetDevcontainers } from '../state/devcontainers'
 import { resetInbox } from '../state/inbox'
+import { resetApprovals } from '../state/approvals'
 import * as f from '../fixtures'
 
 const server = setupServer(...handlers)
 
 beforeAll(() => server.listen())
-beforeEach(() => { resetScenario(); resetDevcontainers(); resetInbox() })
+beforeEach(() => { resetScenario(); resetDevcontainers(); resetInbox(); resetApprovals() })
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -61,7 +62,12 @@ describe('mock handlers — healthy baseline', () => {
     expect(types).toContain('completion')
   })
 
-  it('GET /api/v1/approval-requests', async () => {
-    expect(await get('/api/v1/approval-requests')).toEqual(f.approvalRequests)
+  it('GET /api/v1/approval-requests — happy returns seeded items', async () => {
+    const body = await get('/api/v1/approval-requests')
+    expect(body.items.length).toBeGreaterThanOrEqual(3)
+    const statuses = body.items.map((r: { status: string }) => r.status)
+    expect(statuses).toContain('pending')
+    expect(statuses).toContain('approved')
+    expect(statuses).toContain('rejected')
   })
 })
