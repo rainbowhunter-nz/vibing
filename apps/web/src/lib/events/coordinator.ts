@@ -13,10 +13,17 @@ export function createCoordinator(onHealthChange?: (h: Health) => void): Coordin
   const registry = new Map<Scope, Set<InvalidationCallback>>()
   let es: EventSource | null = null
   let _health: Health = 'disconnected'
+  let hasOpened = false
 
   function setHealth(h: Health) {
     _health = h
     onHealthChange?.(h)
+  }
+
+  function catchUp() {
+    for (const [scope, cbs] of registry) {
+      for (const cb of cbs) cb({ event_type: 'reconnect', scope, ids: [] })
+    }
   }
 
   function handleInvalidate(e: Event) {
@@ -35,7 +42,14 @@ export function createCoordinator(onHealthChange?: (h: Health) => void): Coordin
       es = new EventSource(SSE_URL)
       setHealth('reconnecting')
 
-      es.onopen = () => setHealth('connected')
+      es.onopen = () => {
+        setHealth('connected')
+        if (hasOpened) {
+          catchUp()
+        } else {
+          hasOpened = true
+        }
+      }
 
       es.onerror = () => {
         // readyState CONNECTING (0) = auto-reconnect; CLOSED (2) = fatal

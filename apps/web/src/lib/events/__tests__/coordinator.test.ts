@@ -230,3 +230,65 @@ describe('coordinator — health state', () => {
     coord.disconnect()
   })
 })
+
+describe('coordinator — reconnect catch-up', () => {
+  it('AC3: first connect does NOT invoke registered callbacks', () => {
+    const coord = createCoordinator()
+    const cb = vi.fn()
+    coord.register('devcontainers', cb)
+    coord.connect()
+    const [es] = MockEventSource.instances
+    es.simulateOpen() // first open
+    expect(cb).not.toHaveBeenCalled()
+    coord.disconnect()
+  })
+
+  it('AC3: reconnect (second onopen) invokes registered callbacks once each', () => {
+    const coord = createCoordinator()
+    const cb = vi.fn()
+    coord.register('devcontainers', cb)
+    coord.connect()
+    const [es] = MockEventSource.instances
+    es.simulateOpen() // first open — no catch-up
+    es.simulateError() // transient error → reconnecting
+    es.simulateOpen() // reconnect — catch-up fires
+    expect(cb).toHaveBeenCalledOnce()
+    expect(cb).toHaveBeenCalledWith({ event_type: 'reconnect', scope: 'devcontainers', ids: [] })
+    coord.disconnect()
+  })
+
+  it('AC4: reconnect catch-up covers all registered scopes', () => {
+    const coord = createCoordinator()
+    const scopes: Scope[] = ['devcontainers', 'agent_sessions', 'inbox', 'approvals', 'runtime']
+    const cbs = scopes.map((s) => {
+      const cb = vi.fn()
+      coord.register(s, cb)
+      return cb
+    })
+    coord.connect()
+    const [es] = MockEventSource.instances
+    es.simulateOpen()
+    es.simulateError()
+    es.simulateOpen() // reconnect
+    cbs.forEach((cb, i) =>
+      expect(cb).toHaveBeenCalledWith({ event_type: 'reconnect', scope: scopes[i], ids: [] }),
+    )
+    coord.disconnect()
+  })
+
+  it('AC2/AC5: visible data preservation — SWR keeps last-good data; health transitions correctly around reconnect', () => {
+    // This test verifies health transitions that SWR hooks observe to avoid loading flashes.
+    // SWR's stale-while-revalidate keeps previous data visible during revalidation (ADR-0006).
+    const healthCalls: string[] = []
+    const coord = createCoordinator((h) => healthCalls.push(h))
+    coord.connect()
+    const [es] = MockEventSource.instances
+    es.simulateOpen()
+    es.simulateError()
+    es.simulateOpen() // reconnect
+    // health goes: reconnecting → connected → reconnecting → connected
+    // SWR never sees 'disconnected', so no loading state is triggered
+    expect(healthCalls).toEqual(['reconnecting', 'connected', 'reconnecting', 'connected'])
+    coord.disconnect()
+  })
+})
