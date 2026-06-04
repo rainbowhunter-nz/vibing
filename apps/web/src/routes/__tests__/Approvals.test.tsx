@@ -244,3 +244,96 @@ describe('Approvals action errors', () => {
     expect(screen.getByRole('button', { name: 'Reject' })).toHaveProperty('disabled', false)
   })
 })
+
+const session = {
+  id: 'as1',
+  devcontainer_id: 'dc1',
+  status: 'waiting_for_approval' as const,
+  started_at: null,
+  ended_at: null,
+  last_event_at: null,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+}
+
+describe('Approvals convergence (AC1, AC2, AC3, AC4, AC5, AC6)', () => {
+  it('AC1: approve converges — pending row disappears after action + approvals invalidation', async () => {
+    // Second call simulates what the API returns for pending-status query after approval: zero pending items
+    mockList
+      .mockResolvedValueOnce({ items: [ar({ id: 'ar1', status: 'pending' })] })
+      .mockResolvedValueOnce({ items: [] })
+    mockResolve.mockResolvedValue(session)
+    renderPage()
+    await screen.findByText('rm -rf build/')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(mockResolve).toHaveBeenCalled())
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: ['ar1'] })
+    })
+
+    await waitFor(() => expect(screen.getByText('No pending approvals')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+  })
+
+  it('AC2: reject converges — pending row disappears after action + approvals invalidation', async () => {
+    mockList
+      .mockResolvedValueOnce({ items: [ar({ id: 'ar1', status: 'pending' })] })
+      .mockResolvedValueOnce({ items: [] })
+    mockResolve.mockResolvedValue(session)
+    renderPage()
+    await screen.findByText('rm -rf build/')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    await waitFor(() => expect(mockResolve).toHaveBeenCalled())
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: ['ar1'] })
+    })
+
+    await waitFor(() => expect(screen.getByText('No pending approvals')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull()
+  })
+
+  it('AC3/AC4: inbox invalidation triggers list refetch', async () => {
+    mockList
+      .mockResolvedValueOnce({ items: [ar({ id: 'ar1' })] })
+      .mockResolvedValueOnce({ items: [] })
+    renderPage()
+    await screen.findByText('rm -rf build/')
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: [] })
+    })
+
+    await waitFor(() => expect(screen.getByText('No pending approvals')).toBeTruthy())
+  })
+
+  it('AC5: no flash — stale list stays visible while refetch is in flight', async () => {
+    mockList
+      .mockResolvedValueOnce({ items: [ar({ id: 'ar1' })] })
+      .mockReturnValueOnce(new Promise(() => {})) // never settles
+    mockResolve.mockResolvedValue(session)
+    renderPage()
+    await screen.findByText('rm -rf build/')
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: ['ar1'] })
+    })
+
+    await waitFor(() => expect(mockList.mock.calls.length).toBe(2))
+
+    // Stale row stays on screen; no loading spinner
+    expect(screen.getByText('rm -rf build/')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})

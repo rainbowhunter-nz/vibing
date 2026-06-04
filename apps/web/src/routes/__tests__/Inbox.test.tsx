@@ -405,6 +405,79 @@ const unreadDetail: InboxEventDetail = {
   approval_request: null,
 }
 
+// Use status: 'read' to prevent the auto-markRead side-effect from consuming the second mock return
+const readApprovalDetail: InboxEventDetail = { ...approvalDetail, status: 'read' }
+
+describe('Inbox approval detail convergence (AC1, AC2, AC4, AC5)', () => {
+  it('AC1: approve from detail — controls hide after action + inbox invalidation returns resolved detail', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie2', event_type: 'approval_request', status: 'read' })] })
+    mockDetail
+      .mockResolvedValueOnce(readApprovalDetail)
+      .mockResolvedValueOnce({ ...readApprovalDetail, status: 'resolved' })
+    mockResolve.mockResolvedValue(approvalDetail.agent_session!)
+    renderPage('/inbox?selected=ie2')
+    await screen.findByText('Claude wants to run: pnpm migrate')
+
+    await userEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(mockResolve).toHaveBeenCalled())
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: ['ie2'] })
+    })
+
+    // After SSE-triggered refetch returns resolved detail, approval controls disappear
+    await waitFor(() => expect(screen.queryByText('Approve')).toBeNull())
+    expect(screen.queryByText('Reject')).toBeNull()
+  })
+
+  it('AC2: reject from detail — controls hide after action + approvals invalidation returns resolved detail', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie2', event_type: 'approval_request', status: 'read' })] })
+    mockDetail
+      .mockResolvedValueOnce(readApprovalDetail)
+      .mockResolvedValueOnce({ ...readApprovalDetail, status: 'resolved' })
+    mockResolve.mockResolvedValue(approvalDetail.agent_session!)
+    renderPage('/inbox?selected=ie2')
+    await screen.findByText('Claude wants to run: pnpm migrate')
+
+    await userEvent.click(screen.getByText('Reject'))
+    await waitFor(() => expect(mockResolve).toHaveBeenCalled())
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: ['ar1'] })
+    })
+
+    await waitFor(() => expect(screen.queryByText('Reject')).toBeNull())
+    expect(screen.queryByText('Approve')).toBeNull()
+  })
+
+  it('AC5: no flash in detail — stale approval content visible while refetch is in flight', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie2', event_type: 'approval_request', status: 'read' })] })
+    mockDetail
+      .mockResolvedValueOnce(readApprovalDetail)
+      .mockReturnValueOnce(new Promise(() => {})) // never settles
+    renderPage('/inbox?selected=ie2')
+    await screen.findByText('Claude wants to run: pnpm migrate')
+
+    const callsBefore = mockDetail.mock.calls.length
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: ['ar1'] })
+    })
+
+    await waitFor(() => expect(mockDetail.mock.calls.length).toBeGreaterThan(callsBefore))
+
+    // Stale content stays on screen; no spinner
+    expect(screen.getByText('Claude wants to run: pnpm migrate')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})
+
 describe('Inbox read/resolve actions', () => {
   it('fires markInboxEventRead when opening an unread event', async () => {
     mockList.mockResolvedValue({ items: [{ ...unreadDetail }] as InboxEvent[] })

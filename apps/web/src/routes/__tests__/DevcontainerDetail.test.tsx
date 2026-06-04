@@ -218,6 +218,25 @@ describe('DevcontainerDetail SSE invalidation', () => {
     await waitFor(() => expect(screen.getByText('completed')).toBeTruthy())
   })
 
+  it('AC3: badge leaves waiting_for_approval after agent_sessions invalidation', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions
+      .mockResolvedValueOnce({ items: [{ ...sampleSession, status: 'waiting_for_approval' }] })
+      .mockResolvedValueOnce({ items: [{ ...sampleSession, status: 'running' }] })
+
+    renderPage('dc1')
+    await screen.findByText('waiting_for_approval')
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: ['sess-0001-0000-0000-000000000001'] })
+    })
+
+    await waitFor(() => expect(screen.getByText('running')).toBeTruthy())
+    expect(screen.queryByText('waiting_for_approval')).toBeNull()
+  })
+
   it('AC: single agent_sessions invalidation triggers exactly one refetch', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
