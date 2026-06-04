@@ -6,6 +6,7 @@
   "packageManager": "pnpm@11.3.0",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "VITE_API_MOCKING=true vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "typecheck": "tsc -b",
@@ -35,10 +36,16 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "happy-dom": "^20.9.0",
+    "msw": "^2.14.6",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
     "vitest": "^4.1.7"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }

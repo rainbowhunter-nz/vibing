@@ -60,4 +60,8 @@ try {
 
 ## Mocking in tests
 
-`__tests__/client.test.ts` is the canonical example: stub `globalThis.fetch` with `vi.stubGlobal('fetch', vi.fn().mockResolvedValue(...))`, restore via `vi.unstubAllGlobals()` in `afterEach`.
+Two patterns:
+
+**Unit tests (single component):** stub individual endpoint functions: `vi.mock('../../lib/api/endpoints')` then `vi.mocked(fetchX).mockResolvedValue(...)`. See `src/routes/__tests__/Settings.test.tsx`.
+
+**Integration / mock-mode tests:** use `setupServer` from `msw/node` with the shared handlers in `src/mock/handlers.ts`. The server intercepts fetch at the network level so the real client code runs unmodified. See `src/mock/__tests__/bootstrap.test.tsx`.

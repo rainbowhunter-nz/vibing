@@ -18,6 +18,7 @@ never hardcode `http://localhost:8000`. Read the root `CONTEXT.md` for domain te
 - `src/lib/api/` — the only place that talks to the backend.
   - `client.ts` — fetch wrapper + `ApiError`. `endpoints.ts` — typed endpoint functions. `useApiQuery.ts` — React data-fetching hook. `types.ts` — API DTOs. `index.ts` — barrel.
 - `src/lib/cn.ts` — `clsx` + `tailwind-merge` className helper.
+- `src/mock/` — Control Plane API Mocking (VIB-87 epic). `fixtures.ts` — healthy baseline DTO values. `handlers.ts` — MSW request handlers (wildcard origin, works in browser and Node). `browser.ts` — MSW browser worker setup. Active only when `VITE_API_MOCKING=true` (set by `pnpm dev:mock`). Tests use `setupServer` from `msw/node` with the same handlers.
 - `vite.config.ts` — dev server + `/api/v1` proxy. `vitest.config.ts`, `eslint.config.js`, `tsconfig*.json` — tooling.
 
 ## Conventions
