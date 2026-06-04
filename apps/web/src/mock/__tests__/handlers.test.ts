@@ -2,12 +2,13 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from
 import { setupServer } from 'msw/node'
 import { handlers } from '../handlers'
 import { resetScenario } from '../scenario'
+import { resetDevcontainers } from '../state/devcontainers'
 import * as f from '../fixtures'
 
 const server = setupServer(...handlers)
 
 beforeAll(() => server.listen())
-beforeEach(() => resetScenario())
+beforeEach(() => { resetScenario(); resetDevcontainers() })
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -41,8 +42,11 @@ describe('mock handlers — healthy baseline', () => {
     expect(await get('/api/v1/diagnostics')).toEqual(f.diagnostics)
   })
 
-  it('GET /api/v1/devcontainers', async () => {
-    expect(await get('/api/v1/devcontainers')).toEqual(f.devcontainers)
+  // devcontainers now returns the seeded store under happy (populated, not empty).
+  it('GET /api/v1/devcontainers — happy returns seeded items', async () => {
+    const body = await get('/api/v1/devcontainers')
+    expect(body.items.length).toBeGreaterThanOrEqual(4)
+    expect(body.items[0]).toMatchObject({ id: 'dc-seed-0001', name: 'my-webapp', status: 'running' })
   })
 
   it('GET /api/v1/inbox-events', async () => {

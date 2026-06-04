@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import { setupServer } from 'msw/node'
 import { handlers } from '../handlers'
 import { setScenario, resetScenario } from '../scenario'
+import { resetDevcontainers } from '../state/devcontainers'
 
 const server = setupServer(...handlers)
 
@@ -9,6 +10,7 @@ beforeAll(() => server.listen())
 beforeEach(() => {
   server.resetHandlers()
   resetScenario()
+  resetDevcontainers()
 })
 afterAll(() => server.close())
 

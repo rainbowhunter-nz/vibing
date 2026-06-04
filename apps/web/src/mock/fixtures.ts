@@ -1,8 +1,8 @@
 // Healthy baseline fixtures — field coverage matches what the UI reads from each DTO.
 import type {
+  AgentSessionList,
   ApprovalRequestList,
   ConfigResponse,
-  DevcontainerViewList,
   DiagnosticsResponse,
   HealthResponse,
   InboxEventList,
@@ -33,7 +33,7 @@ export const diagnostics: DiagnosticsResponse = {
   ],
 }
 
-export const devcontainers: DevcontainerViewList = { items: [] }
+export const agentSessions: AgentSessionList = { items: [] }
 
 export const inboxEvents: InboxEventList = { items: [] }
 

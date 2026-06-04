@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router'
 import { setupServer } from 'msw/node'
 import { vi } from 'vitest'
 import { handlers } from '../handlers'
+import { resetDevcontainers } from '../state/devcontainers'
 import { SseProvider } from '../../lib/events'
 import { RailBackend } from '../../components/RailBackend'
 import { Settings } from '../../routes/Settings'
@@ -41,6 +42,7 @@ class MockEventSource {
 }
 
 beforeEach(() => {
+  resetDevcontainers()
   MockEventSource.instances = []
   vi.stubGlobal('EventSource', MockEventSource)
 })
