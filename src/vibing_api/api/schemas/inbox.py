@@ -24,6 +24,7 @@ class InboxEventList(BaseModel):
 
 
 class InboxEventDetail(InboxEvent):
+    content: str | None
     devcontainer: Devcontainer
     agent_session: AgentSession | None
     approval_request: ApprovalRequest | None

@@ -5,7 +5,7 @@ Keep this file the single source of truth for the on-disk shape.
 
 import sqlite3
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 _TABLE_STATEMENTS: tuple[str, ...] = (
     """
@@ -66,6 +66,7 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
         approval_request_id TEXT REFERENCES approval_requests(id) ON DELETE SET NULL,
         event_type TEXT NOT NULL,
         status TEXT NOT NULL,
+        content TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )

@@ -7,12 +7,15 @@ import { QueryBoundary } from '../components/QueryBoundary'
 import {
   listInboxEvents,
   fetchInboxEvent,
+  sendAgentSessionUserInput,
+  resolveAgentSessionApproval,
   useApiQuery,
   ApiError,
   type InboxEvent,
   type InboxEventDetail,
   type QueryState,
 } from '../lib/api'
+import { useInterventionAction, ActionButton, StatusNote } from '../lib/intervention'
 import { useSseInvalidation } from '../lib/events'
 import { loadError } from '../lib/copy'
 import { formatRelativeTime } from '../lib/time'
@@ -146,11 +149,116 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
+function ApprovalControls({ detail }: { detail: InboxEventDetail }) {
+  const { state, run } = useInterventionAction('APPROVAL_REQUEST_NOT_PENDING')
+  const submitting = state.kind === 'submitting'
+  const resolved = detail.status === 'resolved'
+  const showActions = !resolved && state.kind !== 'awaiting' && state.kind !== 'stale'
+
+  const resolve = (resolution: 'approved' | 'rejected') =>
+    run(resolution, () =>
+      resolveAgentSessionApproval(detail.devcontainer_id, detail.agent_session_id ?? '', {
+        approval_request_id: detail.approval_request_id ?? '',
+        resolution,
+      }),
+    )
+
+  return (
+    <div className="px-4 pb-4">
+      {showActions && (
+        <div className="flex justify-end gap-2">
+          <ActionButton
+            label={submitting && state.tag === 'rejected' ? 'Rejecting…' : 'Reject'}
+            onClick={() => resolve('rejected')}
+            disabled={submitting}
+            variant="reject"
+          />
+          <ActionButton
+            label={submitting && state.tag === 'approved' ? 'Approving…' : 'Approve'}
+            onClick={() => resolve('approved')}
+            disabled={submitting}
+            variant="approve"
+          />
+        </div>
+      )}
+      <StatusNote
+        state={state}
+        awaitingNote="✓ Submitted · awaiting runtime…"
+        staleNote="Already resolved elsewhere — no longer pending."
+      />
+    </div>
+  )
+}
+
+function AnswerControls({ detail }: { detail: InboxEventDetail }) {
+  const { state, run } = useInterventionAction('INBOX_EVENT_NOT_ACTIONABLE')
+  const [text, setText] = useState('')
+  const submitting = state.kind === 'submitting'
+  const resolved = detail.status === 'resolved'
+  const showForm = !resolved && state.kind !== 'awaiting' && state.kind !== 'stale'
+
+  const send = () =>
+    run('answer', () =>
+      sendAgentSessionUserInput(detail.devcontainer_id, detail.agent_session_id ?? '', {
+        inbox_event_id: detail.id,
+        text,
+      }),
+    )
+
+  return (
+    <div className="flex flex-col gap-2 px-4 pb-4">
+      {showForm && (
+        <>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={submitting}
+            placeholder="Type your answer…"
+            className="min-h-[64px] rounded-md border border-border px-3 py-2 text-[12.5px] disabled:opacity-40"
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={send}
+              disabled={submitting || text.trim() === ''}
+              className="rounded-md bg-accent px-3 py-1 text-[12px] font-semibold text-white disabled:opacity-40"
+            >
+              {submitting ? 'Sending…' : 'Send answer'}
+            </button>
+          </div>
+        </>
+      )}
+      <StatusNote
+        state={state}
+        awaitingNote="✓ Answer sent · awaiting runtime…"
+        staleNote="This question is no longer awaiting an answer."
+      />
+    </div>
+  )
+}
+
+function MetaLine({ detail }: { detail: InboxEventDetail }) {
+  const session = detail.agent_session ? ` · session ${detail.agent_session.id.slice(0, 8)}` : ''
+  return (
+    <div className="mb-2 px-4 text-[11px] text-text-muted">
+      {detail.devcontainer.name}
+      {session} · {formatRelativeTime(detail.created_at)}
+    </div>
+  )
+}
+
+function Bubble({ children }: { children: React.ReactNode }) {
+  return <div className="mx-4 rounded-[10px] bg-surface-muted px-3 py-2.5 text-[13px] leading-relaxed text-text">{children}</div>
+}
+
 function InboxDetail({ detail, onClose }: { detail: InboxEventDetail; onClose: () => void }) {
   return (
-    <div className="px-4 pt-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold capitalize text-text">{TYPE_LABEL[detail.event_type]}</h2>
+    <div className="pt-4">
+      <div className="mb-3 flex items-center justify-between px-4">
+        <h2 className="text-base font-semibold capitalize text-text">
+          <span className={cn('mr-2 rounded-full px-2 py-0.5 text-[11px] font-medium', typeBadgeClass(detail.event_type))}>
+            {TYPE_LABEL[detail.event_type]}
+          </span>
+        </h2>
         <button
           onClick={onClose}
           title="Close"
@@ -159,19 +267,38 @@ function InboxDetail({ detail, onClose }: { detail: InboxEventDetail; onClose: (
           ✕
         </button>
       </div>
-      <div className="rounded-md border border-border">
-        <DetailRow label="Status">{detail.status}</DetailRow>
-        <DetailRow label="Devcontainer">{detail.devcontainer.name}</DetailRow>
-        <DetailRow label="Agent session">
-          {detail.agent_session ? `${detail.agent_session.id.slice(0, 8)} · ${detail.agent_session.status}` : '—'}
-        </DetailRow>
-        <DetailRow label="Approval request">
-          {detail.approval_request
-            ? `${detail.approval_request.requested_action} · ${detail.approval_request.status}`
-            : '—'}
-        </DetailRow>
-        <DetailRow label="Created">{formatRelativeTime(detail.created_at)}</DetailRow>
-      </div>
+      <MetaLine detail={detail} />
+
+      {detail.event_type === 'question' && (
+        <>
+          <Bubble>{detail.content ?? 'The agent asked a question.'}</Bubble>
+          <div className="h-3" />
+          <AnswerControls detail={detail} />
+        </>
+      )}
+
+      {detail.event_type === 'approval_request' && (
+        <>
+          <Bubble>
+            {detail.approval_request
+              ? `Claude wants to ${detail.approval_request.requested_action}`
+              : 'Approval requested.'}
+          </Bubble>
+          <div className="h-3" />
+          <ApprovalControls detail={detail} />
+        </>
+      )}
+
+      {(detail.event_type === 'completion' || detail.event_type === 'failure') && (
+        <div className="mx-4 rounded-md border border-border">
+          <DetailRow label="Status">{detail.status}</DetailRow>
+          <DetailRow label="Devcontainer">{detail.devcontainer.name}</DetailRow>
+          <DetailRow label="Agent session">
+            {detail.agent_session ? `${detail.agent_session.id.slice(0, 8)} · ${detail.agent_session.status}` : '—'}
+          </DetailRow>
+          <DetailRow label="Created">{formatRelativeTime(detail.created_at)}</DetailRow>
+        </div>
+      )}
     </div>
   )
 }

@@ -88,6 +88,16 @@ def test_reduce_agent_asked_question() -> None:
     assert reduce(_event("agent_asked_question")).inbox_event_type == "question"
 
 
+def test_reduce_agent_asked_question_captures_content() -> None:
+    updates = reduce(_event("agent_asked_question", payload={"question": "Redis or in-memory?"}))
+    assert updates.inbox_event_type == "question"
+    assert updates.inbox_content == "Redis or in-memory?"
+
+
+def test_reduce_agent_asked_question_without_payload_has_no_content() -> None:
+    assert reduce(_event("agent_asked_question")).inbox_content is None
+
+
 def test_reduce_terminal_paths() -> None:
     completed = reduce(_event("session_completed"))
     assert completed.session_status == "completed"
@@ -308,6 +318,27 @@ def test_agent_asked_question_creates_inbox(
     assert len(rows) == 1
     assert rows[0]["event_type"] == "question"
     assert rows[0]["status"] == "unread"
+
+
+def test_agent_asked_question_persists_content(
+    conn: sqlite3.Connection, seeded: tuple[str, str]
+) -> None:
+    dc_id, session_id = seeded
+    project(
+        RuntimeEvent(
+            event_type="agent_asked_question",
+            source=_SOURCE,
+            devcontainer_id=dc_id,
+            agent_session_id=session_id,
+            payload={"question": "Redis or in-memory?"},
+        ),
+        conn,
+    )
+    row = conn.execute(
+        "SELECT content FROM inbox_events WHERE agent_session_id = ?",
+        (session_id,),
+    ).fetchone()
+    assert row[0] == "Redis or in-memory?"
 
 
 def test_session_completed(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:

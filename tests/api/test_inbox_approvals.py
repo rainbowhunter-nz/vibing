@@ -82,6 +82,24 @@ class TestInboxRepository:
     def test_get_missing_returns_none(self, conn: sqlite3.Connection) -> None:
         assert InboxRepository(conn).get("nope") is None
 
+    def test_create_stores_content(self, conn: sqlite3.Connection) -> None:
+        dc_id = _make_devcontainer(conn)
+        repo = InboxRepository(conn)
+        created = repo.create(dc_id, "question", "unread", content="Redis or in-memory?")
+        conn.commit()
+        got = repo.get(created.id)
+        assert got is not None
+        assert got.content == "Redis or in-memory?"
+
+    def test_create_content_defaults_none(self, conn: sqlite3.Connection) -> None:
+        dc_id = _make_devcontainer(conn)
+        repo = InboxRepository(conn)
+        created = repo.create(dc_id, "completion", "unread")
+        conn.commit()
+        got = repo.get(created.id)
+        assert got is not None
+        assert got.content is None
+
 
 class TestApprovalRepository:
     def test_list_all(self, conn: sqlite3.Connection) -> None:
@@ -140,10 +158,11 @@ def _seed_inbox(
     event_type: InboxEventType = "question",
     status: str = "unread",
     agent_session_id: str | None = None,
+    content: str | None = None,
 ) -> str:
     with get_connection() as conn:
         event = InboxRepository(conn).create(
-            dc_id, event_type, status, agent_session_id=agent_session_id
+            dc_id, event_type, status, agent_session_id=agent_session_id, content=content
         )
         conn.commit()
     return event.id
@@ -272,6 +291,14 @@ def test_get_inbox_event_detail_with_session_and_approval(client: TestClient) ->
     assert body["agent_session"]["id"] == sess_id
     assert body["approval_request"]["id"] == approval_id
     assert body["approval_request"]["status"] == "pending"
+
+
+def test_get_inbox_event_detail_includes_content(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    event_id = _seed_inbox(dc_id, "question", "unread", content="Redis or in-memory?")
+    resp = client.get(f"/api/v1/inbox-events/{event_id}")
+    assert resp.status_code == 200
+    assert resp.json()["content"] == "Redis or in-memory?"
 
 
 def test_get_inbox_event_not_found(client: TestClient) -> None:

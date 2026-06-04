@@ -4,12 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { Inbox } from '../Inbox'
-import { listInboxEvents, fetchInboxEvent, ApiError } from '../../lib/api'
+import { listInboxEvents, fetchInboxEvent, sendAgentSessionUserInput, resolveAgentSessionApproval, ApiError } from '../../lib/api'
 import type { InboxEvent, InboxEventDetail } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
 const mockList = vi.mocked(listInboxEvents)
 const mockDetail = vi.mocked(fetchInboxEvent)
+const mockSend = vi.mocked(sendAgentSessionUserInput)
+const mockResolve = vi.mocked(resolveAgentSessionApproval)
 
 // --- MockEventSource (mirrors Devcontainers.test.tsx) -----------------------
 class MockEventSource {
@@ -80,6 +82,7 @@ function ev(over: Partial<InboxEvent>): InboxEvent {
 
 const sampleDetail: InboxEventDetail = {
   ...ev({ id: 'ie1' }),
+  content: 'Redis or in-memory?',
   devcontainer: {
     id: 'dc1',
     name: 'api-service',
@@ -99,6 +102,22 @@ const sampleDetail: InboxEventDetail = {
     updated_at: new Date().toISOString(),
   },
   approval_request: null,
+}
+
+const approvalDetail: InboxEventDetail = {
+  ...ev({ id: 'ie2', event_type: 'approval_request', approval_request_id: 'ar1' }),
+  content: null,
+  devcontainer: sampleDetail.devcontainer,
+  agent_session: sampleDetail.agent_session,
+  approval_request: {
+    id: 'ar1',
+    devcontainer_id: 'dc1',
+    agent_session_id: 'as1',
+    status: 'pending',
+    requested_action: 'run: pnpm migrate',
+    created_at: new Date().toISOString(),
+    decided_at: null,
+  },
 }
 
 describe('Inbox states', () => {
@@ -165,7 +184,7 @@ describe('Inbox selection + detail', () => {
     mockDetail.mockResolvedValue(sampleDetail)
     renderPage('/inbox?selected=ie1')
     await waitFor(() => expect(mockDetail).toHaveBeenCalledWith('ie1'))
-    await waitFor(() => expect(screen.getByText('api-service')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Redis or in-memory?')).toBeTruthy())
   })
 
   it('shows the empty hint when nothing is selected', async () => {
@@ -189,12 +208,12 @@ describe('Inbox selection + detail', () => {
     mockDetail.mockResolvedValue(sampleDetail)
     renderPage('/inbox?selected=ie1')
 
-    // detail loaded (devcontainer name shows in the panel)
-    await screen.findByText('api-service')
+    // detail loaded (question bubble shows in the panel)
+    await screen.findByText('Redis or in-memory?')
 
     await userEvent.click(screen.getByTitle('Close'))
     await waitFor(() => expect(screen.getByText('Select an item')).toBeTruthy())
-    expect(screen.queryByText('api-service')).toBeNull()
+    expect(screen.queryByText('Redis or in-memory?')).toBeNull()
   })
 })
 
@@ -214,14 +233,88 @@ describe('Inbox live updates', () => {
 
     await waitFor(() => expect(screen.getByText('read')).toBeTruthy())
   })
+})
 
-  it('updates the open detail status on inbox invalidation', async () => {
-    mockList.mockResolvedValue({ items: [ev({ id: 'ie1', status: 'read' })] })
+describe('Inbox intervention actions', () => {
+  it('answers a question and shows the awaiting note after 202', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie1' })] })
+    mockDetail.mockResolvedValue(sampleDetail)
+    mockSend.mockResolvedValue(sampleDetail.agent_session!)
+    renderPage('/inbox?selected=ie1')
+
+    await screen.findByText('Redis or in-memory?')
+    await userEvent.type(screen.getByPlaceholderText('Type your answer…'), 'Use Redis')
+    await userEvent.click(screen.getByText('Send answer'))
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledWith('dc1', 'as1', { inbox_event_id: 'ie1', text: 'Use Redis' }))
+    await waitFor(() => expect(screen.getByText('✓ Answer sent · awaiting runtime…')).toBeTruthy())
+  })
+
+  it('disables the send button while the answer is in flight', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie1' })] })
+    mockDetail.mockResolvedValue(sampleDetail)
+    mockSend.mockReturnValue(new Promise(() => {}))
+    renderPage('/inbox?selected=ie1')
+
+    await screen.findByText('Redis or in-memory?')
+    await userEvent.type(screen.getByPlaceholderText('Type your answer…'), 'Use Redis')
+    await userEvent.click(screen.getByText('Send answer'))
+    await waitFor(() => expect((screen.getByText('Sending…') as HTMLButtonElement).disabled).toBe(true))
+  })
+
+  it('shows the stale note when the question is no longer actionable', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie1' })] })
+    mockDetail.mockResolvedValue(sampleDetail)
+    mockSend.mockRejectedValue(new ApiError(409, 'INBOX_EVENT_NOT_ACTIONABLE', 'gone'))
+    renderPage('/inbox?selected=ie1')
+
+    await screen.findByText('Redis or in-memory?')
+    await userEvent.type(screen.getByPlaceholderText('Type your answer…'), 'Use Redis')
+    await userEvent.click(screen.getByText('Send answer'))
+    await waitFor(() => expect(screen.getByText('This question is no longer awaiting an answer.')).toBeTruthy())
+  })
+
+  it('approves an approval request and shows the awaiting note', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie2', event_type: 'approval_request' })] })
+    mockDetail.mockResolvedValue(approvalDetail)
+    mockResolve.mockResolvedValue(sampleDetail.agent_session!)
+    renderPage('/inbox?selected=ie2')
+
+    await screen.findByText('Claude wants to run: pnpm migrate')
+    await userEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(mockResolve).toHaveBeenCalledWith('dc1', 'as1', { approval_request_id: 'ar1', resolution: 'approved' }))
+    await waitFor(() => expect(screen.getByText('✓ Submitted · awaiting runtime…')).toBeTruthy())
+  })
+
+  it('rejects an approval request', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie2', event_type: 'approval_request' })] })
+    mockDetail.mockResolvedValue(approvalDetail)
+    mockResolve.mockResolvedValue(sampleDetail.agent_session!)
+    renderPage('/inbox?selected=ie2')
+
+    await screen.findByText('Claude wants to run: pnpm migrate')
+    await userEvent.click(screen.getByText('Reject'))
+    await waitFor(() => expect(mockResolve).toHaveBeenCalledWith('dc1', 'as1', { approval_request_id: 'ar1', resolution: 'rejected' }))
+  })
+
+  it('shows the stale note when the approval is no longer pending', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie2', event_type: 'approval_request' })] })
+    mockDetail.mockResolvedValue(approvalDetail)
+    mockResolve.mockRejectedValue(new ApiError(409, 'APPROVAL_REQUEST_NOT_PENDING', 'gone'))
+    renderPage('/inbox?selected=ie2')
+
+    await screen.findByText('Claude wants to run: pnpm migrate')
+    await userEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(screen.getByText('Already resolved elsewhere — no longer pending.')).toBeTruthy())
+  })
+
+  it('hides controls and reflects resolved state after an invalidation refetch', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie1' })] })
     mockDetail
-      .mockResolvedValueOnce({ ...sampleDetail, status: 'unread' })
+      .mockResolvedValueOnce(sampleDetail)
       .mockResolvedValueOnce({ ...sampleDetail, status: 'resolved' })
     renderPage('/inbox?selected=ie1')
-    await screen.findByText('unread')
+    await screen.findByPlaceholderText('Type your answer…')
 
     act(() => {
       const [es] = MockEventSource.instances
@@ -229,6 +322,6 @@ describe('Inbox live updates', () => {
       es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: ['ie1'] })
     })
 
-    await waitFor(() => expect(screen.getByText('resolved')).toBeTruthy())
+    await waitFor(() => expect(screen.queryByPlaceholderText('Type your answer…')).toBeNull())
   })
 })

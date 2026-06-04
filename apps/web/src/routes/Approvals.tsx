@@ -6,12 +6,12 @@ import { QueryBoundary } from '../components/QueryBoundary'
 import {
   listApprovalRequests,
   resolveAgentSessionApproval,
-  ApiError,
   useApiQuery,
   type ApprovalRequest,
   type ApprovalResolution,
   type ApprovalStatus,
 } from '../lib/api'
+import { useInterventionAction, ActionButton, StatusNote } from '../lib/intervention'
 import { useSseInvalidation } from '../lib/events'
 import { loadError } from '../lib/copy'
 import { formatRelativeTime } from '../lib/time'
@@ -64,61 +64,20 @@ function Tab({ label, active, onClick }: { label: string; active: boolean; onCli
   )
 }
 
-type ActionState =
-  | { kind: 'idle' }
-  | { kind: 'submitting'; resolution: ApprovalResolution }
-  | { kind: 'awaiting' }
-  | { kind: 'stale' }
-  | { kind: 'error'; message: string }
-
-function ActionButton({
-  label,
-  onClick,
-  disabled,
-  variant,
-}: {
-  label: string
-  onClick: () => void
-  disabled: boolean
-  variant: 'approve' | 'reject'
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        'rounded-md px-3 py-1 text-[12px] font-semibold disabled:opacity-40',
-        variant === 'approve' ? 'bg-ok text-white' : 'border border-bad text-bad',
-      )}
-    >
-      {label}
-    </button>
-  )
-}
-
 function ApprovalRow({ request }: { request: ApprovalRequest }) {
-  const [action, setAction] = useState<ActionState>({ kind: 'idle' })
+  const { state, run } = useInterventionAction('APPROVAL_REQUEST_NOT_PENDING')
 
-  async function resolve(resolution: ApprovalResolution) {
-    setAction({ kind: 'submitting', resolution })
-    try {
-      await resolveAgentSessionApproval(request.devcontainer_id, request.agent_session_id, {
+  const resolve = (resolution: ApprovalResolution) =>
+    run(resolution, () =>
+      resolveAgentSessionApproval(request.devcontainer_id, request.agent_session_id, {
         approval_request_id: request.id,
         resolution,
-      })
-      setAction({ kind: 'awaiting' })
-    } catch (err) {
-      if (err instanceof ApiError && err.code === 'APPROVAL_REQUEST_NOT_PENDING') {
-        setAction({ kind: 'stale' })
-      } else {
-        setAction({ kind: 'error', message: "Couldn't submit — try again." })
-      }
-    }
-  }
+      }),
+    )
 
-  const submitting = action.kind === 'submitting'
+  const submitting = state.kind === 'submitting'
   const showActions =
-    request.status === 'pending' && action.kind !== 'awaiting' && action.kind !== 'stale'
+    request.status === 'pending' && state.kind !== 'awaiting' && state.kind !== 'stale'
 
   return (
     <div className="flex items-center gap-3 border-b border-border px-4 py-3">
@@ -127,12 +86,13 @@ function ApprovalRow({ request }: { request: ApprovalRequest }) {
         <div className="mt-0.5 text-[11px] text-text-muted">
           {request.devcontainer_id} · session {request.agent_session_id.slice(0, 8)} ·{' '}
           {formatRelativeTime(request.created_at)}
-          {action.kind === 'awaiting' && <span className="text-accent"> · submitted · awaiting runtime</span>}
+          {state.kind === 'awaiting' && <span className="text-accent"> · submitted · awaiting runtime</span>}
         </div>
-        {action.kind === 'stale' && (
-          <div className="mt-1 text-[11px] text-bad">Already resolved elsewhere — no longer pending.</div>
-        )}
-        {action.kind === 'error' && <div className="mt-1 text-[11px] text-bad">{action.message}</div>}
+        <StatusNote
+          state={state}
+          awaitingNote=""
+          staleNote="Already resolved elsewhere — no longer pending."
+        />
       </div>
       <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', badgeClass(request.status))}>
         {request.status}
@@ -140,13 +100,13 @@ function ApprovalRow({ request }: { request: ApprovalRequest }) {
       {showActions && (
         <div className="flex shrink-0 gap-2">
           <ActionButton
-            label={action.kind === 'submitting' && action.resolution === 'approved' ? 'Approving…' : 'Approve'}
+            label={submitting && state.tag === 'approved' ? 'Approving…' : 'Approve'}
             onClick={() => resolve('approved')}
             disabled={submitting}
             variant="approve"
           />
           <ActionButton
-            label={action.kind === 'submitting' && action.resolution === 'rejected' ? 'Rejecting…' : 'Reject'}
+            label={submitting && state.tag === 'rejected' ? 'Rejecting…' : 'Reject'}
             onClick={() => resolve('rejected')}
             disabled={submitting}
             variant="reject"

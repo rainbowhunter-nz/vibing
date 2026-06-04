@@ -102,6 +102,7 @@ SAMPLE_INBOX_EVENTS: tuple[dict, ...] = (
         "approval_request_id": None,
         "event_type": "question",
         "status": "unread",
+        "content": "Which database should I use for the cache layer — Redis or in-memory?",
         "created_at": FIXED_TS,
         "updated_at": FIXED_TS,
     },

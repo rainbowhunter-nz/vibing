@@ -9,7 +9,7 @@ from vibing_api.core.vocabularies import InboxEventType
 
 _COLUMNS = (
     "id, devcontainer_id, agent_session_id, approval_request_id, "
-    "event_type, status, created_at, updated_at"
+    "event_type, status, content, created_at, updated_at"
 )
 
 
@@ -21,6 +21,7 @@ class InboxEvent:
     approval_request_id: str | None
     event_type: InboxEventType
     status: str
+    content: str | None
     created_at: str
     updated_at: str
 
@@ -33,6 +34,7 @@ def _row_to_inbox(row: sqlite3.Row) -> InboxEvent:
         approval_request_id=row["approval_request_id"],
         event_type=row["event_type"],
         status=row["status"],
+        content=row["content"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -50,6 +52,7 @@ class InboxRepository:
         status: str,
         agent_session_id: str | None = None,
         approval_request_id: str | None = None,
+        content: str | None = None,
     ) -> InboxEvent:
         now = datetime.now(timezone.utc).isoformat()
         event = InboxEvent(
@@ -59,11 +62,12 @@ class InboxRepository:
             approval_request_id=approval_request_id,
             event_type=event_type,
             status=status,
+            content=content,
             created_at=now,
             updated_at=now,
         )
         self._conn.execute(
-            f"INSERT INTO inbox_events ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO inbox_events ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 event.id,
                 event.devcontainer_id,
@@ -71,6 +75,7 @@ class InboxRepository:
                 event.approval_request_id,
                 event.event_type,
                 event.status,
+                event.content,
                 event.created_at,
                 event.updated_at,
             ),

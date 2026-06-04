@@ -33,12 +33,12 @@ def test_init_db_creates_database_file(db_path: Path) -> None:
     assert db_path.exists()
 
 
-def test_init_db_records_schema_version_two(db_path: Path) -> None:
+def test_init_db_records_schema_version(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     assert row is not None
-    assert row[0] == "2"
+    assert row[0] == "3"
 
 
 def test_devcontainers_table_exists_with_required_columns(db_path: Path) -> None:
@@ -143,6 +143,7 @@ def test_inbox_events_table_exists_with_required_columns(db_path: Path) -> None:
         "approval_request_id",
         "event_type",
         "status",
+        "content",
         "created_at",
         "updated_at",
     }

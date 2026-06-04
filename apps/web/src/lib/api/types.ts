@@ -120,6 +120,7 @@ export interface InboxEvent {
 }
 
 export interface InboxEventDetail extends InboxEvent {
+  content: string | null
   devcontainer: Devcontainer
   agent_session: AgentSession | null
   approval_request: ApprovalRequest | null
