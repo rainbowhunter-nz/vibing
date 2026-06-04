@@ -15,7 +15,7 @@ EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
 
 
 class _LauncherProtocol(Protocol):
-    async def launch(self, devcontainer_id: str, local_path: str) -> None: ...
+    async def launch(self, devcontainer_id: str, container_id: str, local_path: str) -> None: ...
 
 
 class DevcontainerCommandHandler:
@@ -111,7 +111,16 @@ class DevcontainerCommandHandler:
                 )
             )
             if operation == "start" and self._launcher and command.devcontainer_id and local_path:
-                try:
-                    await self._launcher.launch(command.devcontainer_id, local_path)
-                except Exception:
-                    logger.warning("Unexpected error during agent launch; ignoring")
+                container_id = result.payload.get("container_id")
+                if not container_id:
+                    logger.warning(
+                        "Agent injection skipped for %s: container_id absent from up output",
+                        command.devcontainer_id,
+                    )
+                else:
+                    try:
+                        await self._launcher.launch(
+                            command.devcontainer_id, container_id, local_path
+                        )
+                    except Exception:
+                        logger.warning("Unexpected error during agent launch; ignoring")

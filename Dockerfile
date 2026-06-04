@@ -36,6 +36,9 @@ RUN uv sync --no-dev --frozen --no-install-project
 COPY src ./src
 RUN uv sync --no-dev --frozen
 
+# Build a copyable wheel for injection into arbitrary devcontainers (VIB-98)
+RUN uv build --wheel --out-dir /opt/vibing/wheels
+
 # Copy built frontend assets
 COPY --from=builder /build/dist ./dist
 

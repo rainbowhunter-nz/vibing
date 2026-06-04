@@ -29,18 +29,14 @@ class FakeAdapter:
 
 
 class FakeLauncher:
-    def __init__(self, raises: Exception | None = None, return_code: int = 0) -> None:
-        self.calls: list[tuple[str, str]] = []  # (devcontainer_id, local_path)
+    def __init__(self, raises: Exception | None = None) -> None:
+        self.calls: list[tuple[str, str, str]] = []  # (devcontainer_id, container_id, local_path)
         self._raises = raises
-        self._return_code = return_code
 
-    async def launch(self, devcontainer_id: str, local_path: str) -> None:
-        self.calls.append((devcontainer_id, local_path))
+    async def launch(self, devcontainer_id: str, container_id: str, local_path: str) -> None:
+        self.calls.append((devcontainer_id, container_id, local_path))
         if self._raises is not None:
             raise self._raises
-        if self._return_code != 0:
-            # simulate warning path — launcher swallows
-            pass
 
 
 def _make_command(
@@ -74,7 +70,7 @@ def test_start_success_fires_launcher() -> None:
     events = _run(handler, _make_command("start_devcontainer", payload={"local_path": "/p"}))
 
     assert [e.event_type for e in events] == ["devcontainer_starting", "devcontainer_started"]
-    assert launcher.calls == [("dc-1", "/p")]
+    assert launcher.calls == [("dc-1", "c1", "/p")]
 
 
 def test_start_success_launcher_called_after_devcontainer_started_emitted() -> None:
@@ -83,10 +79,10 @@ def test_start_success_launcher_called_after_devcontainer_started_emitted() -> N
     emitted: list[RuntimeEvent] = []
 
     class TrackingLauncher:
-        async def launch(self, devcontainer_id: str, local_path: str) -> None:
+        async def launch(self, devcontainer_id: str, container_id: str, local_path: str) -> None:
             events_at_launch.append([e.event_type for e in emitted])
 
-    adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={}))
+    adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={"container_id": "c1"}))
     handler = DevcontainerCommandHandler(adapter, launcher=TrackingLauncher())  # type: ignore[arg-type]
 
     async def emit(event: RuntimeEvent) -> None:
@@ -105,10 +101,10 @@ def test_start_success_launcher_called_after_devcontainer_started_emitted() -> N
 def test_start_success_launcher_nonzero_still_emits_started(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={}))
+    adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={"container_id": "c1"}))
 
     class FailingLauncher:
-        async def launch(self, devcontainer_id: str, local_path: str) -> None:
+        async def launch(self, devcontainer_id: str, container_id: str, local_path: str) -> None:
             import logzero
 
             logzero.logger.warning("agent launch failed: exit code 1")
@@ -120,10 +116,10 @@ def test_start_success_launcher_nonzero_still_emits_started(
 
 
 def test_start_success_launcher_raises_still_emits_started() -> None:
-    adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={}))
+    adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={"container_id": "c1"}))
 
     class RaisingLauncher:
-        async def launch(self, devcontainer_id: str, local_path: str) -> None:
+        async def launch(self, devcontainer_id: str, container_id: str, local_path: str) -> None:
             raise RuntimeError("unexpected crash")
 
     handler = DevcontainerCommandHandler(adapter, launcher=RaisingLauncher())  # type: ignore[arg-type]
@@ -161,6 +157,20 @@ def test_start_failure_does_not_fire_launcher() -> None:
     handler = DevcontainerCommandHandler(adapter, launcher=launcher)
     _run(handler, _make_command("start_devcontainer", payload={"local_path": "/p"}))
 
+    assert launcher.calls == []
+
+
+# --- Module B: missing container_id → skip launch, devcontainer_started intact ---
+
+
+def test_start_success_no_container_id_skips_launcher() -> None:
+    """If container_id is absent from the up payload, launcher is not called."""
+    adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={}))
+    launcher = FakeLauncher()
+    handler = DevcontainerCommandHandler(adapter, launcher=launcher)
+    events = _run(handler, _make_command("start_devcontainer", payload={"local_path": "/p"}))
+
+    assert any(e.event_type == "devcontainer_started" for e in events)
     assert launcher.calls == []
 
 
