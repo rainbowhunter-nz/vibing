@@ -24,4 +24,5 @@ never hardcode `http://localhost:8000`. Read the root `CONTEXT.md` for domain te
 
 - All backend access goes through `src/lib/api/` — components import from there, never `fetch` directly.
 - New API call ⇒ add to `endpoints.ts` + `types.ts`; keep DTO types in sync with the backend's Pydantic schemas.
+- New or changed frontend API usage ⇒ update Control Plane API Mocking in the same change: handlers for new endpoints, fixtures for UI-used DTO fields, mutable mock state for user actions that should affect later refetches, and manual invalidation controls for live-update behavior humans need to inspect. Do not mock backend behavior the UI does not expose.
 - Compose classNames with `cn(...)`.

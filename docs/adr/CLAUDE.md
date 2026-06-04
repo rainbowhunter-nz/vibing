@@ -8,5 +8,6 @@ Architectural decisions for Vibing. One file per decision, `NNNN-slug.md`.
 - [0004](0004-devcontainer-runtime-agents-connect-on-a-dedicated-endpoint-routed-by-devcontainer-id.md) — Devcontainer Runtime Agents connect on a dedicated `/runtime/agent/ws` endpoint, routed by `devcontainer_id`; host-worker-launched; shared transport in `src/vibing_runtime_client`.
 - [0005](0005-frontend-live-updates-use-sse-invalidation-events.md) — Frontend live updates use one app-level SSE stream carrying lightweight invalidation events only; HTTP stays canonical, runtime WebSockets stay reserved for runtime traffic.
 - [0006](0006-frontend-live-updates-use-stale-while-revalidate-in-a-custom-hook.md) — The SSE flash is fixed by making `useApiQuery` stale-while-revalidate, not by adopting TanStack Query or a shared cache layer.
+- [0007](0007-control-plane-api-mocking-uses-msw-and-a-dev-eventsource-adapter.md) — Frontend Control Plane API Mocking uses MSW for `/api/v1` HTTP and a dev-only EventSource adapter for manual live invalidation testing.
 
 **Keep this index up to date: add a one-line entry here whenever you add a new ADR.**

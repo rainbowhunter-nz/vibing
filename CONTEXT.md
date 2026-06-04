@@ -16,6 +16,10 @@ _Avoid_: Claude session, agent run, conversation
 The backend (FastAPI + SQLite). The single hub: it holds all metadata, sends Commands to runtimes and consumes the Runtime Events they emit (over TCP/IP, star topology — see [ADR-0003](docs/adr/0003-runtimes-connect-to-the-control-plane-over-tcp-ip-in-a-star-topology.md)), and is the only writer of derived state. The frontend is a separate client over `/api/v1` HTTP and is *not* part of the Control Plane.
 _Avoid_: server, backend, orchestrator; do not include the frontend
 
+**Control Plane API Mocking**:
+A frontend development mode where the browser receives mock `/api/v1` Control Plane HTTP responses and live invalidation events without requiring a running Control Plane. It is a UI inspection aid, not a substitute source of truth for Runtime Events or projections.
+_Avoid_: backendless mode, fake backend, mock server
+
 **Runtime**:
 A process that executes Commands and emits Runtime Events. Two kinds: the **Host Runtime Worker** (owns Devcontainer lifecycle — containers on the host) and the **Devcontainer Runtime Agent** (owns Agent Session lifecycle, running inside a Devcontainer).
 _Avoid_: worker, daemon (when ambiguous)
