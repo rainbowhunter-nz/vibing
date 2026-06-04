@@ -1,101 +1,97 @@
 ---
 name: afk-implement
-description: Autonomously implement every `ready-for-agent` Jira ticket under one epic, hands-off, via a Ralph loop. Each iteration the main agent picks the next unblocked ticket, delegates the build to an implementation subagent (model chosen by difficulty), gates it through a separate review subagent (approve / send-back-to-fix), commits the approved change to the epic branch (`VIB-<n>-<slug>`), and moves on. Use whenever the user wants to clear an epic's backlog unattended — "AFK", "overnight run", "work through the ready tickets in this epic", "batch-implement the open tickets", "hands-off / unsupervised implementation". Scoped to the vibing (VIB) Jira project.
+description: >-
+  Autonomously implement a batch of Jira tickets unattended (AFK). Use this
+  whenever the user wants to work through Jira tickets tagged `ready-for-agent`,
+  clear a backlog, implement an epic's TODO tickets, or "let it run and implement
+  the tickets while I'm away." Trigger even if the user only says something like
+  "go implement the ready tickets", "knock out the backlog for PROJ", or "AFK
+  implement the auth epic" without naming this skill. An interactive supervisor
+  sets up the run, then a ralph loop re-invokes a fresh agent per ticket — each
+  implements one ticket on a `wip` branch and leaves it In Review for a human to
+  merge. State lives in `.afk/afk-plan.md` so an interrupted run resumes cleanly.
 disable-model-invocation: true
 ---
 
 # AFK Implement
 
-Clear one epic's `ready-for-agent` backlog, no human present. Pre-flight resolves the epic +
-branch and gets one go-ahead; then a **Ralph loop** (`/ralph-loop`) runs the backlog. Each
-iteration = one **main agent** handling one ticket: orchestrate an **implementation subagent**
-(builds) and a **review subagent** (gates), commit the approved change to the epic branch, end.
-The loop re-feeds the playbook for the next ticket. Ends when no ready tickets remain (success)
-or a ticket hits an unrecoverable blocker (stop).
+Runs in a devcontainer. Two layers so context resets per ticket and interrupted runs recover: an interactive **supervisor** sets the run up once, then a **ralph loop** (`.afk/run.sh`) re-invokes a fresh **ticket-runner** per ticket while `Run state` is `running` — each starts cold, does one ticket, exits. Durable state = Jira statuses + `.afk/afk-plan.md` + per-ticket plans; nothing in memory, so any crash/halt resumes by reconciling it. Per-role split in **Roles** below.
+
+## Scope & defaults
+
+- Eligible: label `ready-for-agent` AND status `TODO`. Honor narrower user filter (epic, component, single ticket).
+- Branch: all work on `wip` (branch from default if missing). **Never push.**
+- Commits: runner commits after review passes — ideally one/ticket. Implementer/reviewer subagents stage only; never commit/push.
+- Final status: leave each ticket **In Review** for a human. Never Done.
+- State: master `.afk/afk-plan.md`; per-ticket `.afk/plans/<ticket>-<title>.md`. `.afk/` gitignored.
 
 ## Roles
 
-- **Main agent** (each iteration): orchestrator. Reconnect, pick next unblocked ticket, gather
-  context, decide each subagent's model, run the implement↔review loop, commit, end. Supervises
-  — doesn't write code or review itself.
-- **Implementation subagent**: claims (To Do → In Progress), builds test-first, verifies,
-  reports. Fresh per ticket; continued in place on review fixes.
-- **Review subagent**: gates. Main scales depth — 1 holistic pass (small) or 2-pass
-  (spec-compliance then code-quality, substantial). Approves or returns blocking findings; on
-  approve owns the Jira hand-off (→ In Review + result comment).
+| Role | Does |
+|---|---|
+| **Supervisor** (interactive, once) | Pre-flight, batch + order, confirm, write master plan, write + launch driver, then only monitor — never touch the working tree mid-run. |
+| **Driver** (`.afk/run.sh`) | Serial loop: one fresh runner at a time while `Run state: running`. Iteration cap guards runaway. |
+| **Ticket-runner** (fresh agent/iteration) | Reconcile state, pick next ticket, run ticket cycle, update master plan, exit. No memory of prior iterations. |
+| **Implementer / Reviewer** (subagents) | Dispatched per stage by the runner; implement, or review the staged diff independently. |
 
-## Operating decisions (fixed — don't "improve" mid-run)
+## Phase 1 — Supervisor setup & launch (once)
 
-- **Scope gate:** only `To Do` + `ready-for-agent` label + parented to the target epic. The
-  label is the opt-in — never touch unlabeled tickets, never leave the epic.
-- **One epic per run.** Second epic → another run.
-- **Dependency-aware order:** `Blocked by` order, not raw priority — skip until blockers are
-  Done/In Review.
-- **Isolation:** one branch per run (`VIB-<n>-<slug>`), sequential commits. No per-ticket
-  branches, no PRs, no pushing.
-- **Unrecoverable failure → stop the whole loop and report.** One bad ticket ends the session.
-- **Autonomy after pre-flight:** never prompts the human again (see playbook's autonomy rules).
+A bad start corrupts the whole run — fix everything here first.
 
-## Config and defaults
+1. Git repo, **clean tree**. If dirty, stop + ask.
+2. Atlassian MCP authenticated (trivial query). Else start OAuth, wait.
+3. `wip` branch exists + checked out (branch from default if needed).
+4. `.afk/plans/` exists, `.afk/` gitignored.
+5. **Green baseline.** Detect build/test/lint (`package.json`, `Makefile`, `pyproject.toml`, CI) + run. If already red, stop + report. Record commands in master plan — runners read them from there, no re-guessing.
+6. **Map Jira workflow.** Confirm real status names + that needed transitions exist: ready (default `To Do`), `In Progress`, review (default `In Review`). These vary by project + are gated by current status; if any differ/missing, ask user to map now. Record mapping in master plan.
+7. Query eligible via JQL + user filter, e.g. `labels = "ready-for-agent" AND status = "To Do" AND "Epic Link" = PROJ-42`.
+8. For each candidate read **"is blocked by"** links, build dependency order:
+   - Blocker **satisfied** if Done/In Review in Jira, or in this batch ordered earlier. (In Review counts — commits already on `wip`; if branch state in doubt, treat unsatisfiable.)
+   - Blocker neither satisfied nor in batch = **unsatisfiable** → exclude that ticket + its dependents.
+   - Topo-sort the rest, blockers first.
+9. Show numbered execution order (ticket, title) + excluded with reasons. **Ask user to confirm.** The one interactive gate.
+10. **Write master plan** `.afk/afk-plan.md` per `references/master-plan-template.md`: commands, Jira map, ordered batch (all `pending`), excluded, `Run state: running`.
+11. **Write + launch driver** `.afk/run.sh` (below). Launch detached (tmux / `nohup … &`) so the run survives this session; monitor via the Run log. Don't edit repo files while the loop runs — runners own the tree.
 
-Optional args; else:
+### Driver script
 
-| Setting | Default | Notes |
-|---|---|---|
-| `project` | `VIB` | Jira project key |
-| `cloudId` | `70b0455e-11e5-47f8-8c2a-f91ba4065e51` | rainbowhunter Atlassian site |
-| `label` | `ready-for-agent` | scope gate |
-| `epic` | — | target epic key (e.g. `VIB-5`); if omitted, inferred in pre-flight |
-| `branch` | `VIB-<n>-<slug>` | epic key + slugified summary, e.g. `VIB-5-product-foundation` |
+Devcontainer, so use `--dangerously-skip-permissions` for unattended runs. Supervisor fills repo path, skill dir, iteration cap (batch size + buffer):
 
-Jira MCP must be reachable (use the `cloudId` above). If not, STOP — don't start a loop you
-can't drive.
-
-## Phase 1 — Pre-flight (once, this turn, before launching)
-
-The **only** phase where prompting the user is allowed.
-
-1. **Verify Jira** — MCP answers, project/cloudId resolve. STOP if not.
-2. **Resolve the epic.** Use the passed `epic`; else survey ready tickets project-wide, group
-   by parent. One epic → it. Several → most ready tickets (tie-break: priority, then oldest).
-   Slugify the epic summary → `VIB-<n>-<slug>` (lowercase, spaces/underscores → hyphens, drop
-   other punctuation, ~5 words). E.g. `VIB-5` "Product Foundation" → `VIB-5-product-foundation`.
-3. **Survey:**
-   ```
-   project = <project> AND status = "To Do" AND labels = "<label>"
-     AND issuetype != Epic AND parent = <epic>
-   ORDER BY priority DESC, created ASC
-   ```
-   Count 0 → say so, stop.
-4. **Clean tree + fresh base.** `git status` clean (STOP if dirty). From up-to-date `main`,
-   `git checkout -b VIB-<n>-<slug>`. Already exists → STOP and surface it.
-5. **Confirm, then go.** Report epic, branch, count, keys; ask one go-ahead (`AskUserQuestion`).
-   On yes, launch. **Last prompt** — everything after runs unattended.
-6. **Safety net:** `--max-iterations` = `ready_count + 2`.
-
-## Phase 2 — Launch the loop
-
-Defer per-ticket detail to the playbook so the re-fed prompt stays small:
-
-```
-/ralph-loop "AFK implement run. Config: project=<project>, cloudId=<cloudId>, label=<label>, epic=<epic>, branch=<branch>. Read .claude/skills/afk-implement/references/ticket-playbook.md and follow it EXACTLY to handle ONE ticket this iteration, then stop. Only output <promise>AFK_RUN_COMPLETE</promise> when the playbook's success-terminal condition is met (no ready tickets remain under the epic)." --max-iterations <N> --completion-promise "AFK_RUN_COMPLETE"
+```bash
+#!/usr/bin/env bash
+set -uo pipefail
+REPO="<abs repo path>"
+SKILL_DIR="<abs path to this skill>"
+PLAN="$REPO/.afk/afk-plan.md"
+MAX=<batch size + 5>
+cd "$REPO"
+i=0
+while grep -q '^Run state: running' "$PLAN"; do
+  (( ++i > MAX )) && { echo "iteration cap hit"; break; }
+  claude -p --dangerously-skip-permissions "AFK_SKILL_DIR=$SKILL_DIR
+$(cat "$SKILL_DIR/references/ticket-runner-prompt.md")"
+done
+echo "loop ended: $(grep '^Run state:' "$PLAN")"
 ```
 
-Each iteration re-reads the playbook — it, not your context, is the source of truth. Don't
-narrate or babysit. User can `/cancel-ralph`.
+## Phase 2 — Ticket cycle (each runner)
 
-## Termination
+The full per-ticket instructions live in `references/ticket-runner-prompt.md` — the driver feeds them to each fresh runner; the supervisor never executes them. That file is **self-contained** (cycle steps, stop conditions, and the review-depth / model-selection / Jira-comment guides) so a runner never has to load this SKILL.md.
 
-- **Success:** zero ready tickets → playbook outputs `<promise>AFK_RUN_COMPLETE</promise>`.
-- **Stop on failure:** unrecoverable blocker → playbook keeps the branch green, documents on the
-  ticket, writes the report, cancels the loop (`rm -f .claude/ralph-loop.local.md`), exits
-  **without** the promise.
-- **Iteration cap:** `--max-iterations` backstops both.
+Cycle in brief: reconcile state + pick next ticket → scout → plan → implement → independent review → fix ≤3 → commit on `wip` → In Review → comment → update master plan (status, Run log, Handoff). The runner sets `Run state` to `complete` (nothing left) or `halted` (global blocker) to stop the driver.
 
-When the loop ends, read `.claude/afk-report.md` and summarize: tickets completed (keys +
-one-liners), and if stopped early, which ticket blocked it and why.
+## Recovery
 
-## The per-ticket playbook
+Every iteration reconciles, so recovery = relaunch:
 
-Detail lives in [`references/ticket-playbook.md`](references/ticket-playbook.md). Read it
-before launching; the loop reads it every iteration.
+1. Re-run pre-flight. If `.afk/afk-plan.md` exists with `Run state` running/halted, offer resume vs rebuild.
+2. Set `Run state: running` (if halted + blocker cleared), relaunch `.afk/run.sh`. Each runner reconciles per-ticket: `in-progress` but not committed+approved → reset + redo; `done` → skip; `pending` → run in order.
+
+## References
+
+- `ticket-runner-prompt.md` — self-contained per-iteration runner instructions: ticket cycle, stop conditions, and the review-depth / model-selection / Jira-comment guides.
+- `master-plan-template.md` — `.afk/afk-plan.md`: run state + recovery anchor.
+- `plan-template.md` — per-ticket plan structure + writing guide.
+- `implementer-prompt-template.md` — implementer subagent.
+- `spec-reviewer-prompt-template.md` — spec reviewer (two-pass only).
+- `code-reviewer-prompt-template.md` — code reviewer.
