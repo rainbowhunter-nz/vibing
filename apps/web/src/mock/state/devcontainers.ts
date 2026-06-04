@@ -1,44 +1,15 @@
-import type { Devcontainer, DevcontainerCreateBody, DevcontainerUpdateBody, DevcontainerView, DevcontainerViewList } from '../../lib/api/types'
+import type { Devcontainer, DevcontainerCreateBody, DevcontainerUpdateBody, DevcontainerView, DevcontainerViewList, RuntimeConnection } from '../../lib/api/types'
+import { seedDevcontainers } from './seeds'
 
-// Fixed seed data spanning multiple statuses — deterministic for tests.
-const SEED: DevcontainerView[] = [
-  {
-    id: 'dc-seed-0001',
-    name: 'my-webapp',
-    local_path: '/home/dev/my-webapp',
-    status: 'running',
-    created_at: '2024-01-10T08:00:00.000Z',
-    updated_at: '2024-01-15T10:00:00.000Z',
-    runtime: { worker_connected: true, agent_connected: false },
-  },
-  {
-    id: 'dc-seed-0002',
-    name: 'api-service',
-    local_path: '/home/dev/api-service',
-    status: 'stopped',
-    created_at: '2024-01-11T09:00:00.000Z',
-    updated_at: '2024-01-14T14:30:00.000Z',
-    runtime: { worker_connected: false, agent_connected: false },
-  },
-  {
-    id: 'dc-seed-0003',
-    name: 'data-pipeline',
-    local_path: '/home/dev/data-pipeline',
-    status: 'created',
-    created_at: '2024-01-12T11:00:00.000Z',
-    updated_at: '2024-01-12T11:00:00.000Z',
-    runtime: { worker_connected: false, agent_connected: false },
-  },
-  {
-    id: 'dc-seed-0004',
-    name: 'legacy-app',
-    local_path: '/home/dev/legacy-app',
-    status: 'error',
-    created_at: '2024-01-08T07:00:00.000Z',
-    updated_at: '2024-01-13T16:00:00.000Z',
-    runtime: { worker_connected: false, agent_connected: false },
-  },
-]
+// Runtime connection per seed devcontainer; my-webapp is fully connected for inspection.
+const SEED_RUNTIME: Record<string, RuntimeConnection> = {
+  'dc-seed-0001': { worker_connected: true, agent_connected: true },
+  'dc-seed-0002': { worker_connected: false, agent_connected: false },
+  'dc-seed-0003': { worker_connected: false, agent_connected: false },
+  'dc-seed-0004': { worker_connected: false, agent_connected: false },
+}
+
+const SEED: DevcontainerView[] = seedDevcontainers.map((d) => ({ ...d, runtime: SEED_RUNTIME[d.id] }))
 
 let store: DevcontainerView[] = SEED.map((d) => ({ ...d }))
 let nextIdSeq = 100

@@ -1,74 +1,17 @@
 import type {
-  Devcontainer,
-  AgentSession,
   ApprovalRequest,
   InboxEvent,
   InboxEventDetail,
   InboxEventList,
 } from '../../lib/api/types'
+import { seedDevcontainer, seedSession } from './seeds'
 
-// Shared devcontainers for inbox seeds
-const DC1: Devcontainer = {
-  id: 'dc-seed-0001',
-  name: 'my-webapp',
-  local_path: '/home/dev/my-webapp',
-  status: 'running',
-  created_at: '2024-01-10T08:00:00.000Z',
-  updated_at: '2024-01-15T10:00:00.000Z',
-}
-
-const DC2: Devcontainer = {
-  id: 'dc-seed-0002',
-  name: 'api-service',
-  local_path: '/home/dev/api-service',
-  status: 'stopped',
-  created_at: '2024-01-11T09:00:00.000Z',
-  updated_at: '2024-01-14T14:30:00.000Z',
-}
-
-const SESSION1: AgentSession = {
-  id: 'as-seed-0001',
-  devcontainer_id: 'dc-seed-0001',
-  status: 'waiting_for_approval',
-  started_at: '2024-01-15T09:00:00.000Z',
-  ended_at: null,
-  last_event_at: '2024-01-15T09:55:00.000Z',
-  created_at: '2024-01-15T09:00:00.000Z',
-  updated_at: '2024-01-15T09:55:00.000Z',
-}
-
-const SESSION2: AgentSession = {
-  id: 'as-seed-0002',
-  devcontainer_id: 'dc-seed-0002',
-  status: 'running',
-  started_at: '2024-01-15T10:00:00.000Z',
-  ended_at: null,
-  last_event_at: '2024-01-15T10:30:00.000Z',
-  created_at: '2024-01-15T10:00:00.000Z',
-  updated_at: '2024-01-15T10:30:00.000Z',
-}
-
-const SESSION3: AgentSession = {
-  id: 'as-seed-0003',
-  devcontainer_id: 'dc-seed-0002',
-  status: 'failed',
-  started_at: '2024-01-14T08:00:00.000Z',
-  ended_at: '2024-01-14T08:45:00.000Z',
-  last_event_at: '2024-01-14T08:45:00.000Z',
-  created_at: '2024-01-14T08:00:00.000Z',
-  updated_at: '2024-01-14T08:45:00.000Z',
-}
-
-const SESSION4: AgentSession = {
-  id: 'as-seed-0004',
-  devcontainer_id: 'dc-seed-0001',
-  status: 'completed',
-  started_at: '2024-01-13T12:00:00.000Z',
-  ended_at: '2024-01-13T12:30:00.000Z',
-  last_event_at: '2024-01-13T12:30:00.000Z',
-  created_at: '2024-01-13T12:00:00.000Z',
-  updated_at: '2024-01-13T12:30:00.000Z',
-}
+const DC1 = seedDevcontainer('dc-seed-0001')
+const DC2 = seedDevcontainer('dc-seed-0002')
+const SESSION1 = seedSession('as-seed-0001')
+const SESSION2 = seedSession('as-seed-0002')
+const SESSION3 = seedSession('as-seed-0003')
+const SESSION4 = seedSession('as-seed-0004')
 
 const APPROVAL1: ApprovalRequest = {
   id: 'ar-seed-0001',

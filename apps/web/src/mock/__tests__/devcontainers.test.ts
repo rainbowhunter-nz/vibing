@@ -112,8 +112,16 @@ describe('GET /api/v1/devcontainers/:id', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/v1/devcontainers/:id/agent-sessions', () => {
-  it('happy — returns 200 with empty items for seeded id', async () => {
+  it('happy — returns only the requesting devcontainer’s sessions', async () => {
     const res = await get('/api/v1/devcontainers/dc-seed-0001/agent-sessions')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.items).toHaveLength(4)
+    expect(body.items.every((s: { devcontainer_id: string }) => s.devcontainer_id === 'dc-seed-0001')).toBe(true)
+  })
+
+  it('happy — returns empty items for a seeded id with no sessions', async () => {
+    const res = await get('/api/v1/devcontainers/dc-seed-0003/agent-sessions')
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.items).toEqual([])

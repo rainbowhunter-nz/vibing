@@ -14,6 +14,7 @@ pnpm dev:mock   # VITE_API_MOCKING=true vite
 |---|---|
 | `handlers.ts` | Central MSW request handlers (wildcard origin — works in browser worker and `msw/node` tests) |
 | `fixtures.ts` | Healthy baseline DTO values for static read endpoints |
+| `state/seeds.ts` | Shared seed identities (devcontainers, agent sessions) — one id means the same object across every mock module |
 | `state/devcontainers.ts` | Mutable in-browser store for devcontainer CRUD/lifecycle |
 | `state/inbox.ts` | Mutable in-browser store for inbox events |
 | `state/approvals.ts` | Mutable in-browser store for approval requests |
@@ -69,7 +70,7 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 
 - Add the field to the relevant fixture in `fixtures.ts`, matching the type from `src/lib/api/types.ts`.
 - Field coverage should match what the UI reads — do not add fields the UI ignores; do not omit fields the UI reads.
-- Fixtures cover **static** read endpoints (health, status, config, runtimeStatus, settings, diagnostics, and the empty-list stubs). For mutable domain objects, the seed data lives in `state/`.
+- Fixtures cover **static** read endpoints (health, status, config, runtimeStatus, settings, diagnostics) plus read-only `agentSessions` (seeded against dc-seed-0001; the handler filters it by devcontainer_id). For mutable domain objects, the seed data lives in `state/`.
 
 ### 3. Mutable state — user actions that should survive later refetches
 
@@ -116,5 +117,7 @@ Control Plane API Mocking **must not model backend behavior the UI does not expo
 - No Control Plane projection logic — mock stores are flat CRUD; they do not replicate event-sourcing, cascades, or derived state the backend computes.
 - No automatic playback — scenarios and invalidation events are always manually triggered.
 - No Storybook integration or toast system.
+- **No cross-store cascades.** Resolving an approval mutates only the approvals store; the inbox event that references it keeps its embedded snapshot and unread status until refetched against the real backend. The UI's post-action "awaiting runtime…" state stands in for the cascade the real Control Plane would project.
+- **`empty` scenario only empties list endpoints.** Per-item routes (`/devcontainers/:id`, `/agent-sessions`) still return seeded data in `empty` — there is no UI path to them when the list is empty, so this is intentional.
 
 If a screen does not read a field, do not add it to fixtures. If the UI does not surface a state transition, do not add it to the mock stores.

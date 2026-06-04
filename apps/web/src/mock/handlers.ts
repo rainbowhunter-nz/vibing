@@ -158,7 +158,9 @@ const devcontainerHandlers = [
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e
     }
-    return HttpResponse.json(f.agentSessions)
+    return HttpResponse.json({
+      items: f.agentSessions.items.filter((s) => s.devcontainer_id === params.id),
+    })
   }),
 ]
 

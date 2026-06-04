@@ -10,6 +10,7 @@ import type {
   SettingsResponse,
   StatusResponse,
 } from '../lib/api/types'
+import { seedAgentSessions } from './state/seeds'
 
 export const health: HealthResponse = { status: 'ok', service: 'vibing' }
 
@@ -33,7 +34,9 @@ export const diagnostics: DiagnosticsResponse = {
   ],
 }
 
-export const agentSessions: AgentSessionList = { items: [] }
+// Read-only agent sessions, filtered per devcontainer_id by the handler.
+// Identities come from the shared seed so an id means the same session everywhere.
+export const agentSessions: AgentSessionList = { items: seedAgentSessions }
 
 export const inboxEvents: InboxEventList = { items: [] }
 
