@@ -314,14 +314,22 @@ function InboxDetail({
       )}
 
       {(detail.event_type === 'completion' || detail.event_type === 'failure') && (
-        <div className="mx-4 rounded-md border border-border">
-          <DetailRow label="Status">{detail.status}</DetailRow>
-          <DetailRow label="Devcontainer">{detail.devcontainer.name}</DetailRow>
-          <DetailRow label="Agent session">
-            {detail.agent_session ? `${detail.agent_session.id.slice(0, 8)} · ${detail.agent_session.status}` : '—'}
-          </DetailRow>
-          <DetailRow label="Created">{formatRelativeTime(detail.created_at)}</DetailRow>
-        </div>
+        <>
+          {detail.content && (
+            <>
+              <Bubble>{detail.content}</Bubble>
+              <div className="h-3" />
+            </>
+          )}
+          <div className="mx-4 rounded-md border border-border">
+            <DetailRow label="Status">{detail.status}</DetailRow>
+            <DetailRow label="Devcontainer">{detail.devcontainer.name}</DetailRow>
+            <DetailRow label="Agent session">
+              {detail.agent_session ? `${detail.agent_session.id.slice(0, 8)} · ${detail.agent_session.status}` : '—'}
+            </DetailRow>
+            <DetailRow label="Created">{formatRelativeTime(detail.created_at)}</DetailRow>
+          </div>
+        </>
       )}
     </div>
   )

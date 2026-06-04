@@ -52,6 +52,7 @@ class ProjectionUpdates:
     resolve_linked_inbox: bool = False
     resolve_inbox_event_id: str | None = None
     final_status: AgentSessionStatus | None = None
+    summary_text: str | None = None
 
 
 def reduce(event: RuntimeEvent) -> ProjectionUpdates:
@@ -101,16 +102,22 @@ def reduce(event: RuntimeEvent) -> ProjectionUpdates:
     if event_type == EventType.USER_INPUT_SENT:
         return ProjectionUpdates(resolve_inbox_event_id=payload.get("inbox_event_id"))
     if event_type == EventType.SESSION_COMPLETED:
+        result = payload.get("result")
         return ProjectionUpdates(
             session_status=AgentSessionStatus.COMPLETED,
             final_status=AgentSessionStatus.COMPLETED,
             inbox_event_type=inbox_event_type,
+            inbox_content=result,
+            summary_text=result,
         )
     if event_type == EventType.SESSION_FAILED:
+        stderr_tail = payload.get("stderr_tail")
         return ProjectionUpdates(
             session_status=AgentSessionStatus.FAILED,
             final_status=AgentSessionStatus.FAILED,
             inbox_event_type=inbox_event_type,
+            inbox_content=stderr_tail,
+            summary_text=stderr_tail,
         )
     if event_type == EventType.SESSION_STOPPED:
         return ProjectionUpdates(
@@ -181,6 +188,7 @@ def project(event: RuntimeEvent, conn: sqlite3.Connection) -> None:
             last_known_event=event.event_type,
             ended_at=event.created_at,
             started_at=session.started_at if session is not None else None,
+            summary_text=updates.summary_text,
         )
 
 

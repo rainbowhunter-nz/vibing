@@ -115,6 +115,30 @@ def test_reduce_terminal_paths() -> None:
     assert stopped.inbox_event_type is None
 
 
+def test_reduce_session_completed_captures_result() -> None:
+    updates = reduce(_event("session_completed", payload={"result": "All 42 tests passed."}))
+    assert updates.inbox_content == "All 42 tests passed."
+    assert updates.summary_text == "All 42 tests passed."
+
+
+def test_reduce_session_completed_without_result_has_no_content() -> None:
+    updates = reduce(_event("session_completed"))
+    assert updates.inbox_content is None
+    assert updates.summary_text is None
+
+
+def test_reduce_session_failed_captures_stderr_tail() -> None:
+    updates = reduce(_event("session_failed", payload={"stderr_tail": "Error: ENOENT"}))
+    assert updates.inbox_content == "Error: ENOENT"
+    assert updates.summary_text == "Error: ENOENT"
+
+
+def test_reduce_session_failed_without_stderr_tail_has_no_content() -> None:
+    updates = reduce(_event("session_failed"))
+    assert updates.inbox_content is None
+    assert updates.summary_text is None
+
+
 def test_reduce_approval_resolved_missing_resolution() -> None:
     with pytest.raises(ValueError, match="payload.resolution"):
         reduce(_event("approval_resolved", payload={}))
@@ -357,6 +381,19 @@ def test_session_completed(conn: sqlite3.Connection, seeded: tuple[str, str]) ->
     assert (rows[0]["event_type"], rows[0]["status"]) == ("completion", "unread")
 
 
+def test_session_completed_with_result(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
+    dc_id, session_id = seeded
+    _emit(conn, dc_id, session_id, "session_completed", {"result": "All 42 tests passed."})
+    summary = SessionSummaryRepository(conn).get_by_session(session_id)
+    assert summary.summary_text == "All 42 tests passed."
+    row = conn.execute(
+        "SELECT content FROM inbox_events WHERE agent_session_id = ?", (session_id,)
+    ).fetchone()
+    assert row["content"] == "All 42 tests passed."
+    # status unchanged
+    assert AgentSessionRepository(conn).get(session_id).status == "completed"
+
+
 def test_session_failed(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
     dc_id, session_id = seeded
     _emit(conn, dc_id, session_id, "session_failed")
@@ -368,6 +405,19 @@ def test_session_failed(conn: sqlite3.Connection, seeded: tuple[str, str]) -> No
         (session_id,),
     ).fetchall()
     assert (rows[0]["event_type"], rows[0]["status"]) == ("failure", "unread")
+
+
+def test_session_failed_with_stderr_tail(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:
+    dc_id, session_id = seeded
+    _emit(conn, dc_id, session_id, "session_failed", {"stderr_tail": "Error: ENOENT"})
+    summary = SessionSummaryRepository(conn).get_by_session(session_id)
+    assert summary.summary_text == "Error: ENOENT"
+    row = conn.execute(
+        "SELECT content FROM inbox_events WHERE agent_session_id = ?", (session_id,)
+    ).fetchone()
+    assert row["content"] == "Error: ENOENT"
+    # status unchanged
+    assert AgentSessionRepository(conn).get(session_id).status == "failed"
 
 
 def test_session_stopped_no_inbox(conn: sqlite3.Connection, seeded: tuple[str, str]) -> None:

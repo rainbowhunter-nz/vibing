@@ -203,6 +203,28 @@ describe('POST /api/v1/devcontainers/:dc/agent-sessions/:sid/approval-resolution
 })
 
 // ---------------------------------------------------------------------------
+// Completion and failure detail — result/stderr_tail content present (AC6)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/v1/inbox-events/:id — completion/failure content', () => {
+  it('completion detail carries non-null content', async () => {
+    const res = await get('/api/v1/inbox-events/ie-seed-0004')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.event_type).toBe('completion')
+    expect(body.content).toBeTruthy()
+  })
+
+  it('failure detail carries non-null content', async () => {
+    const res = await get('/api/v1/inbox-events/ie-seed-0003')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.event_type).toBe('failure')
+    expect(body.content).toBeTruthy()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Mutation persistence
 // ---------------------------------------------------------------------------
 

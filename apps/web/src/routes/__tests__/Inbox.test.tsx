@@ -478,6 +478,59 @@ describe('Inbox approval detail convergence (AC1, AC2, AC4, AC5)', () => {
   })
 })
 
+describe('Inbox completion and failure content rendering', () => {
+  const completionDetail: InboxEventDetail = {
+    ...ev({ id: 'ie-comp', event_type: 'completion', status: 'read' }),
+    content: 'All 42 tests passed.',
+    devcontainer: sampleDetail.devcontainer,
+    agent_session: sampleDetail.agent_session,
+    approval_request: null,
+  }
+
+  const failureDetail: InboxEventDetail = {
+    ...ev({ id: 'ie-fail', event_type: 'failure', status: 'read' }),
+    content: 'Error: ENOENT /app/config.json',
+    devcontainer: sampleDetail.devcontainer,
+    agent_session: sampleDetail.agent_session,
+    approval_request: null,
+  }
+
+  const completionNoContent: InboxEventDetail = {
+    ...ev({ id: 'ie-comp2', event_type: 'completion', status: 'read' }),
+    content: null,
+    devcontainer: sampleDetail.devcontainer,
+    agent_session: sampleDetail.agent_session,
+    approval_request: null,
+  }
+
+  it('renders content bubble for completion event with result', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie-comp', event_type: 'completion', status: 'read' })] })
+    mockDetail.mockResolvedValue(completionDetail)
+    renderPage('/inbox?selected=ie-comp')
+    await waitFor(() => expect(screen.getByText('All 42 tests passed.')).toBeTruthy())
+    // meta table still present
+    expect(screen.getByText('api-service')).toBeTruthy()
+  })
+
+  it('renders content bubble for failure event with stderr_tail', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie-fail', event_type: 'failure', status: 'read' })] })
+    mockDetail.mockResolvedValue(failureDetail)
+    renderPage('/inbox?selected=ie-fail')
+    await waitFor(() => expect(screen.getByText('Error: ENOENT /app/config.json')).toBeTruthy())
+    expect(screen.getByText('api-service')).toBeTruthy()
+  })
+
+  it('omits content bubble when completion has no result', async () => {
+    mockList.mockResolvedValue({ items: [ev({ id: 'ie-comp2', event_type: 'completion', status: 'read' })] })
+    mockDetail.mockResolvedValue(completionNoContent)
+    renderPage('/inbox?selected=ie-comp2')
+    // meta table visible
+    await waitFor(() => expect(screen.getByText('api-service')).toBeTruthy())
+    // no content bubble
+    expect(screen.queryByText('All 42 tests passed.')).toBeNull()
+  })
+})
+
 describe('Inbox read/resolve actions', () => {
   it('fires markInboxEventRead when opening an unread event', async () => {
     mockList.mockResolvedValue({ items: [{ ...unreadDetail }] as InboxEvent[] })
