@@ -6,6 +6,10 @@ import { Inbox } from './Inbox'
 import { Approvals } from './Approvals'
 import { Settings } from './Settings'
 
+const devOnlyRoutes = import.meta.env.VITE_API_MOCKING === 'true'
+  ? [{ path: 'mock', lazy: () => import('./MockScenarios').then((m) => ({ Component: m.MockScenarios })) }]
+  : []
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -17,6 +21,7 @@ export const router = createBrowserRouter([
       { path: 'inbox', Component: Inbox },
       { path: 'approvals', Component: Approvals },
       { path: 'settings', Component: Settings },
+      ...devOnlyRoutes,
       { path: '*', loader: () => redirect('/devcontainers') },
     ],
   },

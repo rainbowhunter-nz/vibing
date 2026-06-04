@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
 import { setupServer } from 'msw/node'
 import { handlers } from '../handlers'
+import { resetScenario } from '../scenario'
 import * as f from '../fixtures'
 
 const server = setupServer(...handlers)
 
 beforeAll(() => server.listen())
+beforeEach(() => resetScenario())
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
