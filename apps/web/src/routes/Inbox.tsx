@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
@@ -7,6 +7,8 @@ import { QueryBoundary } from '../components/QueryBoundary'
 import {
   listInboxEvents,
   fetchInboxEvent,
+  markInboxEventRead,
+  resolveInboxEvent,
   sendAgentSessionUserInput,
   resolveAgentSessionApproval,
   useApiQuery,
@@ -250,7 +252,17 @@ function Bubble({ children }: { children: React.ReactNode }) {
   return <div className="mx-4 rounded-[10px] bg-surface-muted px-3 py-2.5 text-[13px] leading-relaxed text-text">{children}</div>
 }
 
-function InboxDetail({ detail, onClose }: { detail: InboxEventDetail; onClose: () => void }) {
+function InboxDetail({
+  detail,
+  onClose,
+  onResolve,
+  resolving,
+}: {
+  detail: InboxEventDetail
+  onClose: () => void
+  onResolve: () => void
+  resolving: boolean
+}) {
   return (
     <div className="pt-4">
       <div className="mb-3 flex items-center justify-between px-4">
@@ -268,6 +280,18 @@ function InboxDetail({ detail, onClose }: { detail: InboxEventDetail; onClose: (
         </button>
       </div>
       <MetaLine detail={detail} />
+      <div className="mb-2 flex justify-end px-4">
+        {detail.status === 'resolved' ? (
+          <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Resolved</span>
+        ) : (
+          <ActionButton
+            label={resolving ? 'Resolving…' : 'Resolve'}
+            onClick={onResolve}
+            disabled={resolving}
+            variant="reject"
+          />
+        )}
+      </div>
 
       {detail.event_type === 'question' && (
         <>
@@ -310,17 +334,47 @@ function detailErrorElement(state: QueryState<InboxEventDetail>) {
   return <ErrorState {...loadError('inbox event')} />
 }
 
-function InboxDetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
+function InboxDetailPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { state, refetch } = useApiQuery(() => fetchInboxEvent(id), [id])
   const { register } = useSseInvalidation()
+  const markedRead = useRef(false)
+  const [resolving, setResolving] = useState(false)
 
   useEffect(() => register('inbox', refetch), [register, refetch])
   useEffect(() => register('agent_sessions', refetch), [register, refetch])
   useEffect(() => register('approvals', refetch), [register, refetch])
 
+  useEffect(() => {
+    // Fire once per opened event; the panel is keyed by id so the ref resets on selection change.
+    if (state.kind === 'ready' && state.data.status === 'unread' && !markedRead.current) {
+      markedRead.current = true
+      markInboxEventRead(state.data.id)
+        .then(() => {
+          refetch()
+          onChanged()
+        })
+        .catch(() => {
+          markedRead.current = false // allow retry on next state change
+        })
+    }
+  }, [state, refetch, onChanged])
+
+  const resolve = () => {
+    setResolving(true)
+    resolveInboxEvent(id)
+      .then(() => {
+        refetch()
+        onChanged()
+      })
+      .catch(() => {}) // button re-enables via finally; user can retry
+      .finally(() => setResolving(false))
+  }
+
   return (
     <QueryBoundary state={state} error={detailErrorElement(state)}>
-      {(detail) => <InboxDetail detail={detail} onClose={onClose} />}
+      {(detail) => (
+        <InboxDetail detail={detail} onClose={onClose} onResolve={resolve} resolving={resolving} />
+      )}
     </QueryBoundary>
   )
 }
@@ -385,7 +439,7 @@ export function Inbox() {
         </div>
         <div className="flex-1 overflow-auto">
           {selectedId ? (
-            <InboxDetailPanel key={selectedId} id={selectedId} onClose={clearSelection} />
+            <InboxDetailPanel key={selectedId} id={selectedId} onClose={clearSelection} onChanged={refetch} />
           ) : (
             <EmptyState icon={inboxIcon} title="Select an item" helper="Choose an Inbox event to see its details." />
           )}

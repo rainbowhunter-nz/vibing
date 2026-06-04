@@ -54,3 +54,23 @@ def get_inbox_event(inbox_event_id: str) -> InboxEventDetail:
         if approval_row
         else None,
     )
+
+
+@router.post("/{inbox_event_id}/read", response_model=InboxEvent)
+def mark_inbox_event_read(inbox_event_id: str) -> InboxEvent:
+    with get_connection() as conn:
+        event = InboxRepository(conn).mark_read(inbox_event_id)
+        if event is None:
+            raise InboxEventNotFoundError(inbox_event_id)
+        conn.commit()
+    return InboxEvent.model_validate(event)
+
+
+@router.post("/{inbox_event_id}/resolve", response_model=InboxEvent)
+def resolve_inbox_event(inbox_event_id: str) -> InboxEvent:
+    with get_connection() as conn:
+        event = InboxRepository(conn).resolve(inbox_event_id)
+        if event is None:
+            raise InboxEventNotFoundError(inbox_event_id)
+        conn.commit()
+    return InboxEvent.model_validate(event)

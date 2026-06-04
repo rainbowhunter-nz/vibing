@@ -17,6 +17,7 @@ from vibing_api.core.vocabularies import (
     AgentSessionStatus,
     ApprovalStatus,
     DevcontainerStatus,
+    InboxEventStatus,
     InboxEventType,
 )
 from vibing_api.repositories.agent_sessions import AgentSessionRepository
@@ -166,7 +167,7 @@ def project(event: RuntimeEvent, conn: sqlite3.Connection) -> None:
         inbox.create(
             devcontainer_id=event.devcontainer_id,
             event_type=updates.inbox_event_type,
-            status="unread",
+            status=InboxEventStatus.UNREAD,
             agent_session_id=event.agent_session_id,
             approval_request_id=created_approval_id,
             content=updates.inbox_content,

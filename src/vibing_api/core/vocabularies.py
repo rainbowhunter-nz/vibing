@@ -30,3 +30,9 @@ class InboxEventType(StrEnum):
     APPROVAL_REQUEST = auto()
     COMPLETION = auto()
     FAILURE = auto()
+
+
+class InboxEventStatus(StrEnum):
+    UNREAD = auto()
+    READ = auto()
+    RESOLVED = auto()

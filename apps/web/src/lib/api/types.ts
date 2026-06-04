@@ -108,13 +108,15 @@ export interface AgentSessionApprovalBody {
 
 export type InboxEventType = 'question' | 'approval_request' | 'completion' | 'failure'
 
+export type InboxEventStatus = 'unread' | 'read' | 'resolved'
+
 export interface InboxEvent {
   id: string
   devcontainer_id: string
   agent_session_id: string | null
   approval_request_id: string | null
   event_type: InboxEventType
-  status: string
+  status: InboxEventStatus
   created_at: string
   updated_at: string
 }

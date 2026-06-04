@@ -7,7 +7,9 @@ import {
   fetchInboxEvent,
   listApprovalRequests,
   listInboxEvents,
+  markInboxEventRead,
   resolveAgentSessionApproval,
+  resolveInboxEvent,
   sendAgentSessionUserInput,
   startAgentSession,
   startDevcontainer,
@@ -349,5 +351,42 @@ describe('fetchApprovalRequest', () => {
     const [url] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/v1/approval-requests/apr%201%2Fx')
     expect(result).toEqual(approvalRequest)
+  })
+})
+
+const inboxEventSimple = {
+  id: 'evt1',
+  devcontainer_id: 'dc1',
+  agent_session_id: null,
+  approval_request_id: null,
+  event_type: 'question',
+  status: 'read',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+}
+
+describe('markInboxEventRead', () => {
+  it('POSTs to /inbox-events/:id/read', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, inboxEventSimple))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await markInboxEventRead('evt1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/inbox-events/evt1/read',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(result).toEqual(inboxEventSimple)
+  })
+})
+
+describe('resolveInboxEvent', () => {
+  it('POSTs to /inbox-events/:id/resolve', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, inboxEventSimple))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await resolveInboxEvent('evt1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/inbox-events/evt1/resolve',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(result).toEqual(inboxEventSimple)
   })
 })

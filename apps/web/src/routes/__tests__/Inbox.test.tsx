@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { Inbox } from '../Inbox'
-import { listInboxEvents, fetchInboxEvent, sendAgentSessionUserInput, resolveAgentSessionApproval, ApiError } from '../../lib/api'
+import { listInboxEvents, fetchInboxEvent, sendAgentSessionUserInput, resolveAgentSessionApproval, markInboxEventRead, resolveInboxEvent, ApiError } from '../../lib/api'
 import type { InboxEvent, InboxEventDetail } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
@@ -12,6 +12,8 @@ const mockList = vi.mocked(listInboxEvents)
 const mockDetail = vi.mocked(fetchInboxEvent)
 const mockSend = vi.mocked(sendAgentSessionUserInput)
 const mockResolve = vi.mocked(resolveAgentSessionApproval)
+const mockRead = vi.mocked(markInboxEventRead)
+const mockResolveInbox = vi.mocked(resolveInboxEvent)
 
 // --- MockEventSource (mirrors Devcontainers.test.tsx) -----------------------
 class MockEventSource {
@@ -49,6 +51,8 @@ beforeEach(() => {
   MockEventSource.instances = []
   vi.stubGlobal('EventSource', MockEventSource)
   vi.clearAllMocks()
+  // default: auto-read resolves to a read copy; tests can override
+  mockRead.mockResolvedValue({ ...sampleDetail, status: 'read' } as InboxEvent)
 })
 
 afterEach(() => {
@@ -323,5 +327,67 @@ describe('Inbox intervention actions', () => {
     })
 
     await waitFor(() => expect(screen.queryByPlaceholderText('Type your answer…')).toBeNull())
+  })
+})
+
+const unreadDetail: InboxEventDetail = {
+  id: 'evt1',
+  devcontainer_id: 'dc1',
+  agent_session_id: null,
+  approval_request_id: null,
+  event_type: 'question',
+  status: 'unread',
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+  content: 'Pick a name?',
+  devcontainer: {
+    id: 'dc1',
+    name: 'env',
+    local_path: '/w',
+    status: 'running',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  },
+  agent_session: null,
+  approval_request: null,
+}
+
+describe('Inbox read/resolve actions', () => {
+  it('fires markInboxEventRead when opening an unread event', async () => {
+    mockList.mockResolvedValue({ items: [{ ...unreadDetail }] as InboxEvent[] })
+    mockDetail.mockResolvedValue(unreadDetail)
+    mockRead.mockResolvedValue({ ...unreadDetail, status: 'read' } as InboxEvent)
+    renderPage('/inbox?selected=evt1')
+    await waitFor(() => expect(mockRead).toHaveBeenCalledWith('evt1'))
+    expect(mockRead).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fire markInboxEventRead for a read event', async () => {
+    const readDetail = { ...unreadDetail, status: 'read' as const }
+    mockList.mockResolvedValue({ items: [readDetail] as InboxEvent[] })
+    mockDetail.mockResolvedValue(readDetail)
+    renderPage('/inbox?selected=evt1')
+    await screen.findByText('Pick a name?')
+    expect(mockRead).not.toHaveBeenCalled()
+  })
+
+  it('does not fire markInboxEventRead for a resolved event', async () => {
+    const resolvedDetail = { ...unreadDetail, status: 'resolved' as const }
+    mockList.mockResolvedValue({ items: [resolvedDetail] as InboxEvent[] })
+    mockDetail.mockResolvedValue(resolvedDetail)
+    renderPage('/inbox?selected=evt1')
+    await screen.findByText('Resolved')
+    expect(mockRead).not.toHaveBeenCalled()
+  })
+
+  it('resolves an event when the resolve button is clicked', async () => {
+    mockList.mockResolvedValue({ items: [{ ...unreadDetail }] as InboxEvent[] })
+    mockDetail.mockResolvedValue(unreadDetail)
+    mockRead.mockResolvedValue({ ...unreadDetail, status: 'read' } as InboxEvent)
+    mockResolveInbox.mockResolvedValue({ ...unreadDetail, status: 'resolved' } as InboxEvent)
+    renderPage('/inbox?selected=evt1')
+    const btn = await screen.findByRole('button', { name: /resolve/i })
+    await userEvent.click(btn)
+    await waitFor(() => expect(mockResolveInbox).toHaveBeenCalledWith('evt1'))
   })
 })

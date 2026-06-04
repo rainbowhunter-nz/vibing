@@ -15,6 +15,7 @@ import type {
   DevcontainerUpdateBody,
   DiagnosticsResponse,
   HealthResponse,
+  InboxEvent,
   InboxEventDetail,
   InboxEventList,
   SettingsResponse,
@@ -77,6 +78,12 @@ export const listInboxEvents = (filters?: {
 
 export const fetchInboxEvent = (id: string): Promise<InboxEventDetail> =>
   getJson(`/inbox-events/${encodeURIComponent(id)}`)
+
+export const markInboxEventRead = (id: string): Promise<InboxEvent> =>
+  sendJson<InboxEvent>(`/inbox-events/${encodeURIComponent(id)}/read`, 'POST') as Promise<InboxEvent>
+
+export const resolveInboxEvent = (id: string): Promise<InboxEvent> =>
+  sendJson<InboxEvent>(`/inbox-events/${encodeURIComponent(id)}/resolve`, 'POST') as Promise<InboxEvent>
 
 export const listApprovalRequests = (filters?: {
   status?: ApprovalStatus

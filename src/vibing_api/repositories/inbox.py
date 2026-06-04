@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from vibing_api.core.vocabularies import InboxEventType
+from vibing_api.core.vocabularies import InboxEventStatus, InboxEventType
 
 _COLUMNS = (
     "id, devcontainer_id, agent_session_id, approval_request_id, "
@@ -20,7 +20,7 @@ class InboxEvent:
     agent_session_id: str | None
     approval_request_id: str | None
     event_type: InboxEventType
-    status: str
+    status: InboxEventStatus
     content: str | None
     created_at: str
     updated_at: str
@@ -49,7 +49,7 @@ class InboxRepository:
         self,
         devcontainer_id: str,
         event_type: InboxEventType,
-        status: str,
+        status: InboxEventStatus,
         agent_session_id: str | None = None,
         approval_request_id: str | None = None,
         content: str | None = None,
@@ -126,6 +126,18 @@ class InboxRepository:
             return None
         self._conn.execute(
             "UPDATE inbox_events SET status = 'resolved', updated_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), inbox_event_id),
+        )
+        return self.get(inbox_event_id)
+
+    def mark_read(self, inbox_event_id: str) -> InboxEvent | None:
+        current = self.get(inbox_event_id)
+        if current is None:
+            return None
+        if current.status != InboxEventStatus.UNREAD:
+            return current
+        self._conn.execute(
+            "UPDATE inbox_events SET status = 'read', updated_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), inbox_event_id),
         )
         return self.get(inbox_event_id)
