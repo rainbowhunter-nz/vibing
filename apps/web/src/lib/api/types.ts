@@ -96,11 +96,16 @@ export interface AgentSession {
   id: string
   devcontainer_id: string
   status: AgentSessionStatus
+  prompt: string | null
   started_at: string | null
   ended_at: string | null
   last_event_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface AgentSessionDetail extends AgentSession {
+  summary_text: string | null
 }
 
 export interface AgentSessionList {

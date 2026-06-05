@@ -3,6 +3,7 @@ from vibing_protocol import Command, CommandType
 
 from vibing_api.api.schemas.agent_sessions import (
     AgentSession,
+    AgentSessionDetail,
     AgentSessionList,
     AgentSessionStartRequest,
     ApprovalResolutionRequest,
@@ -32,6 +33,8 @@ from vibing_api.repositories.agent_sessions import AgentSessionRepository
 from vibing_api.repositories.approvals import ApprovalRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 from vibing_api.repositories.inbox import InboxRepository
+from vibing_api.repositories.summaries import SessionSummaryRepository
+from vibing_protocol import extract_claude_result_text
 
 router = APIRouter(tags=["agent-sessions"], prefix="/devcontainers")
 
@@ -62,10 +65,10 @@ def list_agent_sessions(devcontainer_id: str) -> AgentSessionList:
 
 @router.get(
     "/{devcontainer_id}/agent-sessions/{session_id}",
-    response_model=AgentSession,
+    response_model=AgentSessionDetail,
     status_code=status.HTTP_200_OK,
 )
-def get_agent_session(devcontainer_id: str, session_id: str) -> AgentSession:
+def get_agent_session(devcontainer_id: str, session_id: str) -> AgentSessionDetail:
     with get_connection() as conn:
         devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
     if devcontainer is None:
@@ -73,10 +76,15 @@ def get_agent_session(devcontainer_id: str, session_id: str) -> AgentSession:
 
     with get_connection() as conn:
         session = AgentSessionRepository(conn).get(session_id)
-    if session is None or session.devcontainer_id != devcontainer_id:
-        raise AgentSessionNotFoundError(session_id)
+        if session is None or session.devcontainer_id != devcontainer_id:
+            raise AgentSessionNotFoundError(session_id)
+        summary = SessionSummaryRepository(conn).get_by_session(session_id)
 
-    return AgentSession(**vars(session))
+    raw_summary = summary.summary_text if summary is not None else None
+    return AgentSessionDetail(
+        **vars(session),
+        summary_text=(extract_claude_result_text(raw_summary) if raw_summary is not None else None),
+    )
 
 
 @router.post(
@@ -108,7 +116,7 @@ async def start_agent_session(
         raise ActiveAgentSessionError(devcontainer_id)
 
     with get_connection() as conn:
-        session = AgentSessionRepository(conn).create(devcontainer_id)
+        session = AgentSessionRepository(conn).create(devcontainer_id, prompt=payload.prompt)
         conn.commit()
 
     await agent_manager.send_command(

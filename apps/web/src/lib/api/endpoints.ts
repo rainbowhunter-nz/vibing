@@ -1,6 +1,7 @@
 import { getJson, sendJson } from './client'
 import type {
   AgentSession,
+  AgentSessionDetail,
   AgentSessionApprovalBody,
   AgentSessionList,
   AgentSessionStartBody,
@@ -61,6 +62,9 @@ export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
 
 export const fetchAgentSessions = (devcontainerId: string): Promise<AgentSessionList> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions`)
+
+export const fetchAgentSession = (devcontainerId: string, sessionId: string): Promise<AgentSessionDetail> =>
+  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}`)
 
 export const startAgentSession = (devcontainerId: string, body: AgentSessionStartBody): Promise<AgentSession> =>
   sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions`, 'POST', body) as Promise<AgentSession>

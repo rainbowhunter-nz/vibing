@@ -5,7 +5,7 @@ Keep this file the single source of truth for the on-disk shape.
 
 import sqlite3
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 _TABLE_STATEMENTS: tuple[str, ...] = (
     """
@@ -29,6 +29,7 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
         id TEXT PRIMARY KEY,
         devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
         status TEXT NOT NULL,
+        prompt TEXT,
         started_at TEXT,
         ended_at TEXT,
         last_event_at TEXT,
@@ -113,10 +114,12 @@ def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
     """Apply incremental migrations for existing databases."""
-    if _table_exists(conn, "inbox_events") and "content" not in _column_names(
-        conn, "inbox_events"
-    ):
+    if _table_exists(conn, "inbox_events") and "content" not in _column_names(conn, "inbox_events"):
         conn.execute("ALTER TABLE inbox_events ADD COLUMN content TEXT")
+    if _table_exists(conn, "agent_sessions") and "prompt" not in _column_names(
+        conn, "agent_sessions"
+    ):
+        conn.execute("ALTER TABLE agent_sessions ADD COLUMN prompt TEXT")
 
     conn.execute(
         "INSERT INTO app_meta (key, value) VALUES ('schema_version', ?) "

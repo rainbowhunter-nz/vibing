@@ -25,11 +25,16 @@ class AgentSession(BaseModel):
     id: str
     devcontainer_id: str
     status: AgentSessionStatus
+    prompt: str | None = None
     started_at: str | None
     ended_at: str | None
     last_event_at: str | None
     created_at: str
     updated_at: str
+
+
+class AgentSessionDetail(AgentSession):
+    summary_text: str | None = None
 
 
 class AgentSessionList(BaseModel):

@@ -38,7 +38,7 @@ def test_init_db_records_schema_version(db_path: Path) -> None:
     with get_connection() as conn:
         row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     assert row is not None
-    assert row[0] == "3"
+    assert row[0] == "4"
 
 
 def test_devcontainers_table_exists_with_required_columns(db_path: Path) -> None:
@@ -65,6 +65,7 @@ def test_agent_sessions_table_exists_with_required_columns(db_path: Path) -> Non
         "id",
         "devcontainer_id",
         "status",
+        "prompt",
         "started_at",
         "ended_at",
         "last_event_at",
@@ -223,9 +224,7 @@ def test_init_db_migrates_v2_inbox_events_adds_content_column(db_path: Path) -> 
     """v2 DBs created before inbox content lacked the column; init_db must add it."""
     with sqlite3.connect(db_path) as conn:
         conn.execute("CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        conn.execute(
-            "INSERT INTO app_meta (key, value) VALUES ('schema_version', '2')"
-        )
+        conn.execute("INSERT INTO app_meta (key, value) VALUES ('schema_version', '2')")
         conn.execute(
             """
             CREATE TABLE devcontainers (
@@ -272,11 +271,9 @@ def test_init_db_migrates_v2_inbox_events_adds_content_column(db_path: Path) -> 
 
     with get_connection() as conn:
         assert "content" in _column_names(conn, "inbox_events")
-        row = conn.execute(
-            "SELECT value FROM app_meta WHERE key = 'schema_version'"
-        ).fetchone()
+        row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     assert row is not None
-    assert row[0] == "3"
+    assert row[0] == "4"
 
 
 def test_fk_cascade_on_devcontainer_delete(db_path: Path) -> None:

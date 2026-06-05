@@ -131,12 +131,26 @@ const agentSession = {
   id: 'sess-1',
   devcontainer_id: 'dc-1',
   status: 'running',
+  prompt: null,
   started_at: '2024-01-01T00:00:00Z',
   ended_at: null,
   last_event_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
 }
+
+describe('fetchAgentSession', () => {
+  it('GETs /devcontainers/{id}/agent-sessions/{sid}', async () => {
+    const { fetchAgentSession } = await import('../endpoints')
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ...agentSession, summary_text: 'done' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await fetchAgentSession('dc-1', 'sess-1')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/devcontainers/dc-1/agent-sessions/sess-1')
+    expect((init as RequestInit).method).toBeUndefined()
+    expect(result.summary_text).toBe('done')
+  })
+})
 
 describe('startAgentSession', () => {
   it('POSTs to /devcontainers/{id}/agent-sessions with prompt body', async () => {

@@ -1,5 +1,10 @@
-import type { AgentSession, AgentSessionList, AgentSessionStartBody } from '../../lib/api/types'
+import type { AgentSession, AgentSessionDetail, AgentSessionList, AgentSessionStartBody } from '../../lib/api/types'
 import { seedAgentSessions } from './seeds'
+
+const SESSION_SUMMARIES: Record<string, string> = {
+  'as-seed-0004': 'All tests passed. Ready to merge.',
+  'as-seed-0006': 'Error: command not found: pytest',
+}
 
 const SEED: AgentSession[] = seedAgentSessions.map((s) => ({ ...s }))
 
@@ -36,13 +41,22 @@ export function listAgentSessions(devcontainerId: string): AgentSessionList {
   }
 }
 
+export function getAgentSession(devcontainerId: string, sessionId: string): AgentSessionDetail {
+  const idx = findIdx(sessionId)
+  if (store[idx].devcontainer_id !== devcontainerId) throw new NotFoundError(sessionId)
+  return {
+    ...store[idx],
+    summary_text: SESSION_SUMMARIES[sessionId] ?? null,
+  }
+}
+
 export function startAgentSession(devcontainerId: string, body: AgentSessionStartBody): AgentSession {
-  void body
   const ts = now()
   const session: AgentSession = {
     id: `as-mock-${String(nextIdSeq++).padStart(4, '0')}`,
     devcontainer_id: devcontainerId,
     status: 'starting',
+    prompt: body.prompt,
     started_at: null,
     ended_at: null,
     last_event_at: null,

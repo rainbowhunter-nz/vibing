@@ -70,7 +70,18 @@ def test_exit_zero_returns_success():
     runner = ClaudeCodeRunner(runner=_make_fake_runner(0, stdout='{"result":"done"}'))
     result = _run(runner, "do something")
     assert isinstance(result, ClaudeSuccess)
-    assert result.result == '{"result":"done"}'
+    assert result.result == "done"
+
+
+def test_exit_zero_parses_full_claude_result_envelope():
+    stdout = (
+        '{"type":"result","subtype":"success","is_error":false,'
+        '"result":"Hi! How can I help you today?","stop_reason":"end_turn"}'
+    )
+    runner = ClaudeCodeRunner(runner=_make_fake_runner(0, stdout=stdout))
+    result = _run(runner, "hi")
+    assert isinstance(result, ClaudeSuccess)
+    assert result.result == "Hi! How can I help you today?"
 
 
 # --- Non-zero exit → ClaudeFailure ---

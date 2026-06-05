@@ -73,6 +73,24 @@ describe('GET /api/v1/devcontainers/:id/agent-sessions', () => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /api/v1/devcontainers/:dc/agent-sessions/:sid — detail
+describe('GET /api/v1/devcontainers/:dc/agent-sessions/:sid', () => {
+  it('returns session with summary_text for completed seed session', async () => {
+    const res = await get('/api/v1/devcontainers/dc-seed-0001/agent-sessions/as-seed-0004')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.id).toBe('as-seed-0004')
+    expect(body.prompt).toBe('Fix the flaky test in auth')
+    expect(body.summary_text).toBe('All tests passed. Ready to merge.')
+  })
+
+  it('returns 404 for unknown session', async () => {
+    const res = await get('/api/v1/devcontainers/dc-seed-0001/agent-sessions/nope')
+    expect(res.status).toBe(404)
+    expect((await res.json()).error.code).toBe('AGENT_SESSION_NOT_FOUND')
+  })
+})
+
 // POST /api/v1/devcontainers/:id/agent-sessions — start
 // ---------------------------------------------------------------------------
 

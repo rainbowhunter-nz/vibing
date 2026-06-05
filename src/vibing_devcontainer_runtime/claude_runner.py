@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from logzero import logger
+from vibing_protocol import extract_claude_result_text
 
 _STDERR_TAIL_CHARS = 4000
 _LOG_PREVIEW_CHARS = 500
@@ -66,7 +67,7 @@ def _map_run_result(result: RunResult) -> ClaudeResult:
             stderr_tail=result.stderr[-_STDERR_TAIL_CHARS:],
             message=f"claude exited with code {result.returncode}",
         )
-    return ClaudeSuccess(result=result.stdout)
+    return ClaudeSuccess(result=extract_claude_result_text(result.stdout))
 
 
 class ClaudeProcess:

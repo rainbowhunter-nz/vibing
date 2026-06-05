@@ -7,9 +7,7 @@ from datetime import datetime, timezone
 
 from vibing_api.core.vocabularies import AgentSessionStatus
 
-_COLUMNS = (
-    "id, devcontainer_id, status, started_at, ended_at, last_event_at, created_at, updated_at"
-)
+_COLUMNS = "id, devcontainer_id, status, prompt, started_at, ended_at, last_event_at, created_at, updated_at"
 
 
 @dataclass(frozen=True)
@@ -17,6 +15,7 @@ class AgentSession:
     id: str
     devcontainer_id: str
     status: AgentSessionStatus
+    prompt: str | None
     started_at: str | None
     ended_at: str | None
     last_event_at: str | None
@@ -29,6 +28,7 @@ def _row_to_session(row: sqlite3.Row) -> AgentSession:
         id=row["id"],
         devcontainer_id=row["devcontainer_id"],
         status=row["status"],
+        prompt=row["prompt"],
         started_at=row["started_at"],
         ended_at=row["ended_at"],
         last_event_at=row["last_event_at"],
@@ -43,7 +43,10 @@ class AgentSessionRepository:
         self._conn.row_factory = sqlite3.Row
 
     def create(
-        self, devcontainer_id: str, status: AgentSessionStatus = AgentSessionStatus.STARTING
+        self,
+        devcontainer_id: str,
+        status: AgentSessionStatus = AgentSessionStatus.STARTING,
+        prompt: str | None = None,
     ) -> AgentSession:
         session_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -51,6 +54,7 @@ class AgentSessionRepository:
             id=session_id,
             devcontainer_id=devcontainer_id,
             status=status,
+            prompt=prompt,
             started_at=None,
             ended_at=None,
             last_event_at=None,
@@ -58,11 +62,12 @@ class AgentSessionRepository:
             updated_at=now,
         )
         self._conn.execute(
-            f"INSERT INTO agent_sessions ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO agent_sessions ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session.id,
                 session.devcontainer_id,
                 session.status,
+                session.prompt,
                 session.started_at,
                 session.ended_at,
                 session.last_event_at,

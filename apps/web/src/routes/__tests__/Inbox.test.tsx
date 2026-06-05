@@ -99,6 +99,7 @@ const sampleDetail: InboxEventDetail = {
     id: 'as1session',
     devcontainer_id: 'dc1',
     status: 'running',
+    prompt: null,
     started_at: null,
     ended_at: null,
     last_event_at: null,

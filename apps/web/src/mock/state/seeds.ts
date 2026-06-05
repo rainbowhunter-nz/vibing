@@ -15,12 +15,12 @@ export const seedDevcontainers: Devcontainer[] = [
 // dc-seed-0001 (my-webapp) carries the full status spread for inspection;
 // dc-seed-0002 (api-service) has two; dc-seed-0003/0004 have none.
 export const seedAgentSessions: AgentSession[] = [
-  { id: 'as-seed-0001', devcontainer_id: 'dc-seed-0001', status: 'waiting_for_approval', started_at: '2024-01-15T09:00:00.000Z', ended_at: null, last_event_at: '2024-01-15T09:55:00.000Z', created_at: '2024-01-15T09:00:00.000Z', updated_at: '2024-01-15T09:55:00.000Z' },
-  { id: 'as-seed-0002', devcontainer_id: 'dc-seed-0002', status: 'running', started_at: '2024-01-15T10:00:00.000Z', ended_at: null, last_event_at: '2024-01-15T10:30:00.000Z', created_at: '2024-01-15T10:00:00.000Z', updated_at: '2024-01-15T10:30:00.000Z' },
-  { id: 'as-seed-0003', devcontainer_id: 'dc-seed-0002', status: 'failed', started_at: '2024-01-14T08:00:00.000Z', ended_at: '2024-01-14T08:45:00.000Z', last_event_at: '2024-01-14T08:45:00.000Z', created_at: '2024-01-14T08:00:00.000Z', updated_at: '2024-01-14T08:45:00.000Z' },
-  { id: 'as-seed-0004', devcontainer_id: 'dc-seed-0001', status: 'completed', started_at: '2024-01-13T12:00:00.000Z', ended_at: '2024-01-13T12:30:00.000Z', last_event_at: '2024-01-13T12:30:00.000Z', created_at: '2024-01-13T12:00:00.000Z', updated_at: '2024-01-13T12:30:00.000Z' },
-  { id: 'as-seed-0005', devcontainer_id: 'dc-seed-0001', status: 'running', started_at: '2024-01-15T09:30:00.000Z', ended_at: null, last_event_at: '2024-01-15T10:05:00.000Z', created_at: '2024-01-15T09:30:00.000Z', updated_at: '2024-01-15T10:05:00.000Z' },
-  { id: 'as-seed-0006', devcontainer_id: 'dc-seed-0001', status: 'failed', started_at: '2024-01-13T11:00:00.000Z', ended_at: '2024-01-13T11:08:00.000Z', last_event_at: '2024-01-13T11:08:00.000Z', created_at: '2024-01-13T11:00:00.000Z', updated_at: '2024-01-13T11:08:00.000Z' },
+  { id: 'as-seed-0001', devcontainer_id: 'dc-seed-0001', status: 'waiting_for_approval', prompt: 'Refactor the auth module', started_at: '2024-01-15T09:00:00.000Z', ended_at: null, last_event_at: '2024-01-15T09:55:00.000Z', created_at: '2024-01-15T09:00:00.000Z', updated_at: '2024-01-15T09:55:00.000Z' },
+  { id: 'as-seed-0002', devcontainer_id: 'dc-seed-0002', status: 'running', prompt: 'Run the test suite', started_at: '2024-01-15T10:00:00.000Z', ended_at: null, last_event_at: '2024-01-15T10:30:00.000Z', created_at: '2024-01-15T10:00:00.000Z', updated_at: '2024-01-15T10:30:00.000Z' },
+  { id: 'as-seed-0003', devcontainer_id: 'dc-seed-0002', status: 'failed', prompt: 'Deploy to staging', started_at: '2024-01-14T08:00:00.000Z', ended_at: '2024-01-14T08:45:00.000Z', last_event_at: '2024-01-14T08:45:00.000Z', created_at: '2024-01-14T08:00:00.000Z', updated_at: '2024-01-14T08:45:00.000Z' },
+  { id: 'as-seed-0004', devcontainer_id: 'dc-seed-0001', status: 'completed', prompt: 'Fix the flaky test in auth', started_at: '2024-01-13T12:00:00.000Z', ended_at: '2024-01-13T12:30:00.000Z', last_event_at: '2024-01-13T12:30:00.000Z', created_at: '2024-01-13T12:00:00.000Z', updated_at: '2024-01-13T12:30:00.000Z' },
+  { id: 'as-seed-0005', devcontainer_id: 'dc-seed-0001', status: 'running', prompt: 'Add logging to the API', started_at: '2024-01-15T09:30:00.000Z', ended_at: null, last_event_at: '2024-01-15T10:05:00.000Z', created_at: '2024-01-15T09:30:00.000Z', updated_at: '2024-01-15T10:05:00.000Z' },
+  { id: 'as-seed-0006', devcontainer_id: 'dc-seed-0001', status: 'failed', prompt: 'Run pytest', started_at: '2024-01-13T11:00:00.000Z', ended_at: '2024-01-13T11:08:00.000Z', last_event_at: '2024-01-13T11:08:00.000Z', created_at: '2024-01-13T11:00:00.000Z', updated_at: '2024-01-13T11:08:00.000Z' },
 ]
 
 export function seedDevcontainer(id: string): Devcontainer {

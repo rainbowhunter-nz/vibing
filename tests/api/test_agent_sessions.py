@@ -894,6 +894,64 @@ def test_get_session_returns_correct_fields(client: TestClient) -> None:
     assert body["status"] == "starting"
     assert "created_at" in body
     assert "updated_at" in body
+    assert body["summary_text"] is None
+
+
+def test_get_session_includes_summary_text(client: TestClient) -> None:
+    from vibing_api.core.reducer import project
+    from vibing_protocol import RuntimeEvent
+
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running", prompt="hi")
+        conn.commit()
+
+    event = RuntimeEvent(
+        event_type="session_completed",
+        source="devcontainer_runtime_agent",
+        devcontainer_id=dc_id,
+        agent_session_id=session.id,
+        payload={"result": "Hello! How can I help?"},
+    )
+    with get_connection() as conn:
+        project(event, conn)
+        conn.commit()
+
+    resp = client.get(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session.id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["prompt"] == "hi"
+    assert body["summary_text"] == "Hello! How can I help?"
+    assert body["status"] == "completed"
+
+
+def test_get_session_parses_json_summary_text(client: TestClient) -> None:
+    from vibing_api.core.reducer import project
+    from vibing_protocol import RuntimeEvent
+
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running", prompt="hi")
+        conn.commit()
+
+    raw_result = (
+        '{"type":"result","subtype":"success","is_error":false,'
+        '"result":"Hi! How can I help you today?","stop_reason":"end_turn"}'
+    )
+    event = RuntimeEvent(
+        event_type="session_completed",
+        source="devcontainer_runtime_agent",
+        devcontainer_id=dc_id,
+        agent_session_id=session.id,
+        payload={"result": raw_result},
+    )
+    with get_connection() as conn:
+        project(event, conn)
+        conn.commit()
+
+    resp = client.get(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session.id}")
+    assert resp.status_code == 200
+    assert resp.json()["summary_text"] == "Hi! How can I help you today?"
 
 
 def test_get_session_not_found(client: TestClient) -> None:

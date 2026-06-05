@@ -3,7 +3,7 @@ import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-libra
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
-import { fetchDevcontainer, fetchAgentSessions, startAgentSession, stopAgentSession } from '../../lib/api/endpoints'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, startAgentSession, stopAgentSession } from '../../lib/api/endpoints'
 import { ApiError } from '../../lib/api'
 import type { AgentSession, DevcontainerView } from '../../lib/api/types'
 
@@ -12,6 +12,7 @@ const mockFetch = vi.mocked(fetchDevcontainer)
 const mockFetchSessions = vi.mocked(fetchAgentSessions)
 const mockStart = vi.mocked(startAgentSession)
 const mockStop = vi.mocked(stopAgentSession)
+const mockFetchSession = vi.mocked(fetchAgentSession)
 
 // ---------------------------------------------------------------------------
 // MockEventSource
@@ -99,6 +100,7 @@ const sampleSession: AgentSession = {
   id: 'sess-0001-0000-0000-000000000001',
   devcontainer_id: 'dc1',
   status: 'running',
+  prompt: 'do something',
   started_at: '2024-01-16T10:00:00Z',
   ended_at: null,
   last_event_at: null,
@@ -326,6 +328,29 @@ describe('DevcontainerDetail SSE invalidation', () => {
 
     await waitFor(() => expect(screen.getByText('running')).toBeTruthy())
     expect(screen.queryByText('waiting_for_approval')).toBeNull()
+  })
+
+  it('clicking a session shows the conversation', async () => {
+    const completedSession = {
+      ...sampleSession,
+      status: 'completed' as const,
+      prompt: 'hi',
+      ended_at: '2024-01-16T10:05:00Z',
+    }
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [completedSession] })
+    mockFetchSession.mockResolvedValue({
+      ...completedSession,
+      summary_text: 'Hello! How can I help you today?',
+    })
+
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    expect(await screen.findByText('hi')).toBeTruthy()
+    expect(screen.getByText('Hello! How can I help you today?')).toBeTruthy()
+    expect(mockFetchSession).toHaveBeenCalledWith('dc1', completedSession.id)
   })
 
   it('AC: single agent_sessions invalidation triggers exactly one refetch', async () => {
