@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from logzero import logger
 from pydantic import ValidationError
 from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope, RuntimeEventSource
 
@@ -83,7 +84,15 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
             except ValidationError:
                 continue
             broadcaster = getattr(websocket.app.state, "broadcaster", None)
-            persist_runtime_event(envelope.event, broadcaster)
+            try:
+                persist_runtime_event(envelope.event, broadcaster)
+            except Exception:
+                logger.exception(
+                    "Failed to persist runtime event %s (devcontainer=%s, session=%s)",
+                    envelope.event.event_type,
+                    envelope.event.devcontainer_id,
+                    envelope.event.agent_session_id,
+                )
     except WebSocketDisconnect:
         pass
     except _Reject as reject:

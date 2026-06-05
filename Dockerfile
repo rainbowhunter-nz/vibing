@@ -2,7 +2,7 @@
 FROM node:24-slim AS builder
 WORKDIR /build
 RUN corepack enable && corepack install -g pnpm@11.3.0
-COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
+COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY apps/web/ ./
 RUN pnpm build

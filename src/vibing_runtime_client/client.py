@@ -122,9 +122,10 @@ class RuntimeChannelClient:
                 command = _parse_command(await ws.recv())
                 if command is not None:
                     logger.info(
-                        "Received command %s (devcontainer=%s)",
+                        "Received command %s (devcontainer=%s, session=%s)",
                         command.type,
                         command.devcontainer_id,
+                        command.agent_session_id,
                     )
                     queue.put_nowait(command)
         finally:
@@ -144,9 +145,11 @@ class RuntimeChannelClient:
     def _make_emit(self, ws: Any) -> EmitFn:
         async def emit(event: RuntimeEvent) -> None:
             logger.info(
-                "Emitting event %s (devcontainer=%s)",
+                "Emitting event %s (devcontainer=%s, session=%s, payload_keys=%s)",
                 event.event_type,
                 event.devcontainer_id,
+                event.agent_session_id,
+                sorted((event.payload or {}).keys()),
             )
             await ws.send(json.dumps(RuntimeEventEnvelope(event=event).model_dump()))
 

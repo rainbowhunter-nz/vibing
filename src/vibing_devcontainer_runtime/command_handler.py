@@ -33,6 +33,14 @@ class AgentCommandHandler:
             logger.info("Ignoring unsupported command type: %s", command.type)
 
     async def _start_agent_session(self, command: Command, emit: EmitFn) -> None:
+        prompt = (command.payload or {}).get("prompt", "")
+        logger.info(
+            "Handling start_agent_session (devcontainer=%s, session=%s, prompt_len=%d, prompt=%r)",
+            command.devcontainer_id,
+            command.agent_session_id,
+            len(prompt),
+            prompt[:200] + ("..." if len(prompt) > 200 else ""),
+        )
         await emit(
             RuntimeEvent(
                 event_type=EventType.AGENT_SESSION_STARTED,
@@ -41,8 +49,12 @@ class AgentCommandHandler:
                 agent_session_id=command.agent_session_id,
             )
         )
-        prompt = (command.payload or {}).get("prompt", "")
         process = self._runner.start(prompt)
+        logger.info(
+            "Spawned claude background task (devcontainer=%s, session=%s)",
+            command.devcontainer_id,
+            command.agent_session_id,
+        )
         session_id = command.agent_session_id or ""
         self._processes[session_id] = process
         task = asyncio.create_task(self._run_claude(command, emit, process, session_id))
@@ -62,6 +74,14 @@ class AgentCommandHandler:
             self._processes.pop(session_id, None)
 
         if isinstance(result, ClaudeFailure):
+            logger.warning(
+                "Session failed (devcontainer=%s, session=%s, exit_code=%s, message=%s, stderr=%s)",
+                command.devcontainer_id,
+                command.agent_session_id,
+                result.exit_code,
+                result.message,
+                result.stderr_tail[:500] + ("..." if len(result.stderr_tail) > 500 else ""),
+            )
             await emit(
                 RuntimeEvent(
                     event_type=EventType.SESSION_FAILED,
@@ -72,6 +92,14 @@ class AgentCommandHandler:
                 )
             )
         else:
+            preview = result.result[:500] + ("..." if len(result.result) > 500 else "")
+            logger.info(
+                "Session completed (devcontainer=%s, session=%s, result_len=%d, result=%s)",
+                command.devcontainer_id,
+                command.agent_session_id,
+                len(result.result),
+                preview,
+            )
             await emit(
                 RuntimeEvent(
                     event_type=EventType.SESSION_COMPLETED,

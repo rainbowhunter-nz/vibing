@@ -62,7 +62,7 @@ class AgentLauncher:
         bash_payload = (
             f"{_CONTAINER_UV_DEST} tool install --python 3.13 --from {container_wheel_path} vibing"
             f' && export PATH="$HOME/.local/bin:$PATH"'
-            f" && nohup vibing devcontainer-runtime"
+            f" && nohup vibing runtime devcontainer"
             f" --control-plane-url {self._agent_url}"
             f" --devcontainer-id {devcontainer_id}"
             f" >/tmp/vibing-agent.log 2>&1 &"

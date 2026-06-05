@@ -57,7 +57,7 @@ def test_launch_builds_exact_exec_command(tmp_path: Path) -> None:
     assert cmd[sep + 2] == "-lc"
     payload = cmd[sep + 3]
     assert "nohup" in payload
-    assert "vibing devcontainer-runtime" in payload
+    assert "vibing runtime devcontainer" in payload
     assert "--control-plane-url" in payload
     assert "ws://host.docker.internal:8000/api/v1/runtime/agent/ws" in payload
     assert "--devcontainer-id" in payload

@@ -219,6 +219,66 @@ def test_init_db_is_idempotent(db_path: Path) -> None:
     assert count == 1
 
 
+def test_init_db_migrates_v2_inbox_events_adds_content_column(db_path: Path) -> None:
+    """v2 DBs created before inbox content lacked the column; init_db must add it."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute(
+            "INSERT INTO app_meta (key, value) VALUES ('schema_version', '2')"
+        )
+        conn.execute(
+            """
+            CREATE TABLE devcontainers (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                local_path TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE agent_sessions (
+                id TEXT PRIMARY KEY,
+                devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
+                status TEXT NOT NULL,
+                started_at TEXT,
+                ended_at TEXT,
+                last_event_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE inbox_events (
+                id TEXT PRIMARY KEY,
+                devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
+                agent_session_id TEXT REFERENCES agent_sessions(id) ON DELETE CASCADE,
+                approval_request_id TEXT,
+                event_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+    init_db()
+
+    with get_connection() as conn:
+        assert "content" in _column_names(conn, "inbox_events")
+        row = conn.execute(
+            "SELECT value FROM app_meta WHERE key = 'schema_version'"
+        ).fetchone()
+    assert row is not None
+    assert row[0] == "3"
+
+
 def test_fk_cascade_on_devcontainer_delete(db_path: Path) -> None:
     init_db()
     ts = "2026-01-01T00:00:00Z"

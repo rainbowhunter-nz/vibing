@@ -98,16 +98,40 @@ _INDEX_STATEMENTS: tuple[str, ...] = (
 )
 
 
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
+def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {row[1] for row in rows}
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Apply incremental migrations for existing databases."""
+    if _table_exists(conn, "inbox_events") and "content" not in _column_names(
+        conn, "inbox_events"
+    ):
+        conn.execute("ALTER TABLE inbox_events ADD COLUMN content TEXT")
+
+    conn.execute(
+        "INSERT INTO app_meta (key, value) VALUES ('schema_version', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (SCHEMA_VERSION,),
+    )
+
+
 def apply_schema(conn: sqlite3.Connection) -> None:
-    """Create tables, indexes, and seed schema metadata. Idempotent."""
+    """Create tables, indexes, migrate, and record schema metadata. Idempotent."""
     for statement in _TABLE_STATEMENTS:
         conn.execute(statement)
     for statement in _INDEX_STATEMENTS:
         conn.execute(statement)
-    conn.execute(
-        "INSERT OR IGNORE INTO app_meta (key, value) VALUES ('schema_version', ?)",
-        (SCHEMA_VERSION,),
-    )
+    _migrate_schema(conn)
 
 
 def read_schema_version(conn: sqlite3.Connection) -> str | None:

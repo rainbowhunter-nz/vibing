@@ -104,7 +104,7 @@ def test_exec_is_third_command(tmp_path: Path) -> None:
     payload = cmd[sep + 3]
     assert "uv" in payload
     assert "nohup" in payload
-    assert "vibing devcontainer-runtime" in payload
+    assert "vibing runtime devcontainer" in payload
     assert "--devcontainer-id dc-42" in payload
     assert "ws://host.docker.internal:8000/api/v1/runtime/agent/ws" in payload
     assert "/tmp/vibing-agent.log" in payload
@@ -123,8 +123,8 @@ def test_exec_payload_installs_then_launches(tmp_path: Path) -> None:
     assert "--from /tmp/vibing-1.0-py3-none-any.whl vibing" in payload
     # install must appear before nohup launch
     assert payload.index("uv tool install") < payload.index("nohup")
-    # nohup must appear before vibing devcontainer-runtime
-    assert payload.index("nohup") < payload.index("vibing devcontainer-runtime")
+    # nohup must appear before vibing runtime devcontainer
+    assert payload.index("nohup") < payload.index("vibing runtime devcontainer")
 
 
 # --- custom engine ---

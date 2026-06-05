@@ -5,7 +5,10 @@ import signal
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
+from logzero import logger
+
 _STDERR_TAIL_CHARS = 4000
+_LOG_PREVIEW_CHARS = 500
 _SIGTERM_GRACE_SECONDS = 5.0
 
 
@@ -32,6 +35,28 @@ class ClaudeFailure:
 
 
 ClaudeResult = ClaudeSuccess | ClaudeFailure
+
+
+def _preview(text: str, limit: int = _LOG_PREVIEW_CHARS) -> str:
+    collapsed = text.replace("\n", "\\n")
+    if len(collapsed) <= limit:
+        return collapsed
+    return f"{collapsed[:limit]}... ({len(text)} chars total)"
+
+
+def _log_run_result(command: list[str], cwd: str | None, result: RunResult) -> None:
+    logger.info(
+        "Claude subprocess finished (exit_code=%d, stdout_len=%d, stderr_len=%d, cwd=%s)",
+        result.returncode,
+        len(result.stdout),
+        len(result.stderr),
+        cwd,
+    )
+    logger.info("Claude command: %s", " ".join(command))
+    if result.stdout:
+        logger.info("Claude stdout: %s", _preview(result.stdout))
+    if result.stderr:
+        logger.info("Claude stderr: %s", _preview(result.stderr))
 
 
 def _map_run_result(result: RunResult) -> ClaudeResult:
@@ -154,6 +179,7 @@ class _LazyRealProcess(ClaudeProcess):
         self._proc: asyncio.subprocess.Process | None = None
 
     async def wait(self) -> ClaudeResult:
+        logger.info("Launching claude subprocess (cwd=%s): %s", self._cwd, " ".join(self._command))
         try:
             self._proc = await asyncio.create_subprocess_exec(
                 *self._command,
@@ -163,15 +189,16 @@ class _LazyRealProcess(ClaudeProcess):
             )
             stdout_b, stderr_b = await self._proc.communicate()
         except FileNotFoundError:
+            logger.warning("Claude binary not found: %s", self._command[0])
             return ClaudeFailure(exit_code=None, stderr_tail="", message="claude binary not found")
         returncode = self._proc.returncode or 0
-        return _map_run_result(
-            RunResult(
-                returncode=returncode,
-                stdout=stdout_b.decode(errors="replace"),
-                stderr=stderr_b.decode(errors="replace"),
-            )
+        run_result = RunResult(
+            returncode=returncode,
+            stdout=stdout_b.decode(errors="replace"),
+            stderr=stderr_b.decode(errors="replace"),
         )
+        _log_run_result(self._command, self._cwd, run_result)
+        return _map_run_result(run_result)
 
     async def terminate(self) -> None:
         if self._proc is None or self._proc.returncode is not None:
