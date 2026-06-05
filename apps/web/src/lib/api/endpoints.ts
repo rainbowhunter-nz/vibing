@@ -13,6 +13,7 @@ import type {
   DevcontainerCreateBody,
   DevcontainerList,
   DevcontainerUpdateBody,
+  DevcontainerView,
   DevcontainerViewList,
   DiagnosticsResponse,
   HealthResponse,
@@ -43,7 +44,7 @@ export const fetchDiagnostics = (): Promise<DiagnosticsResponse> => getJson('/di
 export const createDevcontainer = (body: DevcontainerCreateBody): Promise<Devcontainer> =>
   sendJson<Devcontainer>('/devcontainers', 'POST', body) as Promise<Devcontainer>
 
-export const fetchDevcontainer = (id: string): Promise<Devcontainer> =>
+export const fetchDevcontainer = (id: string): Promise<DevcontainerView> =>
   getJson(`/devcontainers/${encodeURIComponent(id)}`)
 
 export const updateDevcontainer = (id: string, body: DevcontainerUpdateBody): Promise<Devcontainer> =>

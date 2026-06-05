@@ -2,10 +2,12 @@ import { http, HttpResponse } from 'msw'
 import type { JsonBodyType, DefaultBodyType } from 'msw'
 import * as f from './fixtures'
 import { getScenario } from './scenario'
-import type { ApiErrorEnvelope, AgentSession, AgentSessionApprovalBody, DevcontainerUpdateBody } from '../lib/api/types'
+import type { ApiErrorEnvelope, AgentSession, AgentSessionApprovalBody, AgentSessionStartBody, DevcontainerUpdateBody } from '../lib/api/types'
 import * as dc from './state/devcontainers'
+import * as as from './state/agentSessions'
 import * as inbox from './state/inbox'
 import * as approvals from './state/approvals'
+import { emitInvalidation } from './events'
 
 // Wildcard origin so handlers work in both browser (service worker) and Node (vitest/msw node).
 
@@ -147,20 +149,48 @@ const devcontainerHandlers = [
     }
   }),
 
-  // Minimal — agent-session mutable state is out of scope (VIB-93+).
   http.get('*/api/v1/devcontainers/:id/agent-sessions', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
-    // Verify the devcontainer exists; return 404 for unknown ids even in happy mode.
     try {
       dc.getDevcontainer(params.id as string)
     } catch (e) {
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e
     }
-    return HttpResponse.json({
-      items: f.agentSessions.items.filter((s) => s.devcontainer_id === params.id),
-    })
+    const scenario = getScenario()
+    if (scenario === 'empty') return HttpResponse.json({ items: [] })
+    return HttpResponse.json(as.listAgentSessions(params.id as string))
+  }),
+
+  http.post('*/api/v1/devcontainers/:id/agent-sessions', async ({ params, request }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
+    if (failure) return failure
+    try {
+      dc.getDevcontainer(params.id as string)
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.id as string)
+      throw e
+    }
+    const body = await request.json() as AgentSessionStartBody
+    const session = as.startAgentSession(params.id as string, body)
+    emitInvalidation('agent_sessions')
+    return HttpResponse.json(session, { status: 201 })
+  }),
+
+  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/stop', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
+    if (failure) return failure
+    try {
+      const session = as.stopAgentSession(params.dc as string, params.sid as string)
+      emitInvalidation('agent_sessions')
+      return HttpResponse.json(session)
+    } catch (e) {
+      if (e instanceof as.NotFoundError) {
+        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
+      }
+      throw e
+    }
   }),
 ]
 

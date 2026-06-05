@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, act, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
-import { fetchDevcontainer, fetchAgentSessions } from '../../lib/api/endpoints'
+import { fetchDevcontainer, fetchAgentSessions, startAgentSession, stopAgentSession } from '../../lib/api/endpoints'
 import { ApiError } from '../../lib/api'
-import type { Devcontainer, AgentSession } from '../../lib/api/types'
+import type { AgentSession, DevcontainerView } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
 const mockFetch = vi.mocked(fetchDevcontainer)
 const mockFetchSessions = vi.mocked(fetchAgentSessions)
+const mockStart = vi.mocked(startAgentSession)
+const mockStop = vi.mocked(stopAgentSession)
 
 // ---------------------------------------------------------------------------
 // MockEventSource
@@ -83,13 +85,14 @@ function renderPage(id: string) {
   )
 }
 
-const sample: Devcontainer = {
+const sample: DevcontainerView = {
   id: 'dc1',
   name: 'my-project',
   local_path: '/home/me/my-project',
   status: 'stopped',
   created_at: '2024-01-15T10:00:00Z',
   updated_at: '2024-01-16T12:30:00Z',
+  runtime: { worker_connected: true, agent_connected: true },
 }
 
 const sampleSession: AgentSession = {
@@ -156,6 +159,94 @@ describe('DevcontainerDetail', () => {
   })
 })
 
+describe('SessionControls — guard / disabled states', () => {
+  it('AC4: Start disabled and helper text shown when agent_connected is false', async () => {
+    const dc = { ...sample, runtime: { worker_connected: false, agent_connected: false } }
+    mockFetch.mockResolvedValue(dc)
+    mockFetchSessions.mockResolvedValue({ items: [] })
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
+    expect(startBtn.disabled).toBe(true)
+    expect(screen.getByText('Agent not connected')).toBeTruthy()
+  })
+
+  it('AC3: Start disabled and helper text shown when active session exists', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [sampleSession] }) // status: running
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
+    expect(startBtn.disabled).toBe(true)
+    expect(screen.getByText('A session is already active')).toBeTruthy()
+  })
+
+  it('AC1: Start enabled when agent connected and no active session', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [] })
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    // Start button is disabled until prompt is filled
+    const textarea = screen.getByPlaceholderText('Enter a prompt…')
+    fireEvent.change(textarea, { target: { value: 'do something' } })
+    const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
+    expect(startBtn.disabled).toBe(false)
+  })
+
+  it('AC2: Stop button shown when active session exists', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
+  })
+
+  it('AC2: Stop button absent when no active session', async () => {
+    mockFetch.mockResolvedValue(sample)
+    const completedSession = { ...sampleSession, status: 'completed' as const }
+    mockFetchSessions.mockResolvedValue({ items: [completedSession] })
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
+  })
+
+  it('AC4: Stop disabled when agent_connected is false', async () => {
+    const dc = { ...sample, runtime: { worker_connected: false, agent_connected: false } }
+    mockFetch.mockResolvedValue(dc)
+    mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    const stopBtn = screen.getByRole('button', { name: 'Stop' }) as HTMLButtonElement
+    expect(stopBtn.disabled).toBe(true)
+  })
+
+  it('AC1: clicking Start calls startAgentSession and refetches sessions', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [] })
+    mockStart.mockResolvedValue({ ...sampleSession, status: 'starting' })
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    const textarea = screen.getByPlaceholderText('Enter a prompt…')
+    fireEvent.change(textarea, { target: { value: 'do something' } })
+    const startBtn = screen.getByRole('button', { name: 'Start' })
+    await act(async () => { fireEvent.click(startBtn) })
+    expect(mockStart).toHaveBeenCalledWith('dc1', { prompt: 'do something' })
+    expect(mockFetchSessions).toHaveBeenCalledTimes(2) // initial + after start
+  })
+
+  it('AC2: clicking Stop calls stopAgentSession and refetches sessions', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
+    mockStop.mockResolvedValue({ ...sampleSession, status: 'stopped' })
+    renderPage('dc1')
+    await screen.findByText('Start Agent Session')
+    const stopBtn = screen.getByRole('button', { name: 'Stop' })
+    await act(async () => { fireEvent.click(stopBtn) })
+    expect(mockStop).toHaveBeenCalledWith('dc1', 'sess-0001-0000-0000-000000000001')
+    expect(mockFetchSessions).toHaveBeenCalledTimes(2) // initial + after stop
+  })
+})
+
 describe('DevcontainerDetail SSE invalidation', () => {
   it('AC1+AC3+AC4: refetches devcontainer on devcontainers invalidation', async () => {
     mockFetch
@@ -179,7 +270,7 @@ describe('DevcontainerDetail SSE invalidation', () => {
   })
 
   it('no flash: keeps the detail visible during an invalidation refetch', async () => {
-    const second = new Promise<Devcontainer>(() => {}) // never settles: hold the in-flight window
+    const second = new Promise<DevcontainerView>(() => {}) // never settles: hold the in-flight window
     mockFetch.mockResolvedValueOnce({ ...sample, status: 'stopped' }).mockReturnValueOnce(second)
     mockFetchSessions.mockResolvedValue({ items: [] })
 

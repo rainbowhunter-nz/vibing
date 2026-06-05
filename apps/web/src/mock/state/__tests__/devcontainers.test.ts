@@ -34,12 +34,11 @@ describe('listDevcontainers', () => {
 })
 
 describe('getDevcontainer', () => {
-  it('returns Devcontainer by seeded id', () => {
+  it('returns DevcontainerView with runtime by seeded id', () => {
     const dc = getDevcontainer('dc-seed-0001')
     expect(dc.id).toBe('dc-seed-0001')
     expect(dc.name).toBe('my-webapp')
-    // No runtime on Devcontainer
-    expect(dc).not.toHaveProperty('runtime')
+    expect(dc.runtime).toEqual({ worker_connected: true, agent_connected: true })
   })
 
   it('throws NotFoundError for unknown id', () => {

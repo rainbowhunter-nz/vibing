@@ -51,8 +51,8 @@ export function listDevcontainers(): DevcontainerViewList {
   return { items: store.map((d) => ({ ...d })) }
 }
 
-export function getDevcontainer(id: string): Devcontainer {
-  return toDevcontainer(store[findIdx(id)])
+export function getDevcontainer(id: string): DevcontainerView {
+  return { ...store[findIdx(id)] }
 }
 
 export function createDevcontainer(body: DevcontainerCreateBody): Devcontainer {

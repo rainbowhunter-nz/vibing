@@ -1,13 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
-import { fetchDevcontainer, fetchAgentSessions, useApiQuery, ApiError, type Devcontainer } from '../lib/api'
-import type { AgentSession } from '../lib/api/types'
+import { fetchDevcontainer, fetchAgentSessions, startAgentSession, stopAgentSession, useApiQuery, ApiError } from '../lib/api'
+import type { AgentSession, DevcontainerView } from '../lib/api/types'
 import { useSseInvalidation } from '../lib/events'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
+
+const ACTIVE_STATUSES = new Set<string>(['starting', 'running', 'waiting_for_approval'])
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -46,7 +48,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-function DevcontainerInfo({ dc }: { dc: Devcontainer }) {
+function DevcontainerInfo({ dc }: { dc: DevcontainerView }) {
   return (
     <div className="px-4 pt-4">
       <h2 className="mb-4 text-base font-semibold text-text">{dc.name}</h2>
@@ -59,6 +61,91 @@ function DevcontainerInfo({ dc }: { dc: Devcontainer }) {
         </Row>
         <Row label="Created">{dc.created_at}</Row>
         <Row label="Updated">{dc.updated_at}</Row>
+      </div>
+    </div>
+  )
+}
+
+function SessionControls({
+  dc,
+  sessions,
+  onSessionChange,
+}: {
+  dc: DevcontainerView
+  sessions: AgentSession[]
+  onSessionChange: () => void
+}) {
+  const [prompt, setPrompt] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const activeSession = sessions.find((s) => ACTIVE_STATUSES.has(s.status)) ?? null
+  const hasActive = activeSession !== null
+  const agentConnected = dc.runtime.agent_connected
+
+  const startDisabled = busy || !agentConnected || hasActive || !prompt.trim()
+  const stopDisabled = busy || !agentConnected
+
+  const helperText = !agentConnected
+    ? 'Agent not connected'
+    : hasActive
+      ? 'A session is already active'
+      : null
+
+  async function handleStart() {
+    setBusy(true)
+    try {
+      await startAgentSession(dc.id, { prompt })
+      setPrompt('')
+      onSessionChange()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleStop() {
+    if (!activeSession) return
+    setBusy(true)
+    try {
+      await stopAgentSession(dc.id, activeSession.id)
+      onSessionChange()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="px-4 pt-6">
+      <h3 className="mb-3 text-sm font-semibold text-text">Start Agent Session</h3>
+      <div className="space-y-2">
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Enter a prompt…"
+          disabled={!agentConnected || hasActive || busy}
+          rows={3}
+          className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleStart}
+            disabled={startDisabled}
+            className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
+          >
+            Start
+          </button>
+          {hasActive && (
+            <button
+              onClick={handleStop}
+              disabled={stopDisabled}
+              className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-text disabled:opacity-40"
+            >
+              Stop
+            </button>
+          )}
+          {helperText && (
+            <span className="text-[12px] text-text-muted">{helperText}</span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -119,7 +206,12 @@ export function DevcontainerDetail() {
           {(dc) => (
             <>
               <DevcontainerInfo dc={dc} />
-              {sessionsState.kind === 'ready' && <AgentSessionsList sessions={sessionsState.data.items} />}
+              {sessionsState.kind === 'ready' && (
+                <>
+                  <SessionControls dc={dc} sessions={sessionsState.data.items} onSessionChange={refetchSessions} />
+                  <AgentSessionsList sessions={sessionsState.data.items} />
+                </>
+              )}
             </>
           )}
         </QueryBoundary>
