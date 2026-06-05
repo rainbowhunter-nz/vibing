@@ -55,6 +55,23 @@ its `devcontainer.json`:
 
 The `devcontainer_examples/sandbox` example already includes this.
 
+## Devcontainer contract
+
+Vibing injects the Devcontainer Runtime Agent when a devcontainer starts — it
+copies `uv` and the `vibing` wheel from the Control Plane image into the
+container and runs `uv tool install` before launching `vibing devcontainer-runtime`.
+Your project's devcontainer image does **not** need Vibing-specific packages.
+
+Each devcontainer must provide:
+
+- **`claude` on `PATH`, authenticated** — agent sessions invoke Claude Code.
+- **Network egress** — injection resolves Python deps online; the agent calls the Anthropic API.
+- **Linux: host-gateway `runArgs`** — see the Linux caveat above so
+  `host.docker.internal` resolves inside the container.
+
+See [`devcontainer_examples/sandbox/README.md`](../devcontainer_examples/sandbox/README.md)
+and [ADR-0004](adr/0004-devcontainer-runtime-agents-connect-on-a-dedicated-endpoint-routed-by-devcontainer-id.md).
+
 ## Verify end-to-end
 
 1. `docker compose up --build`, then open the UI.

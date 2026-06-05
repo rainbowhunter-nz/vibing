@@ -81,13 +81,16 @@ Defaults:
 | `--devcontainer-cli` | `devcontainer` | Dev Container CLI binary. |
 | `--agent-control-plane-url` | `ws://host.docker.internal:8000/api/v1/runtime/agent/ws` | URL injected into the container agent. |
 
-After a successful `devcontainer up`, the host worker starts the agent inside the container:
+After a successful `devcontainer up`, the host worker injects the runtime (`docker cp`
+of `uv` + the `vibing` wheel, `uv tool install`, then a detached exec) and starts:
 
 ```bash
 vibing devcontainer-runtime --devcontainer-id <id>
 ```
 
-The `vibing` package must be installed in the devcontainer image for auto-launch to work.
+The devcontainer image does not need `vibing` pre-installed. It must provide `claude`
+(authenticated), network egress, and on Linux the host-gateway `runArgs` entry.
+See [`docs/deployment.md`](deployment.md#devcontainer-contract).
 
 ## Devcontainer Lifecycle API
 
