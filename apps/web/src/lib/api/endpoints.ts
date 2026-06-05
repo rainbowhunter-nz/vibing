@@ -72,6 +72,9 @@ export const startAgentSession = (devcontainerId: string, body: AgentSessionStar
 export const stopAgentSession = (devcontainerId: string, sessionId: string): Promise<AgentSession> =>
   sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/stop`, 'POST') as Promise<AgentSession>
 
+export const deleteAgentSession = (devcontainerId: string, sessionId: string): Promise<void> =>
+  sendJson<void>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}`, 'DELETE')
+
 export const sendAgentSessionUserInput = (devcontainerId: string, sessionId: string, body: AgentSessionUserInputBody): Promise<AgentSession> =>
   sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/user-input`, 'POST', body) as Promise<AgentSession>
 

@@ -975,3 +975,61 @@ def test_get_session_ownership_mismatch(client: TestClient) -> None:
     resp = client.get(f"/api/v1/devcontainers/{dc_b}/agent-sessions/{sid}")
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"
+
+
+# ============================================================
+# DELETE /devcontainers/{id}/agent-sessions/{session_id}
+# ============================================================
+
+
+def test_delete_session_happy(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    sid = _seed_session(dc_id)
+    with get_connection() as conn:
+        AgentSessionRepository(conn).set_status(sid, "completed")  # type: ignore[arg-type]
+        conn.commit()
+
+    resp = client.delete(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{sid}")
+    assert resp.status_code == 204
+
+    list_resp = client.get(f"/api/v1/devcontainers/{dc_id}/agent-sessions")
+    ids = [s["id"] for s in list_resp.json()["items"]]
+    assert sid not in ids
+
+
+def test_delete_session_active_rejected(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    sid = _seed_session(dc_id)
+    with get_connection() as conn:
+        AgentSessionRepository(conn).set_status(sid, "running")  # type: ignore[arg-type]
+        conn.commit()
+
+    resp = client.delete(f"/api/v1/devcontainers/{dc_id}/agent-sessions/{sid}")
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_STILL_ACTIVE"
+
+
+def test_delete_session_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.delete(f"/api/v1/devcontainers/{dc_id}/agent-sessions/ghost")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"
+
+
+def test_delete_session_devcontainer_not_found(client: TestClient) -> None:
+    resp = client.delete("/api/v1/devcontainers/ghost/agent-sessions/some-session")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
+
+
+def test_delete_session_ownership_mismatch(client: TestClient) -> None:
+    dc_a = _create_dc(client)
+    dc_b = _create_dc(client)
+    sid = _seed_session(dc_a)
+    with get_connection() as conn:
+        AgentSessionRepository(conn).set_status(sid, "completed")  # type: ignore[arg-type]
+        conn.commit()
+
+    resp = client.delete(f"/api/v1/devcontainers/{dc_b}/agent-sessions/{sid}")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"

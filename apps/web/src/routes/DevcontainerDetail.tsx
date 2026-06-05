@@ -3,7 +3,7 @@ import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, startAgentSession, stopAgentSession, useApiQuery, ApiError } from '../lib/api'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, startAgentSession, stopAgentSession, deleteAgentSession, useApiQuery, ApiError } from '../lib/api'
 import type { AgentSession, DevcontainerView } from '../lib/api/types'
 import { formatRelativeTime } from '../lib/time'
 import { useSseInvalidation } from '../lib/events'
@@ -11,6 +11,16 @@ import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 
 const ACTIVE_STATUSES = new Set<string>(['starting', 'running', 'waiting_for_approval'])
+
+const trashIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </svg>
+)
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -156,27 +166,52 @@ function SessionRow({
   session,
   selected,
   onSelect,
+  onDelete,
+  deleting,
 }: {
   session: AgentSession
   selected: boolean
   onSelect: (id: string) => void
+  onDelete: (id: string) => void
+  deleting: boolean
 }) {
+  const isActive = ACTIVE_STATUSES.has(session.status)
+
   return (
-    <button
-      onClick={() => onSelect(session.id)}
+    <div
       className={cn(
-        'flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left last:border-b-0',
-        selected ? 'border-l-[3px] border-l-accent bg-accent-bg/40 pl-[13px]' : 'hover:bg-surface-muted',
+        'flex items-center gap-1 border-b border-border last:border-b-0',
+        selected ? 'border-l-[3px] border-l-accent bg-accent-bg/40' : 'hover:bg-surface-muted',
       )}
     >
-      <span className="font-mono text-[12px] text-text-muted">{session.id.slice(0, 8)}</span>
-      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
-        {session.status}
-      </span>
-      {session.prompt && (
-        <span className="min-w-0 flex-1 truncate text-[12px] text-text-muted">{session.prompt}</span>
+      <button
+        onClick={() => onSelect(session.id)}
+        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left"
+      >
+        <span className="font-mono text-[12px] text-text-muted">{session.id.slice(0, 8)}</span>
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
+          {session.status}
+        </span>
+        {session.prompt && (
+          <span className="min-w-0 flex-1 truncate text-[12px] text-text-muted">{session.prompt}</span>
+        )}
+      </button>
+      {!isActive && (
+        <button
+          title="Delete"
+          disabled={deleting}
+          onClick={() => onDelete(session.id)}
+          className={cn(
+            'mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px]',
+            deleting
+              ? 'cursor-not-allowed text-bad opacity-[0.4]'
+              : 'cursor-pointer text-bad hover:bg-surface-muted',
+          )}
+        >
+          {trashIcon}
+        </button>
       )}
-    </button>
+    </div>
   )
 }
 
@@ -287,12 +322,27 @@ function AgentSessionsList({
   selectedId,
   onSelect,
   devcontainerId,
+  onSessionsChange,
 }: {
   sessions: AgentSession[]
   selectedId: string | null
   onSelect: (id: string | null) => void
   devcontainerId: string
+  onSessionsChange: () => void
 }) {
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  async function handleDelete(sessionId: string) {
+    setDeletingId(sessionId)
+    try {
+      await deleteAgentSession(devcontainerId, sessionId)
+      if (selectedId === sessionId) onSelect(null)
+      onSessionsChange()
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   return (
     <div className="px-4 pt-6">
       <h3 className="mb-3 text-sm font-semibold text-text">Agent Sessions</h3>
@@ -307,6 +357,8 @@ function AgentSessionsList({
                 session={s}
                 selected={s.id === selectedId}
                 onSelect={(id) => onSelect(selectedId === id ? null : id)}
+                onDelete={handleDelete}
+                deleting={deletingId === s.id}
               />
             ))}
           </div>
@@ -365,6 +417,7 @@ export function DevcontainerDetail() {
                     selectedId={selectedSessionId}
                     onSelect={setSelectedSessionId}
                     devcontainerId={dc.id}
+                    onSessionsChange={refetchSessions}
                   />
                 </>
               )}

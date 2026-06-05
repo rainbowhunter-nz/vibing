@@ -16,6 +16,7 @@ RUNTIME_UNAVAILABLE = "RUNTIME_UNAVAILABLE"
 AGENT_SESSION_ACTIVE = "AGENT_SESSION_ACTIVE"
 AGENT_SESSION_NOT_FOUND = "AGENT_SESSION_NOT_FOUND"
 AGENT_SESSION_NOT_ACTIVE = "AGENT_SESSION_NOT_ACTIVE"
+AGENT_SESSION_STILL_ACTIVE = "AGENT_SESSION_STILL_ACTIVE"
 # --- Stable User Intervention stale-target error contract (VIB-35 epic) ---
 # Frontend uses these codes to explain why a question or approval is no longer actionable.
 INBOX_EVENT_NOT_FOUND = "INBOX_EVENT_NOT_FOUND"  # 404 — event missing or belongs to another session
@@ -89,6 +90,14 @@ class InactiveAgentSessionError(APIError):
 
     def __init__(self, session_id: str) -> None:
         super().__init__(f"Agent session is not active: {session_id}")
+
+
+class ActiveAgentSessionDeleteError(APIError):
+    status_code = 409
+    code = AGENT_SESSION_STILL_ACTIVE
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(f"Cannot delete active agent session: {session_id}")
 
 
 class InboxEventNotFoundError(APIError):

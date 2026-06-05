@@ -22,6 +22,15 @@ export class NotFoundError extends Error {
   }
 }
 
+export class ActiveSessionError extends Error {
+  readonly code = 'AGENT_SESSION_STILL_ACTIVE'
+  constructor(id: string) {
+    super(`Cannot delete active agent session: ${id}`)
+  }
+}
+
+const ACTIVE_STATUSES = new Set(['starting', 'running', 'waiting_for_approval'])
+
 function findIdx(id: string): number {
   const idx = store.findIndex((s) => s.id === id)
   if (idx === -1) throw new NotFoundError(id)
@@ -73,4 +82,11 @@ export function stopAgentSession(devcontainerId: string, sessionId: string): Age
   const ts = now()
   store[idx] = { ...store[idx], status: 'stopped', ended_at: ts, updated_at: ts }
   return { ...store[idx] }
+}
+
+export function deleteAgentSession(devcontainerId: string, sessionId: string): void {
+  const idx = findIdx(sessionId)
+  if (store[idx].devcontainer_id !== devcontainerId) throw new NotFoundError(sessionId)
+  if (ACTIVE_STATUSES.has(store[idx].status)) throw new ActiveSessionError(sessionId)
+  store.splice(idx, 1)
 }

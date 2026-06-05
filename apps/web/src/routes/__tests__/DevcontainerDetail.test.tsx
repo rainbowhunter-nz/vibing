@@ -3,7 +3,7 @@ import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-libra
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, startAgentSession, stopAgentSession } from '../../lib/api/endpoints'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, startAgentSession, stopAgentSession, deleteAgentSession } from '../../lib/api/endpoints'
 import { ApiError } from '../../lib/api'
 import type { AgentSession, DevcontainerView } from '../../lib/api/types'
 
@@ -12,6 +12,7 @@ const mockFetch = vi.mocked(fetchDevcontainer)
 const mockFetchSessions = vi.mocked(fetchAgentSessions)
 const mockStart = vi.mocked(startAgentSession)
 const mockStop = vi.mocked(stopAgentSession)
+const mockDelete = vi.mocked(deleteAgentSession)
 const mockFetchSession = vi.mocked(fetchAgentSession)
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,32 @@ describe('DevcontainerDetail', () => {
     await screen.findByText('Agent Sessions')
     expect(screen.getByText('running')).toBeTruthy()
     expect(screen.getByText('sess-000')).toBeTruthy()
+    expect(screen.queryByTitle('Delete')).toBeNull()
+  })
+
+  it('shows delete button only for non-active sessions', async () => {
+    mockFetch.mockResolvedValue(sample)
+    const completedSession = { ...sampleSession, status: 'completed' as const }
+    mockFetchSessions.mockResolvedValue({ items: [sampleSession, completedSession] })
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    expect(screen.queryAllByTitle('Delete')).toHaveLength(1)
+  })
+
+  it('clicking delete calls deleteAgentSession and refetches sessions', async () => {
+    mockFetch.mockResolvedValue(sample)
+    const completedSession = {
+      ...sampleSession,
+      id: 'sess-completed-0000-0000-000000000001',
+      status: 'completed' as const,
+    }
+    mockFetchSessions.mockResolvedValue({ items: [completedSession] })
+    mockDelete.mockResolvedValue(undefined)
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    await act(async () => { fireEvent.click(screen.getByTitle('Delete')) })
+    expect(mockDelete).toHaveBeenCalledWith('dc1', completedSession.id)
+    expect(mockFetchSessions).toHaveBeenCalledTimes(2)
   })
 
   it('renders empty state for agent sessions', async () => {

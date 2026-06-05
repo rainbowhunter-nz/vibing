@@ -24,6 +24,10 @@ async function post(path: string, body?: unknown) {
   })
 }
 
+async function del(path: string) {
+  return fetch(`http://localhost${path}`, { method: 'DELETE' })
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/v1/devcontainers/:id — returns DevcontainerView with runtime
 // ---------------------------------------------------------------------------
@@ -174,5 +178,33 @@ describe('agent session mutation persistence', () => {
     const list = await (await get('/api/v1/devcontainers/dc-seed-0001/agent-sessions')).json()
     const session = list.items.find((s: { id: string }) => s.id === 'as-seed-0005')
     expect(session?.status).toBe('stopped')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/devcontainers/:dc/agent-sessions/:sid
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/v1/devcontainers/:dc/agent-sessions/:sid', () => {
+  it('happy — removes non-active session from list', async () => {
+    const res = await del('/api/v1/devcontainers/dc-seed-0001/agent-sessions/as-seed-0004')
+    expect(res.status).toBe(204)
+
+    const list = await (await get('/api/v1/devcontainers/dc-seed-0001/agent-sessions')).json()
+    expect(list.items.some((s: { id: string }) => s.id === 'as-seed-0004')).toBe(false)
+  })
+
+  it('returns 409 for active session', async () => {
+    const res = await del('/api/v1/devcontainers/dc-seed-0001/agent-sessions/as-seed-0005')
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.error.code).toBe('AGENT_SESSION_STILL_ACTIVE')
+  })
+
+  it('returns 404 for unknown session', async () => {
+    const res = await del('/api/v1/devcontainers/dc-seed-0001/agent-sessions/nope')
+    expect(res.status).toBe(404)
+    const body = await res.json()
+    expect(body.error.code).toBe('AGENT_SESSION_NOT_FOUND')
   })
 })

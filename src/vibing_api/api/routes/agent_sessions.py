@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, Response, status
 from vibing_protocol import Command, CommandType
 
 from vibing_api.api.schemas.agent_sessions import (
@@ -11,6 +11,7 @@ from vibing_api.api.schemas.agent_sessions import (
 )
 from vibing_api.core.database import get_connection
 from vibing_api.core.errors import (
+    ActiveAgentSessionDeleteError,
     ActiveAgentSessionError,
     AgentSessionNotFoundError,
     ApprovalRequestNotFoundError,
@@ -85,6 +86,32 @@ def get_agent_session(devcontainer_id: str, session_id: str) -> AgentSessionDeta
         **vars(session),
         summary_text=(extract_claude_result_text(raw_summary) if raw_summary is not None else None),
     )
+
+
+@router.delete(
+    "/{devcontainer_id}/agent-sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_agent_session(devcontainer_id: str, session_id: str) -> Response:
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).get(session_id)
+    if session is None or session.devcontainer_id != devcontainer_id:
+        raise AgentSessionNotFoundError(session_id)
+
+    if session.status in _ACTIVE_STATUSES:
+        raise ActiveAgentSessionDeleteError(session_id)
+
+    with get_connection() as conn:
+        deleted = AgentSessionRepository(conn).delete(session_id)
+        conn.commit()
+    if not deleted:
+        raise AgentSessionNotFoundError(session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

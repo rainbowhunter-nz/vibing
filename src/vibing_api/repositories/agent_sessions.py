@@ -110,3 +110,7 @@ class AgentSessionRepository:
             (status, now, now, session_id),
         )
         return self.get(session_id)
+
+    def delete(self, session_id: str) -> bool:
+        cur = self._conn.execute("DELETE FROM agent_sessions WHERE id = ?", (session_id,))
+        return cur.rowcount > 0

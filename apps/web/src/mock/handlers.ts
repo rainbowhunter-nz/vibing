@@ -211,6 +211,30 @@ const devcontainerHandlers = [
       throw e
     }
   }),
+
+  http.delete('*/api/v1/devcontainers/:dc/agent-sessions/:sid', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
+    if (failure) return failure
+    try {
+      dc.getDevcontainer(params.dc as string)
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.dc as string)
+      throw e
+    }
+    try {
+      as.deleteAgentSession(params.dc as string, params.sid as string)
+      emitInvalidation('agent_sessions')
+      return new HttpResponse(null, { status: 204 })
+    } catch (e) {
+      if (e instanceof as.NotFoundError) {
+        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
+      }
+      if (e instanceof as.ActiveSessionError) {
+        return HttpResponse.json(errorEnvelope('AGENT_SESSION_STILL_ACTIVE', e.message), { status: 409 })
+      }
+      throw e
+    }
+  }),
 ]
 
 // Minimal plausible AgentSession used by agent-session action stubs
