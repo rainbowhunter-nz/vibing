@@ -4,6 +4,7 @@ import type {
   AgentSessionDetail,
   AgentSessionApprovalBody,
   AgentSessionList,
+  AgentSessionResumeBody,
   AgentSessionStartBody,
   AgentSessionTranscript,
   AgentSessionUserInputBody,
@@ -72,6 +73,9 @@ export const startAgentSession = (devcontainerId: string, body: AgentSessionStar
 
 export const stopAgentSession = (devcontainerId: string, sessionId: string): Promise<AgentSession> =>
   sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/stop`, 'POST') as Promise<AgentSession>
+
+export const resumeAgentSession = (devcontainerId: string, sessionId: string, body: AgentSessionResumeBody): Promise<AgentSession> =>
+  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/resume`, 'POST', body) as Promise<AgentSession>
 
 export const deleteAgentSession = (devcontainerId: string, sessionId: string): Promise<void> =>
   sendJson<void>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}`, 'DELETE')

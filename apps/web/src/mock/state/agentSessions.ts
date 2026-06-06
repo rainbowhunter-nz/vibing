@@ -1,4 +1,4 @@
-import type { AgentSession, AgentSessionDetail, AgentSessionList, AgentSessionStartBody, AgentSessionTranscript, TranscriptTurn } from '../../lib/api/types'
+import type { AgentSession, AgentSessionDetail, AgentSessionList, AgentSessionResumeBody, AgentSessionStartBody, AgentSessionTranscript, TranscriptTurn } from '../../lib/api/types'
 import { getDevcontainer } from './devcontainers'
 import { seedAgentSessions } from './seeds'
 
@@ -52,7 +52,22 @@ export class ActiveSessionError extends Error {
   }
 }
 
+export class NonRestingError extends Error {
+  readonly code = 'AGENT_SESSION_NOT_RESTING'
+  constructor(id: string) {
+    super(`Agent session is not in a resting state: ${id}`)
+  }
+}
+
+export class OtherSessionActiveError extends Error {
+  readonly code = 'AGENT_SESSION_ACTIVE'
+  constructor(devcontainerId: string) {
+    super(`An agent session is already active for devcontainer: ${devcontainerId}`)
+  }
+}
+
 const ACTIVE_STATUSES = new Set(['starting', 'running', 'waiting_for_approval'])
+const RESTING_STATUSES = new Set(['completed', 'failed', 'stopped'])
 
 function findIdx(id: string): number {
   const idx = store.findIndex((s) => s.id === id)
@@ -122,6 +137,25 @@ export function startAgentSession(devcontainerId: string, body: AgentSessionStar
   }
   store.push(session)
   return { ...session }
+}
+
+export function resumeAgentSession(devcontainerId: string, sessionId: string, body: AgentSessionResumeBody): AgentSession {
+  const idx = findIdx(sessionId)
+  if (store[idx].devcontainer_id !== devcontainerId) throw new NotFoundError(sessionId)
+  if (!RESTING_STATUSES.has(store[idx].status)) throw new NonRestingError(sessionId)
+  const otherActive = store.some(
+    (s) => s.devcontainer_id === devcontainerId && s.id !== sessionId && ACTIVE_STATUSES.has(s.status),
+  )
+  if (otherActive) throw new OtherSessionActiveError(devcontainerId)
+
+  const ts = now()
+  store[idx] = { ...store[idx], status: 'running', ended_at: null, last_event_at: ts, updated_at: ts }
+
+  // Append the follow-up turn so the resumed thread is visible in the transcript.
+  const turns = transcriptStore[sessionId] ?? []
+  transcriptStore[sessionId] = [...turns, { role: 'user', blocks: [{ kind: 'text', text: body.prompt }], at: ts }]
+
+  return { ...store[idx] }
 }
 
 export function stopAgentSession(devcontainerId: string, sessionId: string): AgentSession {

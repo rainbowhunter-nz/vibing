@@ -116,6 +116,10 @@ export interface AgentSessionStartBody {
   prompt: string
 }
 
+export interface AgentSessionResumeBody {
+  prompt: string
+}
+
 export interface AgentSessionUserInputBody {
   inbox_event_id: string
   text: string

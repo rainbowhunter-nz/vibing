@@ -148,7 +148,9 @@ class ClaudeCodeRunner:
         self._cwd = cwd
         self._runner = runner
 
-    def _build_command(self, prompt: str, session_id: str | None = None) -> list[str]:
+    def _build_command(
+        self, prompt: str, session_id: str | None = None, resume: bool = False
+    ) -> list[str]:
         cmd = [
             self._binary,
             "-p",
@@ -159,19 +161,25 @@ class ClaudeCodeRunner:
             "bypassPermissions",
         ]
         if session_id is not None:
-            cmd += ["--session-id", session_id]
+            # ADR-0008: resume continues the same on-disk thread via --resume; a fresh
+            # run names the session via --session-id. Never both (and no --fork-session).
+            cmd += ["--resume", session_id] if resume else ["--session-id", session_id]
         return cmd
 
-    def start(self, prompt: str, session_id: str | None = None) -> ClaudeProcess:
+    def start(
+        self, prompt: str, session_id: str | None = None, resume: bool = False
+    ) -> ClaudeProcess:
         """Return a ClaudeProcess handle. For the injected-runner path, returns synchronously."""
-        command = self._build_command(prompt, session_id)
+        command = self._build_command(prompt, session_id, resume)
         if self._runner is not None:
             return _FakeRunnerProcess(command, self._runner)
         return _LazyRealProcess(command, self._cwd)
 
-    async def run(self, prompt: str, session_id: str | None = None) -> ClaudeResult:
+    async def run(
+        self, prompt: str, session_id: str | None = None, resume: bool = False
+    ) -> ClaudeResult:
         """Convenience wrapper: start() + wait()."""
-        return await self.start(prompt, session_id).wait()
+        return await self.start(prompt, session_id, resume).wait()
 
 
 class _LazyRealProcess(ClaudeProcess):

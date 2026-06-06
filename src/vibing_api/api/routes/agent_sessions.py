@@ -8,6 +8,7 @@ from vibing_api.api.schemas.agent_sessions import (
     AgentSession,
     AgentSessionDetail,
     AgentSessionList,
+    AgentSessionResumeRequest,
     AgentSessionStartRequest,
     AgentSessionTranscript,
     ApprovalResolutionRequest,
@@ -27,6 +28,7 @@ from vibing_api.core.errors import (
     InboxEventNotActionableError,
     InboxEventNotFoundError,
     InvalidDevcontainerStateError,
+    NonRestingAgentSessionError,
     RuntimeUnavailableError,
 )
 from vibing_api.core.runtime_channel import AgentRegistry
@@ -50,6 +52,14 @@ _ACTIVE_STATUSES = frozenset(
         AgentSessionStatus.STARTING,
         AgentSessionStatus.RUNNING,
         AgentSessionStatus.WAITING_FOR_APPROVAL,
+    }
+)
+
+_RESTING_STATUSES = frozenset(
+    {
+        AgentSessionStatus.COMPLETED,
+        AgentSessionStatus.FAILED,
+        AgentSessionStatus.STOPPED,
     }
 )
 
@@ -201,6 +211,58 @@ async def start_agent_session(
         )
     )
     return AgentSession(**vars(session))
+
+
+@router.post(
+    "/{devcontainer_id}/agent-sessions/{session_id}/resume",
+    response_model=AgentSession,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def resume_agent_session(
+    devcontainer_id: str, session_id: str, body: AgentSessionResumeRequest, request: Request
+) -> AgentSession:
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+    if devcontainer.status != DevcontainerStatus.RUNNING:
+        raise InvalidDevcontainerStateError(
+            "resume agent session", devcontainer.status, frozenset({DevcontainerStatus.RUNNING})
+        )
+
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).get(session_id)
+    if session is None or session.devcontainer_id != devcontainer_id:
+        raise AgentSessionNotFoundError(session_id)
+
+    if session.status not in _RESTING_STATUSES:
+        raise NonRestingAgentSessionError(session_id)
+
+    agent_manager: AgentRegistry = request.app.state.agent_manager
+    if not agent_manager.is_connected(devcontainer_id):
+        raise RuntimeUnavailableError(
+            f"No Devcontainer Runtime Agent is connected for devcontainer: {devcontainer_id}"
+        )
+
+    # Target is resting, so any active session is necessarily a different one.
+    with get_connection() as conn:
+        active = AgentSessionRepository(conn).get_active_by_devcontainer(devcontainer_id)
+    if active is not None:
+        raise ActiveAgentSessionError(devcontainer_id)
+
+    with get_connection() as conn:
+        updated = AgentSessionRepository(conn).set_status(session_id, AgentSessionStatus.STARTING)
+        conn.commit()
+
+    await agent_manager.send_command(
+        Command(
+            type=CommandType.RESUME_AGENT_SESSION,
+            devcontainer_id=devcontainer_id,
+            agent_session_id=session_id,
+            payload={"prompt": body.prompt},
+        )
+    )
+    return AgentSession(**vars(updated if updated is not None else session))
 
 
 @router.post(

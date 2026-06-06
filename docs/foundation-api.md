@@ -184,6 +184,22 @@ Request:
 { "prompt": "Implement the failing test" }
 ```
 
+### `POST /api/v1/devcontainers/{id}/agent-sessions/{session_id}/resume` → `202`
+
+Continues a rested conversation in place (ADR-0008). Requires the session to be in
+a resting state (`completed`/`failed`/`stopped`), the Devcontainer `running`, its
+agent connected, and no other session active (else `409`
+`AGENT_SESSION_NOT_RESTING` / `INVALID_DEVCONTAINER_STATE` / `RUNTIME_UNAVAILABLE`
+/ `AGENT_SESSION_ACTIVE`). Optimistically sets the session to `starting`, sends
+`resume_agent_session` to the agent (which runs `claude --resume <id>`), and
+returns the updated Agent Session. Reuses the existing lifecycle events.
+
+Request:
+
+```json
+{ "prompt": "Now run the tests" }
+```
+
 ### `POST /api/v1/devcontainers/{id}/agent-sessions/{session_id}/stop` → `202`
 
 Requires the Agent Session to be active and the Devcontainer Runtime Agent to be

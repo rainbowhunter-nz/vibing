@@ -182,7 +182,7 @@ def project(event: RuntimeEvent, conn: sqlite3.Connection) -> None:
 
     if updates.final_status is not None and event.agent_session_id is not None:
         session = sessions.get(event.agent_session_id)
-        SessionSummaryRepository(conn).create(
+        SessionSummaryRepository(conn).upsert(
             agent_session_id=event.agent_session_id,
             final_status=updates.final_status,
             last_known_event=event.event_type,

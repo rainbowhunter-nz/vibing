@@ -359,6 +359,173 @@ def test_reducer_projects_session_stopped(client: TestClient) -> None:
 
 
 # ============================================================
+# POST /devcontainers/{id}/agent-sessions/{session_id}/resume  (VIB-106)
+# ============================================================
+
+
+def _resume_url(dc_id: str, session_id: str) -> str:
+    return f"/api/v1/devcontainers/{dc_id}/agent-sessions/{session_id}/resume"
+
+
+@pytest.mark.parametrize("resting_status", ["completed", "failed", "stopped"])
+def test_resume_returns_202_and_sends_command(client: TestClient, resting_status: str) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="starting")
+        AgentSessionRepository(conn).set_status(session.id, resting_status)  # type: ignore[arg-type]
+        conn.commit()
+
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+
+        resp = client.post(_resume_url(dc_id, session.id), json={"prompt": "keep going"})
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["id"] == session.id
+        assert body["status"] == "starting"  # optimistic transition
+
+        cmd = ws.receive_json()
+        assert cmd["type"] == "command"
+        assert cmd["command"]["type"] == "resume_agent_session"
+        assert cmd["command"]["devcontainer_id"] == dc_id
+        assert cmd["command"]["agent_session_id"] == session.id
+        assert cmd["command"]["payload"] == {"prompt": "keep going"}
+
+
+def test_resume_rejected_when_session_active(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        resp = client.post(_resume_url(dc_id, session.id), json={"prompt": "go"})
+        assert resp.status_code == 409
+        assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_RESTING"
+
+
+def test_resume_rejected_when_devcontainer_not_running(client: TestClient) -> None:
+    dc_id = _create_dc(client, status="stopped")
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="completed")
+        conn.commit()
+    resp = client.post(_resume_url(dc_id, session.id), json={"prompt": "go"})
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "INVALID_DEVCONTAINER_STATE"
+
+
+def test_resume_rejected_when_no_agent_connected(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="completed")
+        conn.commit()
+    resp = client.post(_resume_url(dc_id, session.id), json={"prompt": "go"})
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+
+
+def test_resume_rejected_when_other_session_active(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        resting = AgentSessionRepository(conn).create(dc_id, status="completed")
+        AgentSessionRepository(conn).create(dc_id, status="running")  # another active session
+        conn.commit()
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        resp = client.post(_resume_url(dc_id, resting.id), json={"prompt": "go"})
+        assert resp.status_code == 409
+        assert resp.json()["error"]["code"] == "AGENT_SESSION_ACTIVE"
+
+
+def test_resume_session_not_found(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.post(_resume_url(dc_id, "ghost"), json={"prompt": "go"})
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "AGENT_SESSION_NOT_FOUND"
+
+
+def test_resume_devcontainer_not_found(client: TestClient) -> None:
+    resp = client.post(_resume_url("ghost", "sess-1"), json={"prompt": "go"})
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
+
+
+def test_resume_empty_prompt_rejected(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    resp = client.post(_resume_url(dc_id, "sess-1"), json={"prompt": ""})
+    assert resp.status_code == 422
+
+
+def test_resume_persists_optimistic_starting_status(client: TestClient) -> None:
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="completed")
+        conn.commit()
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        client.post(_resume_url(dc_id, session.id), json={"prompt": "go"})
+        ws.receive_json()  # consume command
+    with get_connection() as conn:
+        reloaded = AgentSessionRepository(conn).get(session.id)
+    assert reloaded is not None
+    assert reloaded.status == "starting"
+
+
+# --- AC5: upsert summary across multiple completions + per-completion inbox event ---
+
+
+def test_multi_completion_keeps_one_summary_and_inbox_per_completion(client: TestClient) -> None:
+    """complete → resume(started) → complete again yields exactly ONE summary row but
+    a COMPLETION inbox event on EACH completion (ADR-0008 upsert-by-session)."""
+    from vibing_api.core.reducer import project
+    from vibing_api.repositories.summaries import SessionSummaryRepository
+    from vibing_protocol import RuntimeEvent
+
+    dc_id = _create_dc(client)
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).create(dc_id, status="running")
+        conn.commit()
+
+    def drive(event_type: str, **payload: object) -> None:
+        event = RuntimeEvent(
+            event_type=event_type,  # type: ignore[arg-type]
+            source="devcontainer_runtime_agent",
+            devcontainer_id=dc_id,
+            agent_session_id=session.id,
+            payload=payload or None,
+        )
+        with get_connection() as conn:
+            project(event, conn)
+            conn.commit()
+
+    drive("session_completed", result="first")
+    drive("agent_session_started")  # resume flips rested → running
+    drive("session_completed", result="second")
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id FROM session_summaries WHERE agent_session_id = ?", (session.id,)
+        ).fetchall()
+        summary = SessionSummaryRepository(conn).get_by_session(session.id)
+        inbox_rows = conn.execute(
+            "SELECT id FROM inbox_events WHERE agent_session_id = ? AND event_type = 'completion'",
+            (session.id,),
+        ).fetchall()
+        reloaded = AgentSessionRepository(conn).get(session.id)
+
+    assert len(rows) == 1  # exactly one summary
+    assert summary is not None
+    assert summary.summary_text == "second"  # reflects the latest completion
+    assert len(inbox_rows) == 2  # one inbox event per completion
+    assert reloaded is not None
+    assert reloaded.status == "completed"
+
+
+# ============================================================
 # POST /devcontainers/{id}/agent-sessions/{session_id}/user-input
 # ============================================================
 

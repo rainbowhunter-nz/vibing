@@ -23,6 +23,8 @@ class AgentCommandHandler:
     async def handle(self, command: Command, emit: EmitFn) -> None:
         if command.type == CommandType.START_AGENT_SESSION:
             await self._start_agent_session(command, emit)
+        elif command.type == CommandType.RESUME_AGENT_SESSION:
+            await self._start_agent_session(command, emit, resume=True)
         elif command.type == CommandType.STOP_AGENT_SESSION:
             await self._stop_agent_session(command, emit)
         elif command.type == CommandType.SEND_USER_INPUT:
@@ -32,10 +34,13 @@ class AgentCommandHandler:
         else:
             logger.info("Ignoring unsupported command type: %s", command.type)
 
-    async def _start_agent_session(self, command: Command, emit: EmitFn) -> None:
+    async def _start_agent_session(
+        self, command: Command, emit: EmitFn, resume: bool = False
+    ) -> None:
         prompt = (command.payload or {}).get("prompt", "")
         logger.info(
-            "Handling start_agent_session (devcontainer=%s, session=%s, prompt_len=%d, prompt=%r)",
+            "Handling %s (devcontainer=%s, session=%s, prompt_len=%d, prompt=%r)",
+            "resume_agent_session" if resume else "start_agent_session",
             command.devcontainer_id,
             command.agent_session_id,
             len(prompt),
@@ -49,7 +54,7 @@ class AgentCommandHandler:
                 agent_session_id=command.agent_session_id,
             )
         )
-        process = self._runner.start(prompt, session_id=command.agent_session_id)
+        process = self._runner.start(prompt, session_id=command.agent_session_id, resume=resume)
         logger.info(
             "Spawned claude background task (devcontainer=%s, session=%s)",
             command.devcontainer_id,

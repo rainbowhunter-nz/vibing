@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { JsonBodyType, DefaultBodyType } from 'msw'
 import * as f from './fixtures'
 import { getScenario } from './scenario'
-import type { ApiErrorEnvelope, AgentSession, AgentSessionApprovalBody, AgentSessionStartBody, DevcontainerUpdateBody } from '../lib/api/types'
+import type { ApiErrorEnvelope, AgentSession, AgentSessionApprovalBody, AgentSessionResumeBody, AgentSessionStartBody, DevcontainerUpdateBody } from '../lib/api/types'
 import * as dc from './state/devcontainers'
 import * as as from './state/agentSessions'
 import * as inbox from './state/inbox'
@@ -214,6 +214,31 @@ const devcontainerHandlers = [
     const session = as.startAgentSession(params.id as string, body)
     emitInvalidation('agent_sessions')
     return HttpResponse.json(session, { status: 201 })
+  }),
+
+  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/resume', async ({ params, request }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_RESTING')
+    if (failure) return failure
+    try {
+      dc.getDevcontainer(params.dc as string)
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.dc as string)
+      throw e
+    }
+    const body = await request.json() as AgentSessionResumeBody
+    try {
+      const session = as.resumeAgentSession(params.dc as string, params.sid as string, body)
+      emitInvalidation('agent_sessions')
+      return HttpResponse.json(session, { status: 202 })
+    } catch (e) {
+      if (e instanceof as.NotFoundError) {
+        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
+      }
+      if (e instanceof as.NonRestingError || e instanceof as.OtherSessionActiveError) {
+        return HttpResponse.json(errorEnvelope(e.code, e.message), { status: 409 })
+      }
+      throw e
+    }
   }),
 
   http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/stop', ({ params }) => {

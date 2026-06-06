@@ -3,7 +3,7 @@ import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, deleteAgentSession, useApiQuery, ApiError } from '../lib/api'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession, useApiQuery, ApiError } from '../lib/api'
 import type { AgentSession, DevcontainerView, TranscriptBlock } from '../lib/api/types'
 import { formatRelativeTime } from '../lib/time'
 import { useSseInvalidation } from '../lib/events'
@@ -11,6 +11,7 @@ import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 
 const ACTIVE_STATUSES = new Set<string>(['starting', 'running', 'waiting_for_approval'])
+const RESTING_STATUSES = new Set<string>(['completed', 'failed', 'stopped'])
 
 const trashIcon = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -259,15 +260,75 @@ function BlockContent({ blocks }: { blocks: TranscriptBlock[] }) {
   )
 }
 
-function SessionDetailPanel({
-  devcontainerId,
+function ContinueComposer({
+  dc,
   sessionId,
-  onClose,
+  hasOtherActiveSession,
+  onResumed,
 }: {
-  devcontainerId: string
+  dc: DevcontainerView
   sessionId: string
-  onClose: () => void
+  hasOtherActiveSession: boolean
+  onResumed: () => void
 }) {
+  const [prompt, setPrompt] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const disabled = busy || hasOtherActiveSession
+  const helperText = hasOtherActiveSession ? 'A session is already active' : null
+
+  async function handleContinue() {
+    setBusy(true)
+    try {
+      await resumeAgentSession(dc.id, sessionId, { prompt })
+      setPrompt('')
+      onResumed()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Continue</h4>
+      <div className="space-y-2">
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Send a follow-up…"
+          disabled={disabled}
+          rows={2}
+          className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleContinue}
+            disabled={disabled || !prompt.trim()}
+            className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
+          >
+            Continue
+          </button>
+          {helperText && <span className="text-[12px] text-text-muted">{helperText}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SessionDetailPanel({
+  dc,
+  sessionId,
+  hasOtherActiveSession,
+  onClose,
+  onResumed,
+}: {
+  dc: DevcontainerView
+  sessionId: string
+  hasOtherActiveSession: boolean
+  onClose: () => void
+  onResumed: () => void
+}) {
+  const devcontainerId = dc.id
   const { state, refetch } = useApiQuery(
     () => fetchAgentSession(devcontainerId, sessionId),
     [devcontainerId, sessionId],
@@ -305,6 +366,14 @@ function SessionDetailPanel({
   }
 
   const session = state.data
+  const canContinue =
+    RESTING_STATUSES.has(session.status) && dc.status === 'running' && dc.runtime.agent_connected
+
+  function handleResumed() {
+    refetch()
+    transcriptRefetch()
+    onResumed()
+  }
 
   function renderConversationBody() {
     if (transcriptState.kind === 'loading') {
@@ -371,6 +440,15 @@ function SessionDetailPanel({
           {renderConversationBody()}
         </div>
 
+        {canContinue && (
+          <ContinueComposer
+            dc={dc}
+            sessionId={session.id}
+            hasOtherActiveSession={hasOtherActiveSession}
+            onResumed={handleResumed}
+          />
+        )}
+
         <div className="border-t border-border px-4 py-2 text-[11px] text-text-muted">
           {session.started_at && <span>Started {formatRelativeTime(session.started_at)}</span>}
           {session.ended_at && <span> · Ended {formatRelativeTime(session.ended_at)}</span>}
@@ -381,19 +459,21 @@ function SessionDetailPanel({
 }
 
 function AgentSessionsList({
+  dc,
   sessions,
   selectedId,
   onSelect,
-  devcontainerId,
   onSessionsChange,
 }: {
+  dc: DevcontainerView
   sessions: AgentSession[]
   selectedId: string | null
   onSelect: (id: string | null) => void
-  devcontainerId: string
   onSessionsChange: () => void
 }) {
+  const devcontainerId = dc.id
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const hasActiveSession = sessions.some((s) => ACTIVE_STATUSES.has(s.status))
 
   async function handleDelete(sessionId: string) {
     setDeletingId(sessionId)
@@ -427,9 +507,11 @@ function AgentSessionsList({
           </div>
           {selectedId && (
             <SessionDetailPanel
-              devcontainerId={devcontainerId}
+              dc={dc}
               sessionId={selectedId}
+              hasOtherActiveSession={hasActiveSession}
               onClose={() => onSelect(null)}
+              onResumed={onSessionsChange}
             />
           )}
         </>
@@ -476,10 +558,10 @@ export function DevcontainerDetail() {
                 <>
                   <SessionControls dc={dc} sessions={sessionsState.data.items} onSessionChange={refetchSessions} />
                   <AgentSessionsList
+                    dc={dc}
                     sessions={sessionsState.data.items}
                     selectedId={selectedSessionId}
                     onSelect={setSelectedSessionId}
-                    devcontainerId={dc.id}
                     onSessionsChange={refetchSessions}
                   />
                 </>

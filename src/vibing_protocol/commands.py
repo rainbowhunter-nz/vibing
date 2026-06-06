@@ -17,6 +17,7 @@ class CommandType(StrEnum):
     START_DEVCONTAINER = auto()
     STOP_DEVCONTAINER = auto()
     START_AGENT_SESSION = auto()
+    RESUME_AGENT_SESSION = auto()
     STOP_AGENT_SESSION = auto()
     SEND_USER_INPUT = auto()
     RESOLVE_APPROVAL = auto()

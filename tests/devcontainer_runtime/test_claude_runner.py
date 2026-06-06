@@ -156,3 +156,30 @@ def test_no_session_id_omitted():
     runner = ClaudeCodeRunner(runner=fake)
     asyncio.run(runner.run("hello"))
     assert "--session-id" not in captured[0]
+
+
+# --- resume flag (ADR-0008: `claude -p <prompt> --resume <id>`) ---
+
+
+def test_resume_appends_resume_flag_not_session_id():
+    captured: list[list[str]] = []
+
+    async def fake(command: list[str]) -> RunResult:
+        captured.append(command)
+        return RunResult(returncode=0, stdout="ok", stderr="")
+
+    runner = ClaudeCodeRunner(runner=fake)
+    asyncio.run(runner.run("follow up", session_id="my-session-uuid", resume=True))
+    assert captured[0] == [
+        "claude",
+        "-p",
+        "follow up",
+        "--output-format",
+        "json",
+        "--permission-mode",
+        "bypassPermissions",
+        "--resume",
+        "my-session-uuid",
+    ]
+    assert "--session-id" not in captured[0]
+    assert "--fork-session" not in captured[0]

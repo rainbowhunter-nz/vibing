@@ -3,7 +3,7 @@ import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-libra
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, deleteAgentSession } from '../../lib/api/endpoints'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession } from '../../lib/api/endpoints'
 import { ApiError } from '../../lib/api'
 import type { AgentSession, AgentSessionTranscript, DevcontainerView } from '../../lib/api/types'
 
@@ -12,6 +12,7 @@ const mockFetch = vi.mocked(fetchDevcontainer)
 const mockFetchSessions = vi.mocked(fetchAgentSessions)
 const mockStart = vi.mocked(startAgentSession)
 const mockStop = vi.mocked(stopAgentSession)
+const mockResume = vi.mocked(resumeAgentSession)
 const mockDelete = vi.mocked(deleteAgentSession)
 const mockFetchSession = vi.mocked(fetchAgentSession)
 const mockFetchTranscript = vi.mocked(fetchAgentSessionTranscript)
@@ -526,5 +527,83 @@ describe('SessionDetailPanel — transcript states', () => {
 
     await waitFor(() => expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(callsBefore))
     await waitFor(() => expect(screen.getByText('Done.')).toBeTruthy())
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Continue composer (resume) — VIB-106
+// ---------------------------------------------------------------------------
+
+describe('Continue composer (resume)', () => {
+  const restingSession: AgentSession = {
+    id: 'sess-0001-0000-0000-000000000001',
+    devcontainer_id: 'dc1',
+    status: 'completed',
+    prompt: 'Fix the bug',
+    started_at: '2024-01-16T10:00:00Z',
+    ended_at: '2024-01-16T10:05:00Z',
+    last_event_at: null,
+    created_at: '2024-01-16T10:00:00Z',
+    updated_at: '2024-01-16T10:05:00Z',
+  }
+
+  async function openPanel(dc: DevcontainerView, sessions: AgentSession[]) {
+    mockFetch.mockResolvedValue(dc)
+    mockFetchSessions.mockResolvedValue({ items: sessions })
+    mockFetchSession.mockResolvedValue({ ...sessions[0], summary_text: null })
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('No conversation yet.')
+  }
+
+  it('shows the composer for a resting session in a running, connected devcontainer', async () => {
+    await openPanel({ ...sample, status: 'running' }, [restingSession])
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy()
+    expect(screen.getByPlaceholderText('Send a follow-up…')).toBeTruthy()
+  })
+
+  it('disables the composer with helper text when another session is active', async () => {
+    const otherActive: AgentSession = { ...restingSession, id: 'sess-other-0000-0000-000000000002', status: 'running' }
+    await openPanel({ ...sample, status: 'running' }, [restingSession, otherActive])
+    const continueBtn = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement
+    expect(continueBtn.disabled).toBe(true)
+    // Helper text appears in both the Start controls and the Continue composer.
+    expect(screen.getAllByText('A session is already active').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does not show the composer for a running session', async () => {
+    const runningSession: AgentSession = { ...restingSession, status: 'running' }
+    await openPanel({ ...sample, status: 'running' }, [runningSession])
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+  })
+
+  it('does not show the composer when the devcontainer is not running', async () => {
+    await openPanel({ ...sample, status: 'stopped' }, [restingSession])
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+  })
+
+  it('does not show the composer when the agent is not connected', async () => {
+    await openPanel(
+      { ...sample, status: 'running', runtime: { worker_connected: true, agent_connected: false } },
+      [restingSession],
+    )
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+  })
+
+  it('submitting calls resumeAgentSession and refetches sessions + transcript', async () => {
+    await openPanel({ ...sample, status: 'running' }, [restingSession])
+    mockResume.mockResolvedValue({ ...restingSession, status: 'starting' })
+    const sessionsCallsBefore = mockFetchSessions.mock.calls.length
+    const transcriptCallsBefore = mockFetchTranscript.mock.calls.length
+
+    const textarea = screen.getByPlaceholderText('Send a follow-up…')
+    fireEvent.change(textarea, { target: { value: 'now run the tests' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue' })) })
+
+    expect(mockResume).toHaveBeenCalledWith('dc1', restingSession.id, { prompt: 'now run the tests' })
+    expect(mockFetchSessions.mock.calls.length).toBeGreaterThan(sessionsCallsBefore)
+    expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(transcriptCallsBefore)
   })
 })

@@ -75,6 +75,49 @@ class SessionSummaryRepository:
         )
         return summary
 
+    def upsert(
+        self,
+        agent_session_id: str,
+        final_status: str,
+        started_at: str | None = None,
+        ended_at: str | None = None,
+        last_known_event: str | None = None,
+        summary_text: str | None = None,
+    ) -> SessionSummary:
+        """One summary per session (ADR-0008): update in place if present, else insert."""
+        existing = self.get_by_session(agent_session_id)
+        if existing is None:
+            return self.create(
+                agent_session_id,
+                final_status,
+                started_at=started_at,
+                ended_at=ended_at,
+                last_known_event=last_known_event,
+                summary_text=summary_text,
+            )
+        self._conn.execute(
+            "UPDATE session_summaries SET final_status = ?, started_at = ?, ended_at = ?, "
+            "last_known_event = ?, summary_text = ? WHERE agent_session_id = ?",
+            (
+                final_status,
+                started_at,
+                ended_at,
+                last_known_event,
+                summary_text,
+                agent_session_id,
+            ),
+        )
+        return SessionSummary(
+            id=existing.id,
+            agent_session_id=agent_session_id,
+            final_status=final_status,
+            started_at=started_at,
+            ended_at=ended_at,
+            last_known_event=last_known_event,
+            summary_text=summary_text,
+            created_at=existing.created_at,
+        )
+
     def get(self, summary_id: str) -> SessionSummary | None:
         row = self._conn.execute(
             f"SELECT {_COLUMNS} FROM session_summaries WHERE id = ?",
