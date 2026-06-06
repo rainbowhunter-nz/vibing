@@ -49,7 +49,7 @@ class AgentCommandHandler:
                 agent_session_id=command.agent_session_id,
             )
         )
-        process = self._runner.start(prompt)
+        process = self._runner.start(prompt, session_id=command.agent_session_id)
         logger.info(
             "Spawned claude background task (devcontainer=%s, session=%s)",
             command.devcontainer_id,

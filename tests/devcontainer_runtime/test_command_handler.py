@@ -296,7 +296,7 @@ def test_stop_terminates_process_and_emits_session_stopped():
     from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
 
     class FakeRunner(ClaudeCodeRunner):
-        def start(self, prompt: str) -> ClaudeProcess:  # type: ignore[override]
+        def start(self, prompt: str, session_id: str | None = None) -> ClaudeProcess:  # type: ignore[override]
             return FakeProcess()  # type: ignore[return-value]
 
     handler = AgentCommandHandler(FakeRunner())
@@ -343,7 +343,7 @@ def test_stop_handle_returns_promptly_while_run_in_flight():
     from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
 
     class BlockingRunner(ClaudeCodeRunner):
-        def start(self, prompt: str) -> ClaudeProcess:  # type: ignore[override]
+        def start(self, prompt: str, session_id: str | None = None) -> ClaudeProcess:  # type: ignore[override]
             return BlockingProcess()  # type: ignore[return-value]
 
     handler = AgentCommandHandler(BlockingRunner())
@@ -390,7 +390,7 @@ def test_stop_race_yields_at_least_one_terminal_event():
             pass  # no-op; run already done
 
     class InstantRunner(ClaudeCodeRunner):
-        def start(self, prompt: str) -> ClaudeProcess:  # type: ignore[override]
+        def start(self, prompt: str, session_id: str | None = None) -> ClaudeProcess:  # type: ignore[override]
             return InstantProcess()  # type: ignore[return-value]
 
     handler = AgentCommandHandler(InstantRunner())
@@ -411,6 +411,34 @@ def test_stop_race_yields_at_least_one_terminal_event():
     terminal_types = {"session_completed", "session_failed", "session_stopped"}
     emitted_terminals = [e.event_type for e in events if e.event_type in terminal_types]
     assert len(emitted_terminals) >= 1
+
+
+# --- session_id passed to runner ---
+
+
+def test_start_agent_session_passes_session_id_to_runner():
+    """Runner must be invoked with the session id from the command."""
+    captured_sessions: list[str | None] = []
+
+    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
+
+    class CapturingProcess(ClaudeProcess):
+        async def wait(self) -> ClaudeSuccess:
+            return ClaudeSuccess(result="done")
+
+        async def terminate(self) -> None:
+            pass
+
+    class CapturingRunner(ClaudeCodeRunner):
+        def start(self, prompt: str, session_id: str | None = None) -> ClaudeProcess:  # type: ignore[override]
+            captured_sessions.append(session_id)
+            return CapturingProcess()
+
+    handler = AgentCommandHandler(CapturingRunner())
+    cmd = _make_command(agent_session_id="abc-123")
+    asyncio.run(_collect_events(handler, cmd))
+
+    assert captured_sessions == ["abc-123"]
 
 
 # stop with no running process emits session_stopped (idempotent)

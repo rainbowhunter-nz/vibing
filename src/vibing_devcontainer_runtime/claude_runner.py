@@ -148,8 +148,8 @@ class ClaudeCodeRunner:
         self._cwd = cwd
         self._runner = runner
 
-    def _build_command(self, prompt: str) -> list[str]:
-        return [
+    def _build_command(self, prompt: str, session_id: str | None = None) -> list[str]:
+        cmd = [
             self._binary,
             "-p",
             prompt,
@@ -158,17 +158,20 @@ class ClaudeCodeRunner:
             "--permission-mode",
             "bypassPermissions",
         ]
+        if session_id is not None:
+            cmd += ["--session-id", session_id]
+        return cmd
 
-    def start(self, prompt: str) -> ClaudeProcess:
+    def start(self, prompt: str, session_id: str | None = None) -> ClaudeProcess:
         """Return a ClaudeProcess handle. For the injected-runner path, returns synchronously."""
-        command = self._build_command(prompt)
+        command = self._build_command(prompt, session_id)
         if self._runner is not None:
             return _FakeRunnerProcess(command, self._runner)
         return _LazyRealProcess(command, self._cwd)
 
-    async def run(self, prompt: str) -> ClaudeResult:
+    async def run(self, prompt: str, session_id: str | None = None) -> ClaudeResult:
         """Convenience wrapper: start() + wait()."""
-        return await self.start(prompt).wait()
+        return await self.start(prompt, session_id).wait()
 
 
 class _LazyRealProcess(ClaudeProcess):

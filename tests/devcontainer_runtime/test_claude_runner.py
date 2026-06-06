@@ -119,3 +119,40 @@ def test_missing_binary_does_not_raise():
     # Should not raise
     result = _run(runner, "x")
     assert isinstance(result, ClaudeFailure)
+
+
+# --- session_id flag ---
+
+
+def test_session_id_appended_when_provided():
+    captured: list[list[str]] = []
+
+    async def fake(command: list[str]) -> RunResult:
+        captured.append(command)
+        return RunResult(returncode=0, stdout="ok", stderr="")
+
+    runner = ClaudeCodeRunner(runner=fake)
+    asyncio.run(runner.run("hello", session_id="my-session-uuid"))
+    assert captured[0] == [
+        "claude",
+        "-p",
+        "hello",
+        "--output-format",
+        "json",
+        "--permission-mode",
+        "bypassPermissions",
+        "--session-id",
+        "my-session-uuid",
+    ]
+
+
+def test_no_session_id_omitted():
+    captured: list[list[str]] = []
+
+    async def fake(command: list[str]) -> RunResult:
+        captured.append(command)
+        return RunResult(returncode=0, stdout="ok", stderr="")
+
+    runner = ClaudeCodeRunner(runner=fake)
+    asyncio.run(runner.run("hello"))
+    assert "--session-id" not in captured[0]
