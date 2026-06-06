@@ -170,6 +170,33 @@ export interface ApprovalRequestList {
   items: ApprovalRequest[]
 }
 
+export interface TranscriptTextBlock {
+  kind: 'text'
+  text: string
+}
+
+export interface TranscriptToolUseBlock {
+  kind: 'tool_use'
+  name: string
+  summary: string
+}
+
+export type TranscriptBlock = TranscriptTextBlock | TranscriptToolUseBlock
+
+export interface TranscriptTurn {
+  role: 'user' | 'assistant'
+  blocks: TranscriptBlock[]
+  at: string
+}
+
+export type TranscriptState = 'has_turns' | 'empty' | 'summary_fallback' | 'error'
+
+export interface AgentSessionTranscript {
+  state: TranscriptState
+  turns: TranscriptTurn[]
+  summary_text: string | null
+}
+
 // Backend error envelope (src/vibing_api/core/errors.py).
 
 export interface ApiErrorBody {

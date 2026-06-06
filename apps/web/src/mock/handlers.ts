@@ -149,6 +149,25 @@ const devcontainerHandlers = [
     }
   }),
 
+  http.get('*/api/v1/devcontainers/:dc/agent-sessions/:sid/transcript', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
+    if (failure) return failure
+    try {
+      dc.getDevcontainer(params.dc as string)
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.dc as string)
+      throw e
+    }
+    try {
+      return HttpResponse.json(as.getAgentSessionTranscript(params.dc as string, params.sid as string))
+    } catch (e) {
+      if (e instanceof as.NotFoundError) {
+        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
+      }
+      throw e
+    }
+  }),
+
   http.get('*/api/v1/devcontainers/:dc/agent-sessions/:sid', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
     if (failure) return failure

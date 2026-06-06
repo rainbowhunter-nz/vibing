@@ -3,9 +3,9 @@ import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-libra
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, startAgentSession, stopAgentSession, deleteAgentSession } from '../../lib/api/endpoints'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, deleteAgentSession } from '../../lib/api/endpoints'
 import { ApiError } from '../../lib/api'
-import type { AgentSession, DevcontainerView } from '../../lib/api/types'
+import type { AgentSession, AgentSessionTranscript, DevcontainerView } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
 const mockFetch = vi.mocked(fetchDevcontainer)
@@ -14,6 +14,7 @@ const mockStart = vi.mocked(startAgentSession)
 const mockStop = vi.mocked(stopAgentSession)
 const mockDelete = vi.mocked(deleteAgentSession)
 const mockFetchSession = vi.mocked(fetchAgentSession)
+const mockFetchTranscript = vi.mocked(fetchAgentSessionTranscript)
 
 // ---------------------------------------------------------------------------
 // MockEventSource
@@ -64,10 +65,13 @@ class MockEventSource {
   }
 }
 
+const emptyTranscript: AgentSessionTranscript = { state: 'empty', turns: [], summary_text: null }
+
 beforeEach(() => {
   MockEventSource.instances = []
   vi.stubGlobal('EventSource', MockEventSource)
   vi.clearAllMocks()
+  mockFetchTranscript.mockResolvedValue(emptyTranscript)
 })
 
 afterEach(() => {
@@ -357,7 +361,7 @@ describe('DevcontainerDetail SSE invalidation', () => {
     expect(screen.queryByText('waiting_for_approval')).toBeNull()
   })
 
-  it('clicking a session shows the conversation', async () => {
+  it('clicking a session shows the conversation via transcript has_turns', async () => {
     const completedSession = {
       ...sampleSession,
       status: 'completed' as const,
@@ -366,9 +370,14 @@ describe('DevcontainerDetail SSE invalidation', () => {
     }
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [completedSession] })
-    mockFetchSession.mockResolvedValue({
-      ...completedSession,
-      summary_text: 'Hello! How can I help you today?',
+    mockFetchSession.mockResolvedValue({ ...completedSession, summary_text: null })
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns',
+      turns: [
+        { role: 'user', blocks: [{ kind: 'text', text: 'hi' }], at: '2024-01-16T10:00:00Z' },
+        { role: 'assistant', blocks: [{ kind: 'text', text: 'Hello! How can I help you today?' }], at: '2024-01-16T10:01:00Z' },
+      ],
+      summary_text: null,
     })
 
     renderPage('dc1')
@@ -378,6 +387,7 @@ describe('DevcontainerDetail SSE invalidation', () => {
     expect(await screen.findByText('hi')).toBeTruthy()
     expect(screen.getByText('Hello! How can I help you today?')).toBeTruthy()
     expect(mockFetchSession).toHaveBeenCalledWith('dc1', completedSession.id)
+    expect(mockFetchTranscript).toHaveBeenCalledWith('dc1', completedSession.id)
   })
 
   it('AC: single agent_sessions invalidation triggers exactly one refetch', async () => {
@@ -396,5 +406,125 @@ describe('DevcontainerDetail SSE invalidation', () => {
     })
 
     await waitFor(() => expect(mockFetchSessions.mock.calls.length).toBe(callsBefore + 1))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionDetailPanel — transcript states (AC1–AC4, AC6)
+// ---------------------------------------------------------------------------
+
+describe('SessionDetailPanel — transcript states', () => {
+  const completedSession: AgentSession = {
+    ...{
+      id: 'sess-0001-0000-0000-000000000001',
+      devcontainer_id: 'dc1',
+      status: 'completed' as const,
+      prompt: 'Fix the bug',
+      started_at: '2024-01-16T10:00:00Z',
+      ended_at: '2024-01-16T10:05:00Z',
+      last_event_at: null,
+      created_at: '2024-01-16T10:00:00Z',
+      updated_at: '2024-01-16T10:05:00Z',
+    },
+  }
+
+  async function openPanel(dc = sample) {
+    mockFetch.mockResolvedValue(dc)
+    mockFetchSessions.mockResolvedValue({ items: [completedSession] })
+    mockFetchSession.mockResolvedValue({ ...completedSession, summary_text: null })
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+  }
+
+  it('AC1: has_turns renders user and assistant chat bubbles', async () => {
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns',
+      turns: [
+        { role: 'user', blocks: [{ kind: 'text', text: 'Fix the bug' }], at: '2024-01-16T10:00:00Z' },
+        { role: 'assistant', blocks: [{ kind: 'text', text: 'Done.' }], at: '2024-01-16T10:01:00Z' },
+      ],
+      summary_text: null,
+    })
+    await openPanel()
+    expect(await screen.findByText('Fix the bug')).toBeTruthy()
+    expect(screen.getByText('Done.')).toBeTruthy()
+    expect(screen.getByText('You')).toBeTruthy()
+    expect(screen.getByText('Agent')).toBeTruthy()
+  })
+
+  it('AC2: tool_use block renders compact pill with name + summary, not raw output', async () => {
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns',
+      turns: [
+        {
+          role: 'assistant',
+          blocks: [
+            { kind: 'tool_use', name: 'Bash', summary: 'ran pytest --tb=short' },
+            { kind: 'text', text: 'All tests passed.' },
+          ],
+          at: '2024-01-16T10:01:00Z',
+        },
+      ],
+      summary_text: null,
+    })
+    await openPanel()
+    expect(await screen.findByText('Bash')).toBeTruthy()
+    expect(screen.getByText('ran pytest --tb=short')).toBeTruthy()
+    expect(screen.getByText('All tests passed.')).toBeTruthy()
+    // Tool output must NOT appear
+    expect(screen.queryByText(/tool output/i)).toBeNull()
+  })
+
+  it('AC3: summary_fallback renders summary text and affordance', async () => {
+    mockFetchTranscript.mockResolvedValue({
+      state: 'summary_fallback',
+      turns: [],
+      summary_text: 'All tests passed. Ready to merge.',
+    })
+    await openPanel()
+    expect(await screen.findByText('All tests passed. Ready to merge.')).toBeTruthy()
+    expect(screen.getByText(/Start the devcontainer to view or continue/i)).toBeTruthy()
+  })
+
+  it('AC3: empty state renders "No conversation yet."', async () => {
+    mockFetchTranscript.mockResolvedValue({ state: 'empty', turns: [], summary_text: null })
+    await openPanel()
+    expect(await screen.findByText('No conversation yet.')).toBeTruthy()
+  })
+
+  it('AC3: error state (state==="error") renders error UI', async () => {
+    mockFetchTranscript.mockResolvedValue({ state: 'error', turns: [], summary_text: null })
+    await openPanel()
+    expect(await screen.findByText(/Couldn't load transcript/i)).toBeTruthy()
+  })
+
+  it('AC3: network/ApiError on transcript fetch renders error UI', async () => {
+    mockFetchTranscript.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'down'))
+    await openPanel()
+    expect(await screen.findByText(/Couldn't load transcript/i)).toBeTruthy()
+  })
+
+  it('AC4: agent_sessions SSE invalidation re-fetches transcript', async () => {
+    mockFetchTranscript
+      .mockResolvedValueOnce({ state: 'empty', turns: [], summary_text: null })
+      .mockResolvedValueOnce({
+        state: 'has_turns',
+        turns: [{ role: 'assistant', blocks: [{ kind: 'text', text: 'Done.' }], at: '2024-01-16T10:01:00Z' }],
+        summary_text: null,
+      })
+    await openPanel()
+    await screen.findByText('No conversation yet.')
+
+    const callsBefore = mockFetchTranscript.mock.calls.length
+
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+    })
+
+    await waitFor(() => expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(callsBefore))
+    await waitFor(() => expect(screen.getByText('Done.')).toBeTruthy())
   })
 })

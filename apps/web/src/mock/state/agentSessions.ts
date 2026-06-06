@@ -1,10 +1,33 @@
-import type { AgentSession, AgentSessionDetail, AgentSessionList, AgentSessionStartBody } from '../../lib/api/types'
+import type { AgentSession, AgentSessionDetail, AgentSessionList, AgentSessionStartBody, AgentSessionTranscript, TranscriptTurn } from '../../lib/api/types'
+import { getDevcontainer } from './devcontainers'
 import { seedAgentSessions } from './seeds'
 
 const SESSION_SUMMARIES: Record<string, string> = {
   'as-seed-0004': 'All tests passed. Ready to merge.',
   'as-seed-0006': 'Error: command not found: pytest',
 }
+
+// Seeded transcript turns per session id. as-seed-0004 (completed) has a full
+// conversation with a tool_use block so the UI demonstrates both bubbles and a tool pill.
+const SEED_TRANSCRIPTS: Record<string, TranscriptTurn[]> = {
+  'as-seed-0004': [
+    {
+      role: 'user',
+      blocks: [{ kind: 'text', text: 'Fix the flaky test in auth' }],
+      at: '2024-01-13T12:00:00.000Z',
+    },
+    {
+      role: 'assistant',
+      blocks: [
+        { kind: 'tool_use', name: 'Bash', summary: 'ran pytest --tb=short auth/' },
+        { kind: 'text', text: 'All tests passed. Ready to merge.' },
+      ],
+      at: '2024-01-13T12:25:00.000Z',
+    },
+  ],
+}
+
+let transcriptStore: Record<string, TranscriptTurn[]> = { ...SEED_TRANSCRIPTS }
 
 const SEED: AgentSession[] = seedAgentSessions.map((s) => ({ ...s }))
 
@@ -39,7 +62,32 @@ function findIdx(id: string): number {
 
 export function resetAgentSessions(): void {
   store = SEED.map((s) => ({ ...s }))
+  transcriptStore = { ...SEED_TRANSCRIPTS }
   nextIdSeq = 100
+}
+
+export function getAgentSessionTranscript(devcontainerId: string, sessionId: string): AgentSessionTranscript {
+  const idx = store.findIndex((s) => s.id === sessionId && s.devcontainer_id === devcontainerId)
+  if (idx === -1) throw new NotFoundError(sessionId)
+
+  const dcView = getDevcontainer(devcontainerId)
+  const isConnected = dcView.runtime.agent_connected
+
+  const turns = transcriptStore[sessionId]
+
+  if (!isConnected) {
+    return {
+      state: 'summary_fallback',
+      turns: [],
+      summary_text: SESSION_SUMMARIES[sessionId] ?? null,
+    }
+  }
+
+  if (turns && turns.length > 0) {
+    return { state: 'has_turns', turns, summary_text: null }
+  }
+
+  return { state: 'empty', turns: [], summary_text: null }
 }
 
 export function listAgentSessions(devcontainerId: string): AgentSessionList {

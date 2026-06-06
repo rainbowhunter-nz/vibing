@@ -3,8 +3,8 @@ import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, startAgentSession, stopAgentSession, deleteAgentSession, useApiQuery, ApiError } from '../lib/api'
-import type { AgentSession, DevcontainerView } from '../lib/api/types'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, deleteAgentSession, useApiQuery, ApiError } from '../lib/api'
+import type { AgentSession, DevcontainerView, TranscriptBlock } from '../lib/api/types'
 import { formatRelativeTime } from '../lib/time'
 import { useSseInvalidation } from '../lib/events'
 import { loadError } from '../lib/copy'
@@ -234,6 +234,31 @@ function ConversationBubble({ role, children }: { role: 'user' | 'agent'; childr
   )
 }
 
+function ToolUsePill({ name, summary }: { name: string; summary: string }) {
+  return (
+    <span className="mr-1 mt-1 inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-text-muted ring-1 ring-border">
+      <span className="font-semibold text-text">{name}</span>
+      <span>{summary}</span>
+    </span>
+  )
+}
+
+function BlockContent({ blocks }: { blocks: TranscriptBlock[] }) {
+  return (
+    <div className="space-y-1">
+      {blocks.map((block, i) =>
+        block.kind === 'tool_use' ? (
+          <div key={i}>
+            <ToolUsePill name={block.name} summary={block.summary} />
+          </div>
+        ) : (
+          <p key={i}>{block.text}</p>
+        ),
+      )}
+    </div>
+  )
+}
+
 function SessionDetailPanel({
   devcontainerId,
   sessionId,
@@ -247,9 +272,14 @@ function SessionDetailPanel({
     () => fetchAgentSession(devcontainerId, sessionId),
     [devcontainerId, sessionId],
   )
+  const { state: transcriptState, refetch: transcriptRefetch } = useApiQuery(
+    () => fetchAgentSessionTranscript(devcontainerId, sessionId),
+    [devcontainerId, sessionId],
+  )
   const { register } = useSseInvalidation()
 
   useEffect(() => register('agent_sessions', refetch), [register, refetch])
+  useEffect(() => register('agent_sessions', transcriptRefetch), [register, transcriptRefetch])
 
   if (state.kind === 'loading') {
     return (
@@ -275,7 +305,48 @@ function SessionDetailPanel({
   }
 
   const session = state.data
-  const isActive = ACTIVE_STATUSES.has(session.status)
+
+  function renderConversationBody() {
+    if (transcriptState.kind === 'loading') {
+      return <p className="text-[13px] text-text-muted">Loading conversation…</p>
+    }
+
+    if (transcriptState.kind === 'error' || (transcriptState.kind === 'ready' && transcriptState.data.state === 'error')) {
+      return <ErrorState {...loadError('transcript')} />
+    }
+
+    if (transcriptState.kind === 'ready') {
+      const transcript = transcriptState.data
+
+      if (transcript.state === 'has_turns') {
+        return (
+          <div className="space-y-3">
+            {transcript.turns.map((turn, i) => (
+              <ConversationBubble key={i} role={turn.role === 'user' ? 'user' : 'agent'}>
+                <BlockContent blocks={turn.blocks} />
+              </ConversationBubble>
+            ))}
+          </div>
+        )
+      }
+
+      if (transcript.state === 'summary_fallback') {
+        return (
+          <div className="space-y-3">
+            {transcript.summary_text && (
+              <ConversationBubble role="agent">{transcript.summary_text}</ConversationBubble>
+            )}
+            <p className="text-[13px] text-text-muted">Start the devcontainer to view or continue this conversation.</p>
+          </div>
+        )
+      }
+
+      // empty
+      return <p className="text-[13px] text-text-muted">No conversation yet.</p>
+    }
+
+    return null
+  }
 
   return (
     <div className="px-4 pt-4">
@@ -297,15 +368,7 @@ function SessionDetailPanel({
         </div>
 
         <div className="space-y-3 px-4 py-4">
-          {session.prompt && <ConversationBubble role="user">{session.prompt}</ConversationBubble>}
-
-          {session.summary_text ? (
-            <ConversationBubble role="agent">{session.summary_text}</ConversationBubble>
-          ) : isActive ? (
-            <p className="text-[13px] text-text-muted">Session in progress…</p>
-          ) : (
-            <p className="text-[13px] text-text-muted">No output recorded.</p>
-          )}
+          {renderConversationBody()}
         </div>
 
         <div className="border-t border-border px-4 py-2 text-[11px] text-text-muted">
