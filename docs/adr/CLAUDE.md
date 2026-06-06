@@ -9,5 +9,7 @@ Architectural decisions for Vibing. One file per decision, `NNNN-slug.md`.
 - [0005](0005-frontend-live-updates-use-sse-invalidation-events.md) — Frontend live updates use one app-level SSE stream carrying lightweight invalidation events only; HTTP stays canonical, runtime WebSockets stay reserved for runtime traffic.
 - [0006](0006-frontend-live-updates-use-stale-while-revalidate-in-a-custom-hook.md) — The SSE flash is fixed by making `useApiQuery` stale-while-revalidate, not by adopting TanStack Query or a shared cache layer.
 - [0007](0007-control-plane-api-mocking-uses-msw-and-a-dev-eventsource-adapter.md) — Frontend Control Plane API Mocking uses MSW for `/api/v1` HTTP and a dev-only EventSource adapter for manual live invalidation testing.
+- [0008](0008-agent-sessions-are-durable-resumable-conversations-keyed-by-the-agents-session-id.md) — An Agent Session is the durable conversation (not one run), keyed by the agent's own session id (`--session-id`); end states are resumable via `resume_agent_session`; Session Summary becomes upsert-by-session.
+- [0009](0009-session-transcripts-are-fetched-via-request-reply-over-the-runtime-channel-and-never-persisted.md) — Session Transcripts are fetched on demand via a new request/reply pattern (correlation id) over the agent WebSocket, parsed to normalized turns by the agent, never persisted; degrade to Session Summary when stopped.
 
 **Keep this index up to date: add a one-line entry here whenever you add a new ADR.**

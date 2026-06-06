@@ -9,8 +9,8 @@ The central persistent entity: one isolated development container bound to exact
 _Avoid_: Workspace, project, environment, repo
 
 **Agent Session**:
-A single run of a coding agent inside a running Devcontainer. At most one is active per Devcontainer. The agent is Claude Code today, but the entity is named for the role, not the vendor — domain terms, table (`agent_sessions`), and FKs all use `agent_session`. Spelled "agent-session" in prose. "Claude" may appear in user-facing UI copy only.
-_Avoid_: Claude session, agent run, conversation
+The durable conversation between a user and a coding agent inside a Devcontainer — *not* a single run. Identified by one stable id that is also the agent's own session id and names its Session Transcript. Re-openable: after a run ends it rests in a resumable state and can be **continued in place**, appending more turns to the same conversation. At most one is active per Devcontainer. The agent is Claude Code today, but the entity is named for the role, not the vendor — domain terms, table (`agent_sessions`), and FKs all use `agent_session`. Spelled "agent-session" in prose. "Claude" may appear in user-facing UI copy only.
+_Avoid_: Claude session, agent run, single-shot run
 
 **Control Plane**:
 The backend (FastAPI + SQLite). The single hub: it holds all metadata, sends Commands to runtimes and consumes the Runtime Events they emit (over TCP/IP, star topology — see [ADR-0003](docs/adr/0003-runtimes-connect-to-the-control-plane-over-tcp-ip-in-a-star-topology.md)), and is the only writer of derived state. The frontend is a separate client over `/api/v1` HTTP and is *not* part of the Control Plane.
@@ -34,7 +34,11 @@ _Avoid_: message, notification, log
 
 **Session Output**:
 The high-volume character stream from an Agent Session's terminal, carried on its own channel for the live session view. Ephemeral in MVP — deliberately not persisted (a non-goal). Kept separate from Runtime Events precisely so that persisting it in a future revision is a purely additive change (attach a sink), not a redesign.
-_Avoid_: log, transcript, terminal log (when it implies persistence)
+_Avoid_: log, terminal log (when it implies persistence)
+
+**Session Transcript**:
+The durable, append-only conversation history of an Agent Session — the structured record of turns the agent itself persists to disk, owned by the Devcontainer Runtime Agent. The single source of truth for *what was said*, and the basis for continuing the conversation. Fetched on demand from the runtime, never a projection of Runtime Events and not stored by the Control Plane. Distinct from Session Output (an ephemeral live character stream) and from a Session Summary (a one-line final record).
+_Avoid_: conversation log, history, output
 
 **Inbox Event**:
 A stateful (`unread`/`read`/`resolved`) notification a human acts on, derived as a projection of the four notable Runtime Event types (question, approval request, failure, completion). Never a source of truth.
@@ -63,8 +67,10 @@ Two independent lifecycles. Keep the verbs distinct.
 
 **Agent Session lifecycle** — owned by the Devcontainer Runtime Agent.
 - States: `starting → running ⇄ waiting_for_approval → completed / failed / stopped`.
-- Commands: `start_agent_session`, `stop_agent_session`.
-- "**Stop the agent-session**" ends the agent run only; the devcontainer keeps running.
+- The three end states are **resumable resting states, not terminal**: `resume_agent_session` takes any of them back to `starting`, continuing the same conversation.
+- Commands: `start_agent_session`, `resume_agent_session`, `stop_agent_session`.
+- "**Stop the agent-session**" ends the current run only; the devcontainer keeps running and the session can be resumed later.
+- "**Resume the agent-session**" re-opens a rested session in place — same id, same conversation. Gated by the one-active-per-devcontainer invariant.
 
 **Rules**: An agent-session can only be `starting`/`running` while its Devcontainer is `running`. Never say "stop the session" to mean the container, or "stop the devcontainer" to mean the agent run.
 
