@@ -4,7 +4,8 @@ Shared runtime WebSocket client. Used by host worker and devcontainer agent.
 
 ## Files
 
-- `client.py`: reconnect loop, registration send, command receive queue, event emit envelope.
+- `client.py`: reconnect loop, registration send, command receive queue, event emit envelope,
+  transcript request/reply hook (optional `transcript_handler`; replies on the same ws).
 - `__init__.py`: public exports.
 
 ## Context

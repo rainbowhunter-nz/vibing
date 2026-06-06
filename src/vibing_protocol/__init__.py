@@ -2,7 +2,17 @@
 
 from .claude_output import extract_claude_result_text
 from .commands import COMMAND_TYPES, Command, CommandType
-from .messages import CommandEnvelope, RegisterEnvelope, RuntimeEventEnvelope
+from .messages import (
+    CommandEnvelope,
+    RegisterEnvelope,
+    RuntimeEventEnvelope,
+    TextBlock,
+    ToolUseBlock,
+    TranscriptBlock,
+    TranscriptRequestEnvelope,
+    TranscriptResponseEnvelope,
+    TranscriptTurn,
+)
 from .runtime_events import (
     EVENT_TYPES,
     EventType,
@@ -26,4 +36,10 @@ __all__ = [
     "RuntimeEvent",
     "RuntimeEventEnvelope",
     "RuntimeEventSource",
+    "TextBlock",
+    "ToolUseBlock",
+    "TranscriptBlock",
+    "TranscriptRequestEnvelope",
+    "TranscriptResponseEnvelope",
+    "TranscriptTurn",
 ]

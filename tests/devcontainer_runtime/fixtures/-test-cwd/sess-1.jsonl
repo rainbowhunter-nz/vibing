@@ -1,0 +1,9 @@
+{"type": "mode", "mode": "default", "sessionId": "sess-1"}
+{"type": "file-history-snapshot", "messageId": "m1", "snapshot": {}}
+{"type": "user", "timestamp": "2026-06-06T00:00:01Z", "message": {"role": "user", "content": "hello agent"}}
+{"type": "assistant", "timestamp": "2026-06-06T00:00:02Z", "message": {"role": "assistant", "content": [{"type": "text", "text": "Sure, let me look."}, {"type": "tool_use", "name": "Read", "input": {"file_path": "/work/main.py"}}]}}
+{"type": "system", "timestamp": "2026-06-06T00:00:03Z", "subtype": "info", "content": "noise"}
+{"type": "user", "timestamp": "2026-06-06T00:00:04Z", "message": {"role": "user", "content": [{"type": "tool_result", "content": "file bytes"}]}}
+{"type": "assistant", "timestamp": "2026-06-06T00:00:05Z", "message": {"role": "assistant", "content": [{"type": "text", "text": "Done."}]}}
+not valid json at all
+{"type": "summary", "summary": "skip me"}

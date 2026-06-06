@@ -7,10 +7,18 @@ keyed by devcontainer_id). `persist_runtime_event` is the I/O seam that records 
 inbound RuntimeEvent and projects it through the reducer — keeping SQL out of the route.
 """
 
+import asyncio
+import uuid
 from abc import ABC, abstractmethod
+from typing import Any
 
 from fastapi import WebSocket
-from vibing_protocol import Command, CommandEnvelope, RuntimeEvent
+from vibing_protocol import (
+    Command,
+    CommandEnvelope,
+    RuntimeEvent,
+    TranscriptRequestEnvelope,
+)
 
 from vibing_api.core.broadcaster import Broadcaster
 from vibing_api.core.database import get_connection
@@ -63,10 +71,59 @@ class WorkerRegistry(ConnectionRegistry):
 
 
 class AgentRegistry(ConnectionRegistry):
-    """Routes each command to the agent registered for its devcontainer_id."""
+    """Routes each command to the agent registered for its devcontainer_id.
+
+    Also runs the request/reply RPC for Session Transcripts (ADR-0009): a per-request
+    `asyncio.Future` keyed by a Control-Plane-generated request_id, sent over the agent's
+    WebSocket and awaited. request_id and turns are ephemeral — never persisted.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._inflight: dict[str, tuple[WebSocket, asyncio.Future[list[Any]]]] = {}
 
     def _slot_for(self, command: Command) -> str:
         return command.devcontainer_id or ""
+
+    async def request_transcript(
+        self, devcontainer_id: str, agent_session_id: str, timeout: float
+    ) -> list[Any]:
+        """Send a transcript_request to the agent and await its correlated reply."""
+        ws = self._connections.get(devcontainer_id)
+        if ws is None:
+            raise RuntimeError(f"No agent connection registered for {devcontainer_id!r}")
+        request_id = uuid.uuid4().hex
+        future: asyncio.Future[list[Any]] = asyncio.get_running_loop().create_future()
+        self._inflight[request_id] = (ws, future)
+        try:
+            await ws.send_json(
+                TranscriptRequestEnvelope(
+                    request_id=request_id, agent_session_id=agent_session_id
+                ).model_dump()
+            )
+            return await asyncio.wait_for(future, timeout)
+        finally:
+            self._inflight.pop(request_id, None)
+
+    def resolve_transcript(self, request_id: str, turns: list[Any]) -> None:
+        """Resolve the matching in-flight Future. No-op if it is already gone."""
+        entry = self._inflight.get(request_id)
+        if entry is None:
+            return
+        _, future = entry
+        if not future.done():
+            future.set_result(turns)
+
+    def unregister(self, key: str, websocket: WebSocket) -> None:
+        super().unregister(key, websocket)
+        self._fail_inflight_for(websocket)
+
+    def _fail_inflight_for(self, websocket: WebSocket) -> None:
+        """Reject every in-flight Future owned by a dropped connection so no awaiter hangs."""
+        for request_id, (ws, future) in list(self._inflight.items()):
+            if ws is websocket and not future.done():
+                future.set_exception(ConnectionError("Agent connection dropped"))
+                self._inflight.pop(request_id, None)
 
 
 def persist_runtime_event(event: RuntimeEvent, broadcaster: Broadcaster | None = None) -> None:

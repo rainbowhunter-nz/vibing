@@ -1,6 +1,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from vibing_protocol import TranscriptTurn
 
 from vibing_api.core.vocabularies import AgentSessionStatus
 
@@ -39,3 +40,16 @@ class AgentSessionDetail(AgentSession):
 
 class AgentSessionList(BaseModel):
     items: list[AgentSession]
+
+
+TranscriptState = Literal["has_turns", "empty", "summary_fallback", "error"]
+
+
+class AgentSessionTranscript(BaseModel):
+    """Live transcript fetch result (ADR-0009). `state` lets the frontend distinguish
+    has-turns / empty ("no conversation yet") / summary-fallback (stopped) / error.
+    Transcript content is never persisted."""
+
+    state: TranscriptState
+    turns: list[TranscriptTurn] = Field(default_factory=list)
+    summary_text: str | None = None

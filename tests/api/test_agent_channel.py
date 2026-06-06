@@ -156,3 +156,70 @@ def test_unregister(manager: AgentRegistry) -> None:
     manager.register("dc-1", ws)
     manager.unregister("dc-1", ws)
     assert not manager.is_connected("dc-1")
+
+
+# --- transcript request/reply (VIB-104, ADR-0009) ---
+
+
+def test_request_transcript_sends_request_and_resolves(manager: AgentRegistry) -> None:
+    import asyncio
+
+    ws = _ws()
+    manager.register("dc-1", ws)
+
+    async def scenario() -> list:
+        task = asyncio.create_task(manager.request_transcript("dc-1", "sess-1", timeout=5.0))
+        await asyncio.sleep(0)  # let the send happen and the future register
+        sent = ws.send_json.call_args.args[0]
+        assert sent["type"] == "transcript_request"
+        assert sent["agent_session_id"] == "sess-1"
+        request_id = sent["request_id"]
+        assert request_id  # a fresh cp-side id
+        manager.resolve_transcript(request_id, [{"role": "user", "blocks": [], "at": "t"}])
+        return await task
+
+    turns = asyncio.run(scenario())
+    assert turns == [{"role": "user", "blocks": [], "at": "t"}]
+
+
+def test_request_transcript_times_out(manager: AgentRegistry) -> None:
+    import asyncio
+
+    ws = _ws()
+    manager.register("dc-1", ws)
+
+    async def scenario() -> None:
+        with pytest.raises(asyncio.TimeoutError):
+            await manager.request_transcript("dc-1", "sess-1", timeout=0.01)
+
+    asyncio.run(scenario())
+
+
+def test_disconnect_fails_inflight_futures(manager: AgentRegistry) -> None:
+    import asyncio
+
+    ws = _ws()
+    manager.register("dc-1", ws)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(manager.request_transcript("dc-1", "sess-1", timeout=5.0))
+        await asyncio.sleep(0)
+        manager.unregister("dc-1", ws)  # connection drops
+        with pytest.raises(ConnectionError):
+            await task
+
+    asyncio.run(scenario())
+
+
+def test_resolve_unknown_request_is_noop(manager: AgentRegistry) -> None:
+    manager.resolve_transcript("never-registered", [])  # must not raise
+
+
+def test_request_transcript_no_agent_raises(manager: AgentRegistry) -> None:
+    import asyncio
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError):
+            await manager.request_transcript("dc-missing", "sess-1", timeout=5.0)
+
+    asyncio.run(scenario())

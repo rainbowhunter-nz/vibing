@@ -5,6 +5,7 @@ from vibing_runtime_client.client import (
     EmitFn,
     RuntimeChannelClient,
     SleepFn,
+    TranscriptHandler,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "EmitFn",
     "RuntimeChannelClient",
     "SleepFn",
+    "TranscriptHandler",
 ]

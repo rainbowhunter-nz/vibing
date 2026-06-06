@@ -4,7 +4,14 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 
-from vibing_protocol import Command, CommandEnvelope, RegisterEnvelope, RuntimeEvent
+from vibing_protocol import (
+    Command,
+    CommandEnvelope,
+    RegisterEnvelope,
+    RuntimeEvent,
+    TextBlock,
+    TranscriptTurn,
+)
 
 from vibing_runtime_client.client import (
     Backoff,
@@ -160,6 +167,51 @@ def test_emit_sends_runtime_event_envelope() -> None:
         assert sent["event"]["devcontainer_id"] == "dc1"
 
     asyncio.run(scenario())
+
+
+# --- transcript request/reply (VIB-104) -----------------------------------
+
+
+def _transcript_request_json(request_id: str, agent_session_id: str) -> str:
+    return json.dumps(
+        {
+            "type": "transcript_request",
+            "request_id": request_id,
+            "agent_session_id": agent_session_id,
+        }
+    )
+
+
+def test_transcript_request_dispatches_handler_and_replies() -> None:
+    done = asyncio.Event()
+    asked: list[str] = []
+
+    async def transcript_handler(agent_session_id: str) -> list[TranscriptTurn]:
+        asked.append(agent_session_id)
+        return [TranscriptTurn(role="user", blocks=[TextBlock(text="hi")], at="t")]
+
+    ws = FakeWS([_transcript_request_json("req-9", "sess-7"), done])
+
+    async def watcher() -> None:
+        # let the read-loop process the request and send the reply
+        while len(ws.sent) < 2:
+            await asyncio.sleep(0)
+        done.set()
+
+    client = _client(transcript_handler=transcript_handler, connect=FakeConnect([ws]))
+    sleep, _ = _stop_after(client, 1)
+    client._sleep = sleep  # type: ignore[assignment]
+
+    async def scenario() -> None:
+        await asyncio.gather(client.run(), watcher())
+
+    asyncio.run(scenario())
+
+    assert asked == ["sess-7"]
+    reply = json.loads(ws.sent[1])  # sent[0] is the register envelope
+    assert reply["type"] == "transcript_response"
+    assert reply["request_id"] == "req-9"
+    assert reply["turns"][0]["blocks"][0] == {"kind": "text", "text": "hi"}
 
 
 # --- reconnect / no-replay ------------------------------------------------

@@ -6,7 +6,9 @@ Shared typed contract between API, runtimes, and frontend docs.
 
 - `commands.py`: `CommandType` StrEnum + `Command` model.
 - `runtime_events.py`: `EventType`/`RuntimeEventSource` StrEnums + `RuntimeEvent` model.
-- `messages.py`: WebSocket register/command/event envelopes.
+- `messages.py`: WebSocket register/command/event envelopes + transcript request/reply
+  (`TranscriptRequestEnvelope`/`TranscriptResponseEnvelope`) and normalized turn/block
+  models (`TranscriptTurn`, `TextBlock`/`ToolUseBlock`, discriminated on `kind`).
 
 ## Context
 

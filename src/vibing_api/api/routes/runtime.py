@@ -14,7 +14,12 @@ from typing import Any
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from logzero import logger
 from pydantic import ValidationError
-from vibing_protocol import RegisterEnvelope, RuntimeEventEnvelope, RuntimeEventSource
+from vibing_protocol import (
+    RegisterEnvelope,
+    RuntimeEventEnvelope,
+    RuntimeEventSource,
+    TranscriptResponseEnvelope,
+)
 
 from vibing_api.api.schemas.devcontainers import RuntimeStatus
 from vibing_api.core.broadcaster import SseEvent
@@ -57,7 +62,16 @@ def _parse(raw: str) -> dict[str, Any] | None:
     return message if isinstance(message, dict) else None
 
 
-async def _serve(websocket: WebSocket, register: Register) -> None:
+# Resolves a transcript_response onto its in-flight Future. Only the agent route
+# supplies one; the worker route passes None, leaving transcript handling inert there.
+ResolveTranscript = Callable[[str, list[Any]], None]
+
+
+async def _serve(
+    websocket: WebSocket,
+    register: Register,
+    resolve_transcript: ResolveTranscript | None = None,
+) -> None:
     """Shared registration + RuntimeEvent intake loop for both runtime channels."""
     await websocket.accept()
     unregister: Callable[[], None] | None = None
@@ -74,6 +88,14 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
                 unregister = await register(message)
                 if unregister is not None:
                     await websocket.send_json({"type": "registered"})
+                continue
+
+            if unregister is not None and msg_type == "transcript_response" and resolve_transcript:
+                try:
+                    response = TranscriptResponseEnvelope.model_validate(message)
+                except ValidationError:
+                    continue
+                resolve_transcript(response.request_id, [t.model_dump() for t in response.turns])
                 continue
 
             if unregister is None or msg_type != "runtime_event":
@@ -155,4 +177,4 @@ async def agent_ws(websocket: WebSocket) -> None:
 
         return unregister
 
-    await _serve(websocket, register)
+    await _serve(websocket, register, resolve_transcript=manager.resolve_transcript)

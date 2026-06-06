@@ -13,6 +13,7 @@ from vibing_runtime_client import RuntimeChannelClient
 
 from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner
 from vibing_devcontainer_runtime.command_handler import AgentCommandHandler
+from vibing_devcontainer_runtime.transcript import TranscriptReader
 
 DEFAULT_CONTROL_PLANE_URL = "ws://host.docker.internal:8000/api/v1/runtime/agent/ws"
 
@@ -39,7 +40,10 @@ def serve(
         source=RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT, devcontainer_id=devcontainer_id
     )
     handler = AgentCommandHandler(ClaudeCodeRunner()).handle
-    client = RuntimeChannelClient(control_plane_url, register, handler)
+    transcript_handler = TranscriptReader().read
+    client = RuntimeChannelClient(
+        control_plane_url, register, handler, transcript_handler=transcript_handler
+    )
     asyncio.run(client.run())
 
 

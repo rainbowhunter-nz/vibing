@@ -24,10 +24,14 @@ from vibing_protocol import (
     RegisterEnvelope,
     RuntimeEvent,
     RuntimeEventEnvelope,
+    TranscriptRequestEnvelope,
+    TranscriptResponseEnvelope,
+    TranscriptTurn,
 )
 
 EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
 CommandHandler = Callable[[Command, EmitFn], Awaitable[None]]
+TranscriptHandler = Callable[[str], Awaitable[list[TranscriptTurn]]]
 ConnectFn = Callable[[str], AbstractAsyncContextManager[Any]]
 SleepFn = Callable[[float], Awaitable[None]]
 
@@ -54,21 +58,30 @@ async def _noop_handler(command: Command, emit: EmitFn) -> None:
     logger.info("Received command %s; no command handler wired yet", command.type)
 
 
+async def _noop_transcript_handler(agent_session_id: str) -> list[TranscriptTurn]:
+    return []
+
+
 def _default_connect(url: str) -> AbstractAsyncContextManager[Any]:
     return websockets.connect(url)
 
 
-def _parse_command(raw: str) -> Command | None:
+def _parse_inbound(raw: str) -> Command | TranscriptRequestEnvelope | None:
     try:
         message = json.loads(raw)
     except json.JSONDecodeError:
         return None
-    if not isinstance(message, dict) or message.get("type") != "command":
+    if not isinstance(message, dict):
         return None
+    msg_type = message.get("type")
     try:
-        return CommandEnvelope.model_validate(message).command
+        if msg_type == "command":
+            return CommandEnvelope.model_validate(message).command
+        if msg_type == "transcript_request":
+            return TranscriptRequestEnvelope.model_validate(message)
     except ValidationError:
         return None
+    return None
 
 
 class RuntimeChannelClient:
@@ -80,6 +93,7 @@ class RuntimeChannelClient:
         register: RegisterEnvelope,
         handler: CommandHandler = _noop_handler,
         *,
+        transcript_handler: TranscriptHandler = _noop_transcript_handler,
         connect: ConnectFn = _default_connect,
         sleep: SleepFn | None = None,
         backoff: Backoff | None = None,
@@ -87,6 +101,7 @@ class RuntimeChannelClient:
         self._url = control_plane_url
         self._register = register
         self._handler = handler
+        self._transcript_handler = transcript_handler
         self._connect = connect
         self._sleep: SleepFn = sleep or asyncio.sleep
         self._backoff = backoff or Backoff()
@@ -119,15 +134,17 @@ class RuntimeChannelClient:
         consumer = asyncio.create_task(self._consume(queue, ws))
         try:
             while True:
-                command = _parse_command(await ws.recv())
-                if command is not None:
+                inbound = _parse_inbound(await ws.recv())
+                if isinstance(inbound, TranscriptRequestEnvelope):
+                    await self._reply_transcript(ws, inbound)
+                elif inbound is not None:
                     logger.info(
                         "Received command %s (devcontainer=%s, session=%s)",
-                        command.type,
-                        command.devcontainer_id,
-                        command.agent_session_id,
+                        inbound.type,
+                        inbound.devcontainer_id,
+                        inbound.agent_session_id,
                     )
-                    queue.put_nowait(command)
+                    queue.put_nowait(inbound)
         finally:
             consumer.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -141,6 +158,19 @@ class RuntimeChannelClient:
                 await self._handler(command, emit)
             finally:
                 queue.task_done()
+
+    async def _reply_transcript(self, ws: Any, request: TranscriptRequestEnvelope) -> None:
+        logger.info(
+            "Received transcript_request (request_id=%s, session=%s)",
+            request.request_id,
+            request.agent_session_id,
+        )
+        turns = await self._transcript_handler(request.agent_session_id)
+        await ws.send(
+            json.dumps(
+                TranscriptResponseEnvelope(request_id=request.request_id, turns=turns).model_dump()
+            )
+        )
 
     def _make_emit(self, ws: Any) -> EmitFn:
         async def emit(event: RuntimeEvent) -> None:

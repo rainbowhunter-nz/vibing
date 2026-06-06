@@ -1,4 +1,7 @@
+import asyncio
+
 from fastapi import APIRouter, Request, Response, status
+from logzero import logger
 from vibing_protocol import Command, CommandType
 
 from vibing_api.api.schemas.agent_sessions import (
@@ -6,9 +9,12 @@ from vibing_api.api.schemas.agent_sessions import (
     AgentSessionDetail,
     AgentSessionList,
     AgentSessionStartRequest,
+    AgentSessionTranscript,
     ApprovalResolutionRequest,
+    TranscriptState,
     UserInputRequest,
 )
+from vibing_api.core.config import settings
 from vibing_api.core.database import get_connection
 from vibing_api.core.errors import (
     ActiveAgentSessionDeleteError,
@@ -86,6 +92,46 @@ def get_agent_session(devcontainer_id: str, session_id: str) -> AgentSessionDeta
         **vars(session),
         summary_text=(extract_claude_result_text(raw_summary) if raw_summary is not None else None),
     )
+
+
+@router.get(
+    "/{devcontainer_id}/agent-sessions/{session_id}/transcript",
+    response_model=AgentSessionTranscript,
+    status_code=status.HTTP_200_OK,
+)
+async def get_agent_session_transcript(
+    devcontainer_id: str, session_id: str, request: Request
+) -> AgentSessionTranscript:
+    with get_connection() as conn:
+        devcontainer = DevcontainerRepository(conn).get(devcontainer_id)
+    if devcontainer is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+
+    with get_connection() as conn:
+        session = AgentSessionRepository(conn).get(session_id)
+        if session is None or session.devcontainer_id != devcontainer_id:
+            raise AgentSessionNotFoundError(session_id)
+        summary = SessionSummaryRepository(conn).get_by_session(session_id)
+
+    raw_summary = summary.summary_text if summary is not None else None
+    summary_text = extract_claude_result_text(raw_summary) if raw_summary is not None else None
+
+    agent_manager: AgentRegistry = request.app.state.agent_manager
+    if devcontainer.status != DevcontainerStatus.RUNNING or not agent_manager.is_connected(
+        devcontainer_id
+    ):
+        return AgentSessionTranscript(state="summary_fallback", summary_text=summary_text)
+
+    try:
+        turns = await agent_manager.request_transcript(
+            devcontainer_id, session_id, timeout=settings.transcript_timeout_seconds
+        )
+    except (asyncio.TimeoutError, ConnectionError, RuntimeError) as exc:
+        logger.warning("Transcript fetch failed (session=%s): %s", session_id, exc)
+        return AgentSessionTranscript(state="error", summary_text=summary_text)
+
+    state: TranscriptState = "has_turns" if turns else "empty"
+    return AgentSessionTranscript(state=state, turns=turns, summary_text=summary_text)
 
 
 @router.delete(
