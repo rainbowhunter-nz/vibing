@@ -33,8 +33,12 @@ A structured, low-volume, persisted fact emitted by a Runtime to the Control Pla
 _Avoid_: message, notification, log
 
 **Session Output**:
-The high-volume character stream from an Agent Session's terminal, carried on its own channel for the live session view. Ephemeral in MVP — deliberately not persisted (a non-goal). Kept separate from Runtime Events precisely so that persisting it in a future revision is a purely additive change (attach a sink), not a redesign.
+The high-volume raw character stream from an Agent Session's terminal. Ephemeral — deliberately not persisted (a non-goal). Kept separate from Runtime Events precisely so that persisting it in a future revision is a purely additive change (attach a sink), not a redesign. Distinct from the Session Stream: the live *chat* view is served by the structured Session Stream, not by this raw-character channel.
 _Avoid_: log, terminal log (when it implies persistence)
+
+**Session Stream**:
+The live, incremental projection of an *active* Agent Session's conversation — the same turns as the Session Transcript, but built progressively as the agent works and pushed to the browser in real time (down to token-level partial text). Ephemeral: it exists only for the duration of a run and is never persisted; when the run ends it yields to the durable Session Transcript as the source of truth. The basis for the live chat view. Distinct from Session Output (raw terminal characters) and from the Session Transcript (the durable, on-demand source of truth for *what was said*).
+_Avoid_: streaming transcript, live output, Session Output
 
 **Session Transcript**:
 The durable, append-only conversation history of an Agent Session — the structured record of turns the agent itself persists to disk, owned by the Devcontainer Runtime Agent. The single source of truth for *what was said*, and the basis for continuing the conversation. Fetched on demand from the runtime, never a projection of Runtime Events and not stored by the Control Plane. Distinct from Session Output (an ephemeral live character stream) and from a Session Summary (a one-line final record).
