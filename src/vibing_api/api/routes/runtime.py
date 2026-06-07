@@ -19,6 +19,7 @@ from vibing_protocol import (
     RuntimeEventEnvelope,
     RuntimeEventSource,
     TranscriptResponseEnvelope,
+    TurnDeltaEnvelope,
 )
 
 from vibing_api.api.schemas.devcontainers import RuntimeStatus
@@ -29,6 +30,7 @@ from vibing_api.core.runtime_channel import (
     WorkerRegistry,
     persist_runtime_event,
 )
+from vibing_api.core.session_stream import SessionStreamRegistry
 
 router = APIRouter(tags=["runtime"], prefix="/runtime")
 
@@ -66,11 +68,15 @@ def _parse(raw: str) -> dict[str, Any] | None:
 # supplies one; the worker route passes None, leaving transcript handling inert there.
 ResolveTranscript = Callable[[str, list[Any]], None]
 
+# Relays a live turn-delta (ADR-0010) to the per-session SSE registry. Agent route only.
+RelayDelta = Callable[[TurnDeltaEnvelope], None]
+
 
 async def _serve(
     websocket: WebSocket,
     register: Register,
     resolve_transcript: ResolveTranscript | None = None,
+    relay_delta: RelayDelta | None = None,
 ) -> None:
     """Shared registration + RuntimeEvent intake loop for both runtime channels."""
     await websocket.accept()
@@ -96,6 +102,14 @@ async def _serve(
                 except ValidationError:
                     continue
                 resolve_transcript(response.request_id, [t.model_dump() for t in response.turns])
+                continue
+
+            if unregister is not None and msg_type == "turn_delta" and relay_delta:
+                try:
+                    delta_envelope = TurnDeltaEnvelope.model_validate(message)
+                except ValidationError:
+                    continue
+                relay_delta(delta_envelope)
                 continue
 
             if unregister is None or msg_type != "runtime_event":
@@ -155,6 +169,15 @@ async def runtime_ws(websocket: WebSocket) -> None:
 @router.websocket("/agent/ws")
 async def agent_ws(websocket: WebSocket) -> None:
     manager: AgentRegistry = websocket.app.state.agent_manager
+    session_streams: SessionStreamRegistry | None = getattr(
+        websocket.app.state, "session_streams", None
+    )
+
+    def relay_delta(envelope: TurnDeltaEnvelope) -> None:
+        if session_streams is not None:
+            session_streams.publish(
+                envelope.agent_session_id, json.dumps(envelope.delta.model_dump())
+            )
 
     async def register(message: dict[str, Any]) -> Callable[[], None] | None:
         try:
@@ -177,4 +200,9 @@ async def agent_ws(websocket: WebSocket) -> None:
 
         return unregister
 
-    await _serve(websocket, register, resolve_transcript=manager.resolve_transcript)
+    await _serve(
+        websocket,
+        register,
+        resolve_transcript=manager.resolve_transcript,
+        relay_delta=relay_delta,
+    )

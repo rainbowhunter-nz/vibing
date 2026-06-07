@@ -19,7 +19,8 @@ pnpm dev:mock   # VITE_API_MOCKING=true vite
 | `state/inbox.ts` | Mutable in-browser store for inbox events |
 | `state/approvals.ts` | Mutable in-browser store for approval requests |
 | `scenario.ts` + `useScenario.ts` | Global scenario store (6 scenarios); persisted to `localStorage` |
-| `events.ts` + `useMockSse.ts` | `MockEventSource` adapter (replaces browser `EventSource` for `/api/v1/events`), stream-state store, `emitInvalidation` |
+| `events.ts` + `useMockSse.ts` | `MockEventSource` adapter (replaces browser `EventSource` for BOTH `/api/v1/events` and the per-session `/stream`), stream-state store, `emitInvalidation`, `liveInstancesMatching` |
+| `agentSessionStreams.ts` | Scripted per-session SSE delta playback (ADR-0010): plays assistant text token-by-token through the MockEventSource opened at a session's `/stream` URL. `playSessionStream(sessionId, opts)` with an injectable `schedule` for deterministic tests. Wired into RailMock as a "play live deltas" button |
 | `browser.ts` | `setupWorker(...handlers)` for the service worker |
 | `RailMock.tsx` | Right-rail mock controls (scenario indicator, stream state, scope-emit buttons) |
 | `routes/MockScenarios.tsx` | Dev-only `/mock` route (full scenario + event stream controls) |
@@ -93,6 +94,17 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 - Add the scope to the `SCOPES` arrays in `RailMock.tsx` and `routes/MockScenarios.tsx` so the emit button appears in both the right-rail and the `/mock` page.
 - Emitting a scope nudges the existing stale-while-revalidate refetch path (`useApiQuery` + the SSE coordinator) — it does **not** mutate stores or simulate any backend logic.
 - Stream-state controls (`connected` / `reconnecting` / `disconnected`) are already in both places; add a new connection scenario only if the coordinator grows a new state that needs visual inspection.
+
+### 5. Per-session live stream — token-by-token assistant text to inspect
+
+**When**: a session's live turn-deltas (ADR-0010) need human inspection without a real Control Plane.
+
+**How**:
+
+- The per-session stream is a SEPARATE `EventSource` (`openAgentSessionStream`) from the global invalidation coordinator. `installMockEventSource()` swaps `globalThis.EventSource` for ALL EventSources, so per-session streams become `MockEventSource` instances too (keyed by their `/stream` URL).
+- `agentSessionStreams.ts` holds scripted text-delta scripts per session id. `playSessionStream(sessionId)` delivers `run_started` → text tokens → `run_ended` as named `turn_delta` events to the matching live instance(s), mirroring the real wire format.
+- The RailMock "play live deltas" button plays the default script for a seeded active session (`as-seed-0005`). To inspect: open that session's chat while the devcontainer is running, then click play — assistant text types in token-by-token and reconciles to the transcript on `run_ended`.
+- Boundary: this is scripted playback only — no Runtime Event simulation or projection logic.
 
 ---
 

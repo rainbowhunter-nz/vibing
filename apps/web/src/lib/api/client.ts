@@ -1,6 +1,6 @@
 import type { ApiErrorEnvelope } from './types'
 
-const API_BASE = '/api/v1'
+export const API_BASE = '/api/v1'
 
 export class ApiError extends Error {
   readonly status: number

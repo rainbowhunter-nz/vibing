@@ -25,7 +25,8 @@ class DevcontainerCommandHandler:
         self._adapter = adapter
         self._launcher = launcher
 
-    async def handle(self, command: Command, emit: EmitFn) -> None:
+    async def handle(self, command: Command, emit: EmitFn, emit_delta: Any = None) -> None:
+        # emit_delta is the live turn-delta channel (ADR-0010); host lifecycle has none.
         if command.type == CommandType.START_DEVCONTAINER:
             await self._dispatch(
                 command,

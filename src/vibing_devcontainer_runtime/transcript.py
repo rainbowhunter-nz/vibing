@@ -51,6 +51,15 @@ def _blocks_from_content(content: object) -> list[TranscriptBlock]:
     return blocks
 
 
+def _turn_id(obj: dict, message: dict) -> str:
+    """Claude's stable per-message uuid (ADR-0010): top-level `uuid`, else message `id`."""
+    uuid = obj.get("uuid")
+    if isinstance(uuid, str) and uuid:
+        return uuid
+    msg_id = message.get("id")
+    return msg_id if isinstance(msg_id, str) else ""
+
+
 def _turn_from_line(line: str) -> TranscriptTurn | None:
     try:
         obj = json.loads(line)
@@ -67,7 +76,9 @@ def _turn_from_line(line: str) -> TranscriptTurn | None:
     blocks = _blocks_from_content(message.get("content"))
     if not blocks:
         return None  # tool_result-only / empty lines carry no conversation
-    return TranscriptTurn(role=role, blocks=blocks, at=obj.get("timestamp") or "")
+    return TranscriptTurn(
+        id=_turn_id(obj, message), role=role, blocks=blocks, at=obj.get("timestamp") or ""
+    )
 
 
 class TranscriptReader:

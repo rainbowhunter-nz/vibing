@@ -188,12 +188,33 @@ export interface TranscriptToolUseBlock {
 export type TranscriptBlock = TranscriptTextBlock | TranscriptToolUseBlock
 
 export interface TranscriptTurn {
+  // Claude's per-message uuid (ADR-0010): the stable key the live reducer merges on.
+  id: string
   role: 'user' | 'assistant'
   blocks: TranscriptBlock[]
   at: string
 }
 
 export type TranscriptState = 'has_turns' | 'empty' | 'summary_fallback' | 'error'
+
+// Per-session live turn-deltas (ADR-0010), relayed over the per-session SSE stream.
+// Text-only this slice; tool-call deltas are VIB-110.
+export interface RunStartedDelta {
+  kind: 'run_started'
+}
+
+export interface TextDelta {
+  kind: 'text'
+  turn_id: string
+  role: 'assistant'
+  text: string
+}
+
+export interface RunEndedDelta {
+  kind: 'run_ended'
+}
+
+export type TurnDelta = RunStartedDelta | TextDelta | RunEndedDelta
 
 export interface AgentSessionTranscript {
   state: TranscriptState

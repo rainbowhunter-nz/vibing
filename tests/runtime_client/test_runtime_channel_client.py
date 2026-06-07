@@ -111,7 +111,7 @@ def test_registers_then_handles_received_command() -> None:
     entered = asyncio.Event()
     received: list[Command] = []
 
-    async def handler(command: Command, emit: object) -> None:
+    async def handler(command: Command, emit: object, emit_delta: object = None) -> None:
         received.append(command)
         entered.set()
 
@@ -131,7 +131,7 @@ def test_registers_then_handles_received_command() -> None:
 def test_consumer_processes_commands_serially_in_fifo_order() -> None:
     order: list[str] = []
 
-    async def handler(command: Command, emit: object) -> None:
+    async def handler(command: Command, emit: object, emit_delta: object = None) -> None:
         order.append(f"start:{command.devcontainer_id}")
         await asyncio.sleep(0)
         order.append(f"end:{command.devcontainer_id}")
@@ -233,7 +233,7 @@ def test_in_flight_command_not_replayed_after_reconnect() -> None:
     block = asyncio.Event()  # never set: handler stays in-flight
     starts: list[str] = []
 
-    async def handler(command: Command, emit: object) -> None:
+    async def handler(command: Command, emit: object, emit_delta: object = None) -> None:
         starts.append(command.devcontainer_id or "")
         entered.set()
         await block.wait()

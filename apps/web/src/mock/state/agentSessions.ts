@@ -12,11 +12,13 @@ const SESSION_SUMMARIES: Record<string, string> = {
 const SEED_TRANSCRIPTS: Record<string, TranscriptTurn[]> = {
   'as-seed-0004': [
     {
+      id: 'as-seed-0004-u1',
       role: 'user',
       blocks: [{ kind: 'text', text: 'Fix the flaky test in auth' }],
       at: '2024-01-13T12:00:00.000Z',
     },
     {
+      id: 'as-seed-0004-a1',
       role: 'assistant',
       blocks: [
         { kind: 'tool_use', name: 'Bash', summary: 'ran pytest --tb=short auth/' },
@@ -153,7 +155,7 @@ export function resumeAgentSession(devcontainerId: string, sessionId: string, bo
 
   // Append the follow-up turn so the resumed thread is visible in the transcript.
   const turns = transcriptStore[sessionId] ?? []
-  transcriptStore[sessionId] = [...turns, { role: 'user', blocks: [{ kind: 'text', text: body.prompt }], at: ts }]
+  transcriptStore[sessionId] = [...turns, { id: `${sessionId}-resume-${turns.length}`, role: 'user', blocks: [{ kind: 'text', text: body.prompt }], at: ts }]
 
   return { ...store[idx] }
 }

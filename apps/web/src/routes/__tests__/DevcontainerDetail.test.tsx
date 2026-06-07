@@ -3,7 +3,7 @@ import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-libra
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession } from '../../lib/api/endpoints'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession, openAgentSessionStream } from '../../lib/api/endpoints'
 import { ApiError } from '../../lib/api'
 import type { AgentSession, AgentSessionTranscript, DevcontainerView } from '../../lib/api/types'
 
@@ -16,6 +16,7 @@ const mockResume = vi.mocked(resumeAgentSession)
 const mockDelete = vi.mocked(deleteAgentSession)
 const mockFetchSession = vi.mocked(fetchAgentSession)
 const mockFetchTranscript = vi.mocked(fetchAgentSessionTranscript)
+const mockOpenStream = vi.mocked(openAgentSessionStream)
 
 // ---------------------------------------------------------------------------
 // MockEventSource
@@ -376,8 +377,8 @@ describe('DevcontainerDetail SSE invalidation', () => {
     mockFetchTranscript.mockResolvedValue({
       state: 'has_turns',
       turns: [
-        { role: 'user', blocks: [{ kind: 'text', text: 'hi' }], at: '2024-01-16T10:00:00Z' },
-        { role: 'assistant', blocks: [{ kind: 'text', text: 'Hello! How can I help you today?' }], at: '2024-01-16T10:01:00Z' },
+        { id: 't-u1', role: 'user', blocks: [{ kind: 'text', text: 'hi' }], at: '2024-01-16T10:00:00Z' },
+        { id: 't-a1', role: 'assistant', blocks: [{ kind: 'text', text: 'Hello! How can I help you today?' }], at: '2024-01-16T10:01:00Z' },
       ],
       summary_text: null,
     })
@@ -443,8 +444,8 @@ describe('SessionDetailPanel — transcript states', () => {
     mockFetchTranscript.mockResolvedValue({
       state: 'has_turns',
       turns: [
-        { role: 'user', blocks: [{ kind: 'text', text: 'Fix the bug' }], at: '2024-01-16T10:00:00Z' },
-        { role: 'assistant', blocks: [{ kind: 'text', text: 'Done.' }], at: '2024-01-16T10:01:00Z' },
+        { id: 't-u2', role: 'user', blocks: [{ kind: 'text', text: 'Fix the bug' }], at: '2024-01-16T10:00:00Z' },
+        { id: 't-a2b', role: 'assistant', blocks: [{ kind: 'text', text: 'Done.' }], at: '2024-01-16T10:01:00Z' },
       ],
       summary_text: null,
     })
@@ -460,6 +461,7 @@ describe('SessionDetailPanel — transcript states', () => {
       state: 'has_turns',
       turns: [
         {
+          id: 't-a3',
           role: 'assistant',
           blocks: [
             { kind: 'tool_use', name: 'Bash', summary: 'ran pytest --tb=short' },
@@ -512,7 +514,7 @@ describe('SessionDetailPanel — transcript states', () => {
       .mockResolvedValueOnce({ state: 'empty', turns: [], summary_text: null })
       .mockResolvedValueOnce({
         state: 'has_turns',
-        turns: [{ role: 'assistant', blocks: [{ kind: 'text', text: 'Done.' }], at: '2024-01-16T10:01:00Z' }],
+        turns: [{ id: 't-a2', role: 'assistant', blocks: [{ kind: 'text', text: 'Done.' }], at: '2024-01-16T10:01:00Z' }],
         summary_text: null,
       })
     await openPanel()
@@ -528,6 +530,109 @@ describe('SessionDetailPanel — transcript states', () => {
 
     await waitFor(() => expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(callsBefore))
     await waitFor(() => expect(screen.getByText('Done.')).toBeTruthy())
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Live Session Stream (ADR-0010): assistant text streams in token-by-token while
+// active, reconciles to the transcript on the terminal event, no stream when resting.
+// ---------------------------------------------------------------------------
+
+describe('SessionDetailPanel — live stream (ADR-0010)', () => {
+  // Minimal controllable EventSource the per-session stream hook drives.
+  class StreamES {
+    url: string
+    private listeners: Record<string, Set<EventListener>> = {}
+    closed = false
+    constructor(url: string) {
+      this.url = url
+    }
+    addEventListener(type: string, l: EventListener) {
+      ;(this.listeners[type] ??= new Set()).add(l)
+    }
+    removeEventListener(type: string, l: EventListener) {
+      this.listeners[type]?.delete(l)
+    }
+    close() {
+      this.closed = true
+    }
+    emit(delta: unknown) {
+      const e = Object.assign(new Event('turn_delta'), { data: JSON.stringify(delta) }) as MessageEvent
+      this.listeners['turn_delta']?.forEach((l) => l(e))
+    }
+  }
+
+  const runningSession: AgentSession = {
+    id: 'sess-0001-0000-0000-000000000001',
+    devcontainer_id: 'dc1',
+    status: 'running',
+    prompt: 'Do the thing',
+    started_at: '2024-01-16T10:00:00Z',
+    ended_at: null,
+    last_event_at: null,
+    created_at: '2024-01-16T10:00:00Z',
+    updated_at: '2024-01-16T10:00:00Z',
+  }
+
+  async function openRunningPanel(): Promise<StreamES> {
+    const stream = new StreamES('/stream')
+    mockOpenStream.mockReturnValue(stream as unknown as EventSource)
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    mockFetchSessions.mockResolvedValue({ items: [runningSession] })
+    mockFetchSession.mockResolvedValue({ ...runningSession, summary_text: null })
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('No conversation yet.')
+    return stream
+  }
+
+  it('AC1: streams assistant text token-by-token into the chat while running', async () => {
+    const stream = await openRunningPanel()
+    act(() => {
+      stream.emit({ kind: 'run_started' })
+      stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'Hel' })
+    })
+    await waitFor(() => expect(screen.getByText('Hel')).toBeTruthy())
+    act(() => {
+      stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'lo' })
+    })
+    await waitFor(() => expect(screen.getByText('Hello')).toBeTruthy())
+  })
+
+  it('AC2: terminal run_ended refetches transcript and reconciles with no duplicate bubble', async () => {
+    const stream = await openRunningPanel()
+    act(() => {
+      stream.emit({ kind: 'run_started' })
+      stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'Hello' })
+    })
+    await waitFor(() => expect(screen.getByText('Hello')).toBeTruthy())
+
+    // On run_ended the canonical transcript (same id) is fetched and reconciles.
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns',
+      turns: [{ id: 'live-1', role: 'assistant', blocks: [{ kind: 'text', text: 'Hello' }], at: 't' }],
+      summary_text: null,
+    })
+    act(() => {
+      stream.emit({ kind: 'run_ended' })
+    })
+    await waitFor(() => expect(screen.getAllByText('Hello')).toHaveLength(1))
+  })
+
+  it('AC4: resting session opens NO stream (transcript-only)', async () => {
+    mockOpenStream.mockClear()
+    mockFetch.mockResolvedValue(sample)
+    const completed = { ...runningSession, status: 'completed' as const }
+    mockFetchSessions.mockResolvedValue({ items: [completed] })
+    mockFetchSession.mockResolvedValue({ ...completed, summary_text: null })
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('No conversation yet.')
+    expect(mockOpenStream).not.toHaveBeenCalled()
   })
 })
 

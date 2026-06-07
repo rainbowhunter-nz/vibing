@@ -1,16 +1,34 @@
-"""AgentCommandHandler: dispatches Commands to ClaudeCodeRunner, emits RuntimeEvents."""
+"""AgentCommandHandler: dispatches Commands to ClaudeCodeRunner, emits RuntimeEvents.
+
+While a session runs, normalized turn-deltas (ADR-0010) flow out via `emit_delta` —
+a sibling WS path to `emit` (RuntimeEvents). The terminal `result` event still drives
+the session_completed/session_failed mapping; deltas are ephemeral and never persisted.
+"""
 
 import asyncio
 from collections.abc import Awaitable, Callable
 
 from logzero import logger
-from vibing_protocol import Command, CommandType, EventType, RuntimeEvent, RuntimeEventSource
+from vibing_protocol import (
+    Command,
+    CommandType,
+    EventType,
+    RuntimeEvent,
+    RuntimeEventSource,
+    TurnDelta,
+    TurnDeltaEnvelope,
+)
 
 from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner, ClaudeFailure, ClaudeProcess
 
 _SOURCE: RuntimeEventSource = RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT
 
 EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
+EmitDeltaFn = Callable[[TurnDeltaEnvelope], Awaitable[None]]
+
+
+async def _noop_emit_delta(envelope: TurnDeltaEnvelope) -> None:
+    return None
 
 
 class AgentCommandHandler:
@@ -20,11 +38,13 @@ class AgentCommandHandler:
         self._processes: dict[str, ClaudeProcess] = {}
         self._session_tasks: dict[str, asyncio.Task] = {}
 
-    async def handle(self, command: Command, emit: EmitFn) -> None:
+    async def handle(
+        self, command: Command, emit: EmitFn, emit_delta: EmitDeltaFn = _noop_emit_delta
+    ) -> None:
         if command.type == CommandType.START_AGENT_SESSION:
-            await self._start_agent_session(command, emit)
+            await self._start_agent_session(command, emit, emit_delta)
         elif command.type == CommandType.RESUME_AGENT_SESSION:
-            await self._start_agent_session(command, emit, resume=True)
+            await self._start_agent_session(command, emit, emit_delta, resume=True)
         elif command.type == CommandType.STOP_AGENT_SESSION:
             await self._stop_agent_session(command, emit)
         elif command.type == CommandType.SEND_USER_INPUT:
@@ -35,7 +55,7 @@ class AgentCommandHandler:
             logger.info("Ignoring unsupported command type: %s", command.type)
 
     async def _start_agent_session(
-        self, command: Command, emit: EmitFn, resume: bool = False
+        self, command: Command, emit: EmitFn, emit_delta: EmitDeltaFn, resume: bool = False
     ) -> None:
         prompt = (command.payload or {}).get("prompt", "")
         logger.info(
@@ -62,17 +82,31 @@ class AgentCommandHandler:
         )
         session_id = command.agent_session_id or ""
         self._processes[session_id] = process
-        task = asyncio.create_task(self._run_claude(command, emit, process, session_id))
+        task = asyncio.create_task(self._run_claude(command, emit, emit_delta, process, session_id))
         self._tasks.add(task)
         self._session_tasks[session_id] = task
         task.add_done_callback(self._tasks.discard)
         task.add_done_callback(lambda _: self._session_tasks.pop(session_id, None))
 
     async def _run_claude(
-        self, command: Command, emit: EmitFn, process: ClaudeProcess, session_id: str
+        self,
+        command: Command,
+        emit: EmitFn,
+        emit_delta: EmitDeltaFn,
+        process: ClaudeProcess,
+        session_id: str,
     ) -> None:
+        async def on_delta(delta: TurnDelta) -> None:
+            await emit_delta(
+                TurnDeltaEnvelope(
+                    devcontainer_id=command.devcontainer_id or "",
+                    agent_session_id=command.agent_session_id or "",
+                    delta=delta,
+                )
+            )
+
         try:
-            result = await process.wait()
+            result = await process.wait(on_delta)
         except asyncio.CancelledError:
             raise  # let CancelledError propagate; stop handler emits session_stopped
         finally:

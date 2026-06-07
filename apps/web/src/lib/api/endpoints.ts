@@ -1,4 +1,4 @@
-import { getJson, sendJson } from './client'
+import { API_BASE, getJson, sendJson } from './client'
 import type {
   AgentSession,
   AgentSessionDetail,
@@ -82,6 +82,11 @@ export const deleteAgentSession = (devcontainerId: string, sessionId: string): P
 
 export const fetchAgentSessionTranscript = (devcontainerId: string, sessionId: string): Promise<AgentSessionTranscript> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/transcript`)
+
+// Per-session live turn-delta stream (ADR-0010). A SEPARATE EventSource from the global
+// invalidation coordinator; open only while a session is active, close when it rests.
+export const openAgentSessionStream = (devcontainerId: string, sessionId: string): EventSource =>
+  new EventSource(`${API_BASE}/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/stream`)
 
 export const sendAgentSessionUserInput = (devcontainerId: string, sessionId: string, body: AgentSessionUserInputBody): Promise<AgentSession> =>
   sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/user-input`, 'POST', body) as Promise<AgentSession>

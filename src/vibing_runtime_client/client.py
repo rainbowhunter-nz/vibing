@@ -27,10 +27,13 @@ from vibing_protocol import (
     TranscriptRequestEnvelope,
     TranscriptResponseEnvelope,
     TranscriptTurn,
+    TurnDeltaEnvelope,
 )
 
 EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
-CommandHandler = Callable[[Command, EmitFn], Awaitable[None]]
+EmitDeltaFn = Callable[[TurnDeltaEnvelope], Awaitable[None]]
+# Handlers receive emit (RuntimeEvents) and emit_delta (live turn-deltas, ADR-0010).
+CommandHandler = Callable[[Command, EmitFn, EmitDeltaFn], Awaitable[None]]
 TranscriptHandler = Callable[[str], Awaitable[list[TranscriptTurn]]]
 ConnectFn = Callable[[str], AbstractAsyncContextManager[Any]]
 SleepFn = Callable[[float], Awaitable[None]]
@@ -54,7 +57,7 @@ class Backoff:
         return delay
 
 
-async def _noop_handler(command: Command, emit: EmitFn) -> None:
+async def _noop_handler(command: Command, emit: EmitFn, emit_delta: EmitDeltaFn) -> None:
     logger.info("Received command %s; no command handler wired yet", command.type)
 
 
@@ -152,10 +155,11 @@ class RuntimeChannelClient:
 
     async def _consume(self, queue: "asyncio.Queue[Command]", ws: Any) -> None:
         emit = self._make_emit(ws)
+        emit_delta = self._make_emit_delta(ws)
         while True:
             command = await queue.get()
             try:
-                await self._handler(command, emit)
+                await self._handler(command, emit, emit_delta)
             finally:
                 queue.task_done()
 
@@ -184,3 +188,9 @@ class RuntimeChannelClient:
             await ws.send(json.dumps(RuntimeEventEnvelope(event=event).model_dump()))
 
         return emit
+
+    def _make_emit_delta(self, ws: Any) -> EmitDeltaFn:
+        async def emit_delta(envelope: TurnDeltaEnvelope) -> None:
+            await ws.send(json.dumps(envelope.model_dump()))
+
+        return emit_delta

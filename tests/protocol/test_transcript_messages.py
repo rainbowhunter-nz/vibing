@@ -1,11 +1,15 @@
 """Tests for transcript request/reply envelopes and normalized turn models."""
 
 from vibing_protocol import (
+    RunEndedDelta,
+    RunStartedDelta,
     TextBlock,
+    TextDelta,
     TranscriptRequestEnvelope,
     TranscriptResponseEnvelope,
     TranscriptTurn,
     ToolUseBlock,
+    TurnDeltaEnvelope,
 )
 
 
@@ -54,3 +58,35 @@ def test_blocks_are_discriminated_on_kind() -> None:
     )
     assert isinstance(turn.blocks[0], TextBlock)
     assert turn.blocks[0].kind == "text"
+
+
+def test_turn_id_defaults_empty_and_round_trips() -> None:
+    # Legacy lines without a uuid still validate (id defaults to "").
+    turn = TranscriptTurn.model_validate(
+        {"role": "user", "blocks": [{"kind": "text", "text": "x"}], "at": "t"}
+    )
+    assert turn.id == ""
+
+    with_id = TranscriptTurn(id="u-1", role="assistant", blocks=[TextBlock(text="hi")], at="t")
+    assert with_id.model_dump()["id"] == "u-1"
+
+
+def test_turn_delta_text_envelope_round_trips() -> None:
+    env = TurnDeltaEnvelope(
+        devcontainer_id="dc-1",
+        agent_session_id="sess-1",
+        delta=TextDelta(turn_id="u-1", text="Hel"),
+    )
+    assert env.type == "turn_delta"
+    dumped = env.model_dump()
+    assert dumped["delta"] == {"kind": "text", "turn_id": "u-1", "role": "assistant", "text": "Hel"}
+    assert TurnDeltaEnvelope.model_validate(dumped) == env
+
+
+def test_turn_delta_run_boundaries_round_trip() -> None:
+    start = TurnDeltaEnvelope(devcontainer_id="dc-1", agent_session_id="s", delta=RunStartedDelta())
+    end = TurnDeltaEnvelope(devcontainer_id="dc-1", agent_session_id="s", delta=RunEndedDelta())
+    assert start.model_dump()["delta"] == {"kind": "run_started"}
+    assert end.model_dump()["delta"] == {"kind": "run_ended"}
+    assert TurnDeltaEnvelope.model_validate(start.model_dump()).delta.kind == "run_started"
+    assert TurnDeltaEnvelope.model_validate(end.model_dump()).delta.kind == "run_ended"

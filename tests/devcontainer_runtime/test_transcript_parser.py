@@ -34,6 +34,12 @@ def test_parses_text_and_collapsed_tool_markers(reader: TranscriptReader) -> Non
     assert turns[2].blocks == [TextBlock(text="Done.")]
 
 
+def test_turn_id_from_uuid_then_message_id(reader: TranscriptReader) -> None:
+    turns = asyncio.run(reader.read("sess-1"))
+    # Lines with a top-level uuid use it; the last line falls back to message.id.
+    assert [t.id for t in turns] == ["u-1", "u-2", "msg_b"]
+
+
 def test_missing_file_returns_empty(reader: TranscriptReader) -> None:
     assert asyncio.run(reader.read("does-not-exist")) == []
 

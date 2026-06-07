@@ -56,8 +56,14 @@ TranscriptBlock = Annotated[TextBlock | ToolUseBlock, Field(discriminator="kind"
 
 
 class TranscriptTurn(BaseModel):
-    """One normalized conversation turn (ADR-0009): role + blocks + timestamp."""
+    """One normalized conversation turn (ADR-0009): role + blocks + timestamp.
 
+    `id` is Claude's per-message uuid (ADR-0010): the stable key the frontend reducer
+    uses to reconcile live stream-deltas with the durable transcript. Empty when the
+    source line carries no uuid (e.g. legacy fixtures).
+    """
+
+    id: str = ""
     role: Literal["user", "assistant"]
     blocks: list[TranscriptBlock]
     at: str
@@ -77,3 +83,41 @@ class TranscriptResponseEnvelope(BaseModel):
     type: Literal["transcript_response"] = "transcript_response"
     request_id: str
     turns: list[TranscriptTurn]
+
+
+class RunStartedDelta(BaseModel):
+    """Run boundary: a fresh Claude invocation began (ADR-0010, text-only slice)."""
+
+    kind: Literal["run_started"] = "run_started"
+
+
+class TextDelta(BaseModel):
+    """Append `text` to the assistant turn keyed by `turn_id` (ADR-0010)."""
+
+    kind: Literal["text"] = "text"
+    turn_id: str
+    role: Literal["assistant"] = "assistant"
+    text: str
+
+
+class RunEndedDelta(BaseModel):
+    """Run boundary: the terminal result event fired; the browser reconciles to transcript."""
+
+    kind: Literal["run_ended"] = "run_ended"
+
+
+# Discriminated on `kind`; tool-call deltas (VIB-110) extend this union without a wire break.
+TurnDelta = Annotated[RunStartedDelta | TextDelta | RunEndedDelta, Field(discriminator="kind")]
+
+
+class TurnDeltaEnvelope(BaseModel):
+    """Agent -> Control Plane: one live turn-delta for an active session (ADR-0010).
+
+    Relayed to subscribed browsers over the per-session SSE stream. Ephemeral — never
+    persisted; the durable transcript stays the source of truth.
+    """
+
+    type: Literal["turn_delta"] = "turn_delta"
+    devcontainer_id: str
+    agent_session_id: str
+    delta: TurnDelta

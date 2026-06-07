@@ -1,26 +1,32 @@
-"""ClaudeCodeRunner: runs `claude` as a subprocess, injectable runner for tests."""
+"""ClaudeCodeRunner: runs `claude` as a streaming subprocess, injectable for tests.
+
+ADR-0010: the invocation is incremental `--output-format stream-json --verbose
+--include-partial-messages`, read line-by-line. Each line is normalized (see
+stream_normalizer) into turn-deltas that flow to an `on_delta` callback as they
+arrive; the terminal `result` event drives the success/failure mapping that produces
+session_completed/session_failed. `--resume`/`--session-id` semantics (ADR-0008) are
+unchanged. The injectable seam yields a SEQUENCE of stream-json lines so a fake can
+emit deltas, not just a final result.
+"""
 
 import asyncio
 import signal
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 
 from logzero import logger
-from vibing_protocol import extract_claude_result_text
+from vibing_protocol import TurnDelta
+
+from vibing_devcontainer_runtime.stream_normalizer import StreamNormalizer, TerminalResult
 
 _STDERR_TAIL_CHARS = 4000
-_LOG_PREVIEW_CHARS = 500
 _SIGTERM_GRACE_SECONDS = 5.0
 
+# Test seam: given the command, yield Claude's stdout stream-json lines in order.
+StreamRunner = Callable[[list[str]], AsyncIterator[str]]
 
-@dataclass(frozen=True)
-class RunResult:
-    returncode: int
-    stdout: str
-    stderr: str
-
-
-Runner = Callable[[list[str]], Awaitable[RunResult]]
+# Per-delta callback invoked as deltas are normalized off the stream.
+OnDelta = Callable[[TurnDelta], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -38,36 +44,41 @@ class ClaudeFailure:
 ClaudeResult = ClaudeSuccess | ClaudeFailure
 
 
-def _preview(text: str, limit: int = _LOG_PREVIEW_CHARS) -> str:
-    collapsed = text.replace("\n", "\\n")
-    if len(collapsed) <= limit:
-        return collapsed
-    return f"{collapsed[:limit]}... ({len(text)} chars total)"
-
-
-def _log_run_result(command: list[str], cwd: str | None, result: RunResult) -> None:
-    logger.info(
-        "Claude subprocess finished (exit_code=%d, stdout_len=%d, stderr_len=%d, cwd=%s)",
-        result.returncode,
-        len(result.stdout),
-        len(result.stderr),
-        cwd,
-    )
-    logger.info("Claude command: %s", " ".join(command))
-    if result.stdout:
-        logger.info("Claude stdout: %s", _preview(result.stdout))
-    if result.stderr:
-        logger.info("Claude stderr: %s", _preview(result.stderr))
-
-
-def _map_run_result(result: RunResult) -> ClaudeResult:
-    if result.returncode != 0:
+def _map_terminal(terminal: TerminalResult | None, returncode: int, stderr: str) -> ClaudeResult:
+    """Map the stream's terminal result + exit code to success/failure."""
+    if terminal is not None and not terminal.is_error and returncode == 0:
+        return ClaudeSuccess(result=terminal.result_text)
+    if terminal is not None and terminal.is_error:
         return ClaudeFailure(
-            exit_code=result.returncode,
-            stderr_tail=result.stderr[-_STDERR_TAIL_CHARS:],
-            message=f"claude exited with code {result.returncode}",
+            exit_code=returncode,
+            stderr_tail=stderr[-_STDERR_TAIL_CHARS:],
+            message="claude reported an error result",
         )
-    return ClaudeSuccess(result=extract_claude_result_text(result.stdout))
+    if returncode != 0:
+        return ClaudeFailure(
+            exit_code=returncode,
+            stderr_tail=stderr[-_STDERR_TAIL_CHARS:],
+            message=f"claude exited with code {returncode}",
+        )
+    # Exit 0 but no result event: the run did not complete cleanly.
+    return ClaudeFailure(
+        exit_code=returncode,
+        stderr_tail=stderr[-_STDERR_TAIL_CHARS:],
+        message="claude stream ended without a result event",
+    )
+
+
+async def _drain(lines: AsyncIterator[str], on_delta: OnDelta) -> TerminalResult | None:
+    """Feed each line through the normalizer, dispatching deltas as they arrive."""
+    normalizer = StreamNormalizer()
+    terminal: TerminalResult | None = None
+    async for line in lines:
+        normalized = normalizer.feed(line)
+        for delta in normalized.deltas:
+            await on_delta(delta)
+        if normalized.terminal is not None:
+            terminal = normalized.terminal
+    return terminal
 
 
 class ClaudeProcess:
@@ -76,63 +87,34 @@ class ClaudeProcess:
     Subclasses implement wait() and terminate() — real subprocess or test fake.
     """
 
-    async def wait(self) -> ClaudeResult:
+    async def wait(self, on_delta: OnDelta) -> ClaudeResult:
         raise NotImplementedError
 
     async def terminate(self) -> None:
         raise NotImplementedError
-
-
-class _RealClaudeProcess(ClaudeProcess):
-    """Wraps a real asyncio.subprocess.Process."""
-
-    def __init__(self, proc: asyncio.subprocess.Process) -> None:
-        self._proc = proc
-
-    async def wait(self) -> ClaudeResult:
-        stdout_b, stderr_b = await self._proc.communicate()
-        returncode = self._proc.returncode or 0
-        return _map_run_result(
-            RunResult(
-                returncode=returncode,
-                stdout=stdout_b.decode(errors="replace"),
-                stderr=stderr_b.decode(errors="replace"),
-            )
-        )
-
-    async def terminate(self) -> None:
-        if self._proc.returncode is not None:
-            return
-        try:
-            self._proc.send_signal(signal.SIGTERM)
-            await asyncio.wait_for(self._proc.wait(), timeout=_SIGTERM_GRACE_SECONDS)
-        except (asyncio.TimeoutError, ProcessLookupError):
-            try:
-                self._proc.kill()
-            except ProcessLookupError:
-                pass
 
 
 class _FakeRunnerProcess(ClaudeProcess):
-    """Wraps an injectable Runner callable as a ClaudeProcess for testing."""
+    """Wraps an injectable StreamRunner as a ClaudeProcess for testing."""
 
-    def __init__(self, command: list[str], runner: Runner) -> None:
+    def __init__(self, command: list[str], runner: StreamRunner) -> None:
         self._command = command
         self._runner = runner
 
-    async def wait(self) -> ClaudeResult:
+    async def wait(self, on_delta: OnDelta) -> ClaudeResult:
         try:
-            result = await self._runner(self._command)
+            terminal = await _drain(self._runner(self._command), on_delta)
         except FileNotFoundError:
             return ClaudeFailure(exit_code=None, stderr_tail="", message="claude binary not found")
-        return _map_run_result(result)
+        return _map_terminal(terminal, returncode=0, stderr="")
 
     async def terminate(self) -> None:
         pass  # fake; test override handles cancellation if needed
 
 
 class ClaudeCodeRunner:
-    """Runs `claude -p <prompt> --output-format json --permission-mode bypassPermissions`.
+    """Runs `claude -p <prompt> --output-format stream-json --verbose
+    --include-partial-messages --permission-mode bypassPermissions`.
 
     Uses bypassPermissions because approval detection is deferred to the
     --permission-prompt-tool integration (future work).
@@ -142,7 +124,7 @@ class ClaudeCodeRunner:
         self,
         binary: str = "claude",
         cwd: str | None = None,
-        runner: Runner | None = None,
+        runner: StreamRunner | None = None,
     ) -> None:
         self._binary = binary
         self._cwd = cwd
@@ -156,7 +138,9 @@ class ClaudeCodeRunner:
             "-p",
             prompt,
             "--output-format",
-            "json",
+            "stream-json",
+            "--verbose",
+            "--include-partial-messages",
             "--permission-mode",
             "bypassPermissions",
         ]
@@ -175,22 +159,16 @@ class ClaudeCodeRunner:
             return _FakeRunnerProcess(command, self._runner)
         return _LazyRealProcess(command, self._cwd)
 
-    async def run(
-        self, prompt: str, session_id: str | None = None, resume: bool = False
-    ) -> ClaudeResult:
-        """Convenience wrapper: start() + wait()."""
-        return await self.start(prompt, session_id, resume).wait()
-
 
 class _LazyRealProcess(ClaudeProcess):
-    """Launches the real subprocess lazily on first wait() call."""
+    """Launches the real subprocess lazily on first wait() call, reading stdout line-by-line."""
 
     def __init__(self, command: list[str], cwd: str | None) -> None:
         self._command = command
         self._cwd = cwd
         self._proc: asyncio.subprocess.Process | None = None
 
-    async def wait(self) -> ClaudeResult:
+    async def wait(self, on_delta: OnDelta) -> ClaudeResult:
         logger.info("Launching claude subprocess (cwd=%s): %s", self._cwd, " ".join(self._command))
         try:
             self._proc = await asyncio.create_subprocess_exec(
@@ -199,18 +177,29 @@ class _LazyRealProcess(ClaudeProcess):
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self._cwd,
             )
-            stdout_b, stderr_b = await self._proc.communicate()
         except FileNotFoundError:
             logger.warning("Claude binary not found: %s", self._command[0])
             return ClaudeFailure(exit_code=None, stderr_tail="", message="claude binary not found")
-        returncode = self._proc.returncode or 0
-        run_result = RunResult(
-            returncode=returncode,
-            stdout=stdout_b.decode(errors="replace"),
-            stderr=stderr_b.decode(errors="replace"),
+
+        terminal = await _drain(self._stdout_lines(), on_delta)
+        stderr_b = await self._proc.stderr.read() if self._proc.stderr is not None else b""
+        returncode = await self._proc.wait()
+        stderr = stderr_b.decode(errors="replace")
+        result = _map_terminal(terminal, returncode, stderr)
+        logger.info(
+            "Claude subprocess finished (exit_code=%d, stderr_len=%d, cwd=%s)",
+            returncode,
+            len(stderr),
+            self._cwd,
         )
-        _log_run_result(self._command, self._cwd, run_result)
-        return _map_run_result(run_result)
+        return result
+
+    async def _stdout_lines(self) -> AsyncIterator[str]:
+        assert self._proc is not None and self._proc.stdout is not None
+        async for raw in self._proc.stdout:
+            line = raw.decode(errors="replace").strip()
+            if line:
+                yield line
 
     async def terminate(self) -> None:
         if self._proc is None or self._proc.returncode is not None:

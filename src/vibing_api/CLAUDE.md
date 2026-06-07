@@ -8,6 +8,9 @@ FastAPI control plane. Owns API routes, SQLite state, runtime WS intake, project
 - `api/routes/`: HTTP + WebSocket routes.
 - `api/schemas/`: API response/request models.
 - `core/runtime_channel.py`: runtime WS managers, command send, event persistence.
+- `core/session_stream.py`: per-session live turn-delta fan-out (ADR-0010). SEPARATE from the
+  invalidation Broadcaster; live-from-connect, no replay buffer. `routes/session_stream.py`
+  serves `GET .../agent-sessions/{id}/stream` (SSE). The agent WS `turn_delta` branch relays.
 - `core/reducer.py`: project runtime events into read models.
 - `core/database.py`, `core/schema.py`: SQLite setup and schema.
 - `repositories/`: SQL only. Callers commit transactions.

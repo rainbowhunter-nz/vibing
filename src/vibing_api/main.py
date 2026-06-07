@@ -17,6 +17,7 @@ from vibing_api.api.routes import (
     health,
     inbox,
     runtime,
+    session_stream,
     settings as settings_route,
     status,
 )
@@ -25,6 +26,7 @@ from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
 from vibing_api.core.errors import register_error_handlers
 from vibing_api.core.runtime_channel import AgentRegistry, WorkerRegistry
+from vibing_api.core.session_stream import SessionStreamRegistry
 
 
 class SpaStaticFiles(StaticFiles):
@@ -54,6 +56,7 @@ def create_app() -> FastAPI:
     app.state.runtime_manager = WorkerRegistry()
     app.state.agent_manager = AgentRegistry()
     app.state.broadcaster = Broadcaster()
+    app.state.session_streams = SessionStreamRegistry()
     register_error_handlers(app)
     for router in (
         health.router,
@@ -67,6 +70,7 @@ def create_app() -> FastAPI:
         diagnostics.router,
         runtime.router,
         events.router,
+        session_stream.router,
     ):
         app.include_router(router, prefix=settings.api_v1_prefix)
     if settings.static_dir:

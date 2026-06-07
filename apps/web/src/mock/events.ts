@@ -132,6 +132,11 @@ export function emitInvalidation(scope: Scope) {
   }
 }
 
+/** Live MockEventSource instances whose URL matches a predicate (per-session streams). */
+export function liveInstancesMatching(predicate: (url: string) => boolean): MockEventSource[] {
+  return [...liveInstances].filter((inst) => predicate(inst.url))
+}
+
 // ---------------------------------------------------------------------------
 // Install: swap global EventSource (call once before SseProvider mounts)
 // ---------------------------------------------------------------------------

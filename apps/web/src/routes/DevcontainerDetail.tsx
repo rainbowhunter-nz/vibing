@@ -4,9 +4,10 @@ import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
 import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession, useApiQuery, ApiError } from '../lib/api'
-import type { AgentSession, DevcontainerView, TranscriptBlock } from '../lib/api/types'
+import type { AgentSession, DevcontainerView, TranscriptBlock, TranscriptTurn } from '../lib/api/types'
 import { formatRelativeTime } from '../lib/time'
 import { useSseInvalidation } from '../lib/events'
+import { mergeTurns, useSessionStream } from '../lib/stream'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 
@@ -341,6 +342,12 @@ function ConversationBody({
     onRegisterTranscriptRefetch(transcriptRefetch)
   }, [onRegisterTranscriptRefetch, transcriptRefetch])
 
+  // Open the per-session live stream ONLY while the session is active (ADR-0010).
+  // Resting/historical sessions render transcript-only — no stream opened. On the
+  // terminal run_ended delta, refetch the canonical transcript and reconcile by id.
+  const isActive = state.kind === 'ready' && ACTIVE_STATUSES.has(state.data.status)
+  const live = useSessionStream(devcontainerId, sessionId, isActive, transcriptRefetch)
+
   if (state.kind === 'loading') {
     return (
       <div className="flex-1 overflow-auto px-4 py-4">
@@ -378,11 +385,18 @@ function ConversationBody({
     if (transcriptState.kind === 'ready') {
       const transcript = transcriptState.data
 
-      if (transcript.state === 'has_turns') {
+      // Merge canonical transcript turns with live deltas, keyed by id (partials update
+      // in place; reconciles on refetch with no duplicate/flickering bubbles).
+      const merged: TranscriptTurn[] = mergeTurns(
+        transcript.state === 'has_turns' ? transcript.turns : [],
+        live,
+      )
+
+      if (merged.length > 0) {
         return (
           <div className="space-y-3">
-            {transcript.turns.map((turn, i) => (
-              <ConversationBubble key={i} role={turn.role === 'user' ? 'user' : 'agent'}>
+            {merged.map((turn) => (
+              <ConversationBubble key={turn.id} role={turn.role === 'user' ? 'user' : 'agent'}>
                 <BlockContent blocks={turn.blocks} />
               </ConversationBubble>
             ))}
@@ -545,6 +559,7 @@ function TwoPaneLayout({
       <div className="flex flex-1 flex-col overflow-hidden">
         {selectedSessionId ? (
           <ConversationBody
+            key={selectedSessionId}
             dc={dc}
             sessionId={selectedSessionId}
             onRefetch={refetchSessions}

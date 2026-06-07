@@ -11,5 +11,6 @@ Architectural decisions for Vibing. One file per decision, `NNNN-slug.md`.
 - [0007](0007-control-plane-api-mocking-uses-msw-and-a-dev-eventsource-adapter.md) — Frontend Control Plane API Mocking uses MSW for `/api/v1` HTTP and a dev-only EventSource adapter for manual live invalidation testing.
 - [0008](0008-agent-sessions-are-durable-resumable-conversations-keyed-by-the-agents-session-id.md) — An Agent Session is the durable conversation (not one run), keyed by the agent's own session id (`--session-id`); end states are resumable via `resume_agent_session`; Session Summary becomes upsert-by-session.
 - [0009](0009-session-transcripts-are-fetched-via-request-reply-over-the-runtime-channel-and-never-persisted.md) — Session Transcripts are fetched on demand via a new request/reply pattern (correlation id) over the agent WebSocket, parsed to normalized turns by the agent, never persisted; degrade to Session Summary when stopped.
+- [0010](0010-agent-sessions-stream-live-structured-turns-over-a-per-session-sse-channel.md) — Agent Sessions stream live structured turn-deltas over a per-session SSE channel (separate from the invalidation `/events` stream); the transcript stays the source of truth, turns gain a stable `id` (Claude uuid) for live/durable reconciliation.
 
 **Keep this index up to date: add a one-line entry here whenever you add a new ADR.**

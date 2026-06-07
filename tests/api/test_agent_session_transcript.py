@@ -84,7 +84,8 @@ def test_session_not_found(client: TestClient) -> None:
 def test_happy_path_returns_turns(client: TestClient) -> None:
     dc_id = _create_dc(client)
     sess_id = _create_session(client, dc_id)
-    turns = [{"role": "user", "blocks": [{"kind": "text", "text": "hi"}], "at": "t"}]
+    # ADR-0010: turns carry a stable id (Claude uuid) the reducer keys on.
+    turns = [{"id": "u-1", "role": "user", "blocks": [{"kind": "text", "text": "hi"}], "at": "t"}]
     client.app.state.agent_manager = _FakeAgentManager(connected=True, turns=turns)
 
     resp = client.get(_url(dc_id, sess_id))
@@ -92,6 +93,7 @@ def test_happy_path_returns_turns(client: TestClient) -> None:
     body = resp.json()
     assert body["state"] == "has_turns"
     assert body["turns"] == turns
+    assert body["turns"][0]["id"] == "u-1"
     assert body["summary_text"] is None
 
 

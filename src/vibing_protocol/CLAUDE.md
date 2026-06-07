@@ -8,7 +8,9 @@ Shared typed contract between API, runtimes, and frontend docs.
 - `runtime_events.py`: `EventType`/`RuntimeEventSource` StrEnums + `RuntimeEvent` model.
 - `messages.py`: WebSocket register/command/event envelopes + transcript request/reply
   (`TranscriptRequestEnvelope`/`TranscriptResponseEnvelope`) and normalized turn/block
-  models (`TranscriptTurn`, `TextBlock`/`ToolUseBlock`, discriminated on `kind`).
+  models (`TranscriptTurn` with a stable `id`, `TextBlock`/`ToolUseBlock`, discriminated on
+  `kind`). Live Session Stream (ADR-0010): `TurnDeltaEnvelope` carrying a `TurnDelta`
+  (`RunStartedDelta`/`TextDelta`/`RunEndedDelta`, discriminated on `kind`; text-only slice).
 
 ## Context
 
