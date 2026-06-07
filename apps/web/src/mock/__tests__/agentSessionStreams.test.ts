@@ -42,6 +42,27 @@ describe('mock per-session SSE delta playback', () => {
     expect(ids.size).toBe(1)
   })
 
+  it('mock-tool-use-session script includes tool_use deltas interleaved with text (AC5)', async () => {
+    const { received } = openStream('mock-tool-use-session')
+    await Promise.resolve()
+
+    playSessionStream('mock-tool-use-session', { schedule: syncSchedule })
+
+    const kinds = received.map((d) => d.kind)
+    expect(kinds[0]).toBe('run_started')
+    expect(kinds[kinds.length - 1]).toBe('run_ended')
+    const toolDeltas = received.filter((d) => d.kind === 'tool_use')
+    expect(toolDeltas.length).toBeGreaterThan(0)
+    // tool_use deltas carry name + summary
+    for (const d of toolDeltas) {
+      expect(d).toHaveProperty('name')
+      expect(d).toHaveProperty('summary')
+    }
+    // Text and tool_use interleave: kinds list contains both (not just text)
+    expect(kinds).toContain('text')
+    expect(kinds).toContain('tool_use')
+  })
+
   it('only delivers to the stream of the matching session', async () => {
     const mine = openStream('as-seed-0005')
     const other = openStream('as-seed-0002')

@@ -8,8 +8,9 @@ Agent worker. Runs inside one devcontainer, controls Claude Code.
 - `claude_runner.py`: runs Claude as `--output-format stream-json` (ADR-0010), reads stdout
   line-by-line, invokes an on_delta callback per turn-delta; terminal `result` event maps to
   success/failure. Injectable `StreamRunner` seam yields a sequence of stream-json lines.
-- `stream_normalizer.py`: pure Claude stream-json -> normalized turn-deltas (ADR-0010, TEXT
-  only). The only NEW place pinned to Claude's wire format (mirrors transcript.py).
+- `stream_normalizer.py`: pure Claude stream-json -> normalized turn-deltas (ADR-0010; text +
+  tool_use deltas). The only NEW place pinned to Claude's wire format (mirrors transcript.py);
+  shares `_tool_summary.summarize_tool_input` with it so live tool cards match the transcript.
 - `command_handler.py`: maps agent-session commands + Claude output to runtime events; live
   turn-deltas flow out via `emit_delta` (sibling to `emit`).
 - `transcript.py`: parses Claude's on-disk JSONL into normalized turns (ADR-0009); the

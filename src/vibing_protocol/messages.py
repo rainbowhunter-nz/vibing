@@ -106,8 +106,19 @@ class RunEndedDelta(BaseModel):
     kind: Literal["run_ended"] = "run_ended"
 
 
-# Discriminated on `kind`; tool-call deltas (VIB-110) extend this union without a wire break.
-TurnDelta = Annotated[RunStartedDelta | TextDelta | RunEndedDelta, Field(discriminator="kind")]
+class ToolUseDelta(BaseModel):
+    """A tool-call card delta: tool name + short input summary (never the result)."""
+
+    kind: Literal["tool_use"] = "tool_use"
+    turn_id: str
+    name: str
+    summary: str
+
+
+# Discriminated on `kind`; new block kinds extend this union without a wire break.
+TurnDelta = Annotated[
+    RunStartedDelta | TextDelta | RunEndedDelta | ToolUseDelta, Field(discriminator="kind")
+]
 
 
 class TurnDeltaEnvelope(BaseModel):

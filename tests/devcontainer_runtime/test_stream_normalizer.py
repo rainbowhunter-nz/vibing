@@ -1,13 +1,13 @@
-"""Tests for the Claude stream-json -> turn-delta normalizer (VIB-109, ADR-0010).
+"""Tests for the Claude stream-json -> turn-delta normalizer (VIB-109/110, ADR-0010).
 
 The normalizer is the ONLY new place pinned to Claude's stream-json wire format
-(mirrors transcript.py). Text-only slice: partial text, completed text, terminal
-result, malformed/unknown lines, and turn-id propagation.
+(mirrors transcript.py). Covers: partial text, tool_use cards, completed content
+blocks in arrival order, terminal result, malformed/unknown lines, turn-id propagation.
 """
 
 import json
 
-from vibing_protocol import RunEndedDelta, RunStartedDelta, TextDelta
+from vibing_protocol import RunEndedDelta, RunStartedDelta, TextDelta, ToolUseDelta
 
 from vibing_devcontainer_runtime.stream_normalizer import StreamNormalizer, TerminalResult
 
@@ -120,8 +120,8 @@ def test_completed_assistant_is_suppressed_when_partials_streamed_it() -> None:
     assert out.deltas == []
 
 
-def test_tool_use_block_is_not_streamed_as_a_delta() -> None:
-    """Tool-call cards are VIB-110; text-only here. tool_use blocks produce no delta."""
+def test_tool_use_block_in_complete_assistant_emits_tool_use_delta() -> None:
+    """Complete assistant with a tool_use block yields a ToolUseDelta (VIB-110)."""
     n = StreamNormalizer()
     out = n.feed(
         _line(
@@ -130,6 +130,97 @@ def test_tool_use_block_is_not_streamed_as_a_delta() -> None:
                 "uuid": "u-4",
                 "message": {
                     "id": "msg_4",
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Bash", "input": {"cmd": "ls"}}],
+                },
+            }
+        )
+    )
+    assert out.deltas == [ToolUseDelta(turn_id="u-4", name="Bash", summary="cmd=ls")]
+
+
+def test_streaming_tool_use_via_content_block_start() -> None:
+    """A content_block_start with type=tool_use emits a ToolUseDelta (VIB-110 live path)."""
+    n = StreamNormalizer()
+    n.feed(
+        _line(
+            {"type": "stream_event", "event": {"type": "message_start", "message": {"id": "msg_5"}}}
+        )
+    )
+    out = n.feed(
+        _line(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {
+                        "type": "tool_use",
+                        "name": "Read",
+                        "input": {"path": "/a/b"},
+                    },
+                },
+            }
+        )
+    )
+    assert out.deltas == [ToolUseDelta(turn_id="msg_5", name="Read", summary="path=/a/b")]
+
+
+def test_complete_assistant_text_and_tool_interleaved_in_order() -> None:
+    """Mixed text+tool content blocks emit deltas in arrival order (VIB-110 AC2)."""
+    n = StreamNormalizer()
+    out = n.feed(
+        _line(
+            {
+                "type": "assistant",
+                "uuid": "u-6",
+                "message": {
+                    "id": "msg_6",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Let me check."},
+                        {"type": "tool_use", "name": "Bash", "input": {"cmd": "pwd"}},
+                        {"type": "text", "text": "Done."},
+                    ],
+                },
+            }
+        )
+    )
+    assert out.deltas == [
+        TextDelta(turn_id="u-6", text="Let me check."),
+        ToolUseDelta(turn_id="u-6", name="Bash", summary="cmd=pwd"),
+        TextDelta(turn_id="u-6", text="Done."),
+    ]
+
+
+def test_streaming_tool_use_suppresses_complete_assistant_re_emit() -> None:
+    """A tool_use via content_block_start sets streamed_partials=True -> assistant not re-emitted."""
+    n = StreamNormalizer()
+    n.feed(
+        _line(
+            {"type": "stream_event", "event": {"type": "message_start", "message": {"id": "msg_7"}}}
+        )
+    )
+    n.feed(
+        _line(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "tool_use", "name": "Bash", "input": {"cmd": "ls"}},
+                },
+            }
+        )
+    )
+    # Complete assistant arrived — should be suppressed since partials were streamed
+    out = n.feed(
+        _line(
+            {
+                "type": "assistant",
+                "uuid": "u-7",
+                "message": {
+                    "id": "msg_7",
                     "role": "assistant",
                     "content": [{"type": "tool_use", "name": "Bash", "input": {"cmd": "ls"}}],
                 },

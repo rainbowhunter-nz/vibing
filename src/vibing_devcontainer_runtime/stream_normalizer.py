@@ -1,25 +1,27 @@
 """Pure conversion of Claude `--output-format stream-json` lines into turn-deltas.
 
 The ONLY new place pinned to Claude's stream-json wire format (ADR-0010), mirroring
-the role transcript.py plays for the on-disk JSONL. Text-only this slice: tool-call
-cards are VIB-110, so tool_use blocks produce no delta (they still render from the
-durable transcript). Malformed and unknown lines are skipped defensively.
+the role transcript.py plays for the on-disk JSONL. Emits text and tool_use deltas.
+Malformed and unknown lines are skipped defensively.
 
 Wire shapes consumed (one JSON object per stdout line):
 - {"type":"system","subtype":"init",...}                          -> run_started
 - {"type":"stream_event","event":{"type":"message_start","message":{"id",...}}}
 - {"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text"}}}
-- {"type":"assistant","uuid","message":{"id","content":[...]}}    -> completed text (if not streamed)
+- {"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","name","input"}}}
+- {"type":"assistant","uuid","message":{"id","content":[...]}}    -> text+tool deltas in order (if not streamed)
 - {"type":"result","subtype","is_error","result"}                 -> terminal + run_ended
 
-Turn id (ADR-0010): partial text inherits the id from the preceding message_start;
+Turn id (ADR-0010): partial text/tool inherits the id from the preceding message_start;
 the complete `assistant` event uses its top-level uuid, falling back to message.id.
 """
 
 import json
 from dataclasses import dataclass, field
 
-from vibing_protocol import RunEndedDelta, RunStartedDelta, TextDelta, TurnDelta
+from vibing_protocol import RunEndedDelta, RunStartedDelta, TextDelta, ToolUseDelta, TurnDelta
+
+from ._tool_summary import summarize_tool_input
 
 
 @dataclass(frozen=True)
@@ -36,17 +38,29 @@ class NormalizedLine:
     terminal: TerminalResult | None = None
 
 
-def _text_from_content(content: object) -> str:
+def _deltas_from_content(turn_id: str, content: object) -> list[TurnDelta]:
+    """Walk content blocks in order, emitting TextDelta / ToolUseDelta per block."""
     if isinstance(content, str):
-        return content
+        return [TextDelta(turn_id=turn_id, text=content)] if content else []
     if not isinstance(content, list):
-        return ""
-    parts = [
-        raw["text"]
-        for raw in content
-        if isinstance(raw, dict) and raw.get("type") == "text" and isinstance(raw.get("text"), str)
-    ]
-    return "".join(parts)
+        return []
+    deltas: list[TurnDelta] = []
+    for raw in content:
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("type") == "text":
+            text = raw.get("text")
+            if isinstance(text, str) and text:
+                deltas.append(TextDelta(turn_id=turn_id, text=text))
+        elif raw.get("type") == "tool_use":
+            name = raw.get("name")
+            if isinstance(name, str):
+                deltas.append(
+                    ToolUseDelta(
+                        turn_id=turn_id, name=name, summary=summarize_tool_input(raw.get("input"))
+                    )
+                )
+    return deltas
 
 
 class StreamNormalizer:
@@ -107,17 +121,29 @@ class StreamNormalizer:
                 return NormalizedLine(
                     deltas=[TextDelta(turn_id=self._current_message_id, text=delta["text"])]
                 )
+        if event_type == "content_block_start":
+            cb = event.get("content_block")
+            if isinstance(cb, dict) and cb.get("type") == "tool_use":
+                name = cb.get("name")
+                if isinstance(name, str):
+                    self._streamed_partials = True
+                    return NormalizedLine(
+                        deltas=[
+                            ToolUseDelta(
+                                turn_id=self._current_message_id,
+                                name=name,
+                                summary=summarize_tool_input(cb.get("input")),
+                            )
+                        ]
+                    )
         return NormalizedLine()
 
     def _from_complete_assistant(self, obj: dict) -> NormalizedLine:
-        # Partials already streamed this text token-by-token; don't re-emit it.
+        # Partials already streamed this content block-by-block; don't re-emit it.
         if self._streamed_partials:
             return NormalizedLine()
         message = obj.get("message")
         if not isinstance(message, dict):
-            return NormalizedLine()
-        text = _text_from_content(message.get("content"))
-        if not text:
             return NormalizedLine()
         uuid = obj.get("uuid")
         msg_id = message.get("id")
@@ -127,4 +153,5 @@ class StreamNormalizer:
             turn_id = msg_id
         else:
             turn_id = ""
-        return NormalizedLine(deltas=[TextDelta(turn_id=turn_id, text=text)])
+        deltas = _deltas_from_content(turn_id, message.get("content"))
+        return NormalizedLine(deltas=deltas) if deltas else NormalizedLine()

@@ -1,14 +1,14 @@
-// Pure turn-merge reducer (ADR-0010, VIB-109): merges live text deltas with the
-// canonical transcript, keyed by turn id. Partials accumulate in place (no duplicate
-// or reordered bubbles); on the terminal run_ended the caller refetches the transcript
-// and this merge reconciles by id — live text for ids now in the transcript is dropped
-// in favor of the canonical turn. Text-only this slice (tool-call deltas are VIB-110).
+// Pure turn-merge reducer (ADR-0010, VIB-109/110): merges live text + tool_use deltas
+// with the canonical transcript, keyed by turn id. Blocks accumulate in arrival order
+// (text coalesces with the trailing text block; tool_use always starts a new block);
+// on the terminal run_ended the caller refetches the transcript and this merge reconciles
+// by id — live blocks for ids now in the transcript are dropped in favor of the canonical turn.
 
-import type { TextDelta, TranscriptTurn, TurnDelta } from '../api/types'
+import type { TextDelta, ToolUseDelta, TranscriptBlock, TranscriptTurn, TurnDelta } from '../api/types'
 
-// Accumulated live text for the current run, keyed by turn id, preserving arrival order.
+// Accumulated live blocks for the current run, keyed by turn id, preserving arrival order.
 export interface LiveState {
-  byId: Record<string, string>
+  byId: Record<string, TranscriptBlock[]>
   order: string[]
   // True once the run's terminal delta arrived; the view then reconciles to transcript.
   ended: boolean
@@ -20,36 +20,60 @@ export const emptyLiveState = (): LiveState => ({ byId: {}, order: [], ended: fa
 export function liveReducer(state: LiveState, delta: TurnDelta): LiveState {
   switch (delta.kind) {
     case 'run_started':
-      // A fresh run resets accumulated live text.
       return emptyLiveState()
     case 'run_ended':
       return { ...state, ended: true }
     case 'text':
       return appendText(state, delta)
+    case 'tool_use':
+      return appendToolUse(state, delta)
   }
+}
+
+function ensureOrder(state: LiveState, turnId: string): string[] {
+  return turnId in state.byId ? state.order : [...state.order, turnId]
 }
 
 function appendText(state: LiveState, delta: TextDelta): LiveState {
-  const existing = state.byId[delta.turn_id] ?? ''
-  const order = delta.turn_id in state.byId ? state.order : [...state.order, delta.turn_id]
+  const blocks = state.byId[delta.turn_id] ?? []
+  const last = blocks[blocks.length - 1]
+  let newBlocks: TranscriptBlock[]
+  if (last && last.kind === 'text') {
+    // Coalesce into the trailing text block.
+    newBlocks = [...blocks.slice(0, -1), { kind: 'text' as const, text: last.text + delta.text }]
+  } else {
+    newBlocks = [...blocks, { kind: 'text' as const, text: delta.text }]
+  }
   return {
     ...state,
-    byId: { ...state.byId, [delta.turn_id]: existing + delta.text },
-    order,
+    byId: { ...state.byId, [delta.turn_id]: newBlocks },
+    order: ensureOrder(state, delta.turn_id),
   }
 }
 
-// Merge canonical transcript turns with accumulated live text. Transcript turns render
-// as-is and are authoritative; live text for ids NOT yet in the transcript appends as
+function appendToolUse(state: LiveState, delta: ToolUseDelta): LiveState {
+  const blocks = state.byId[delta.turn_id] ?? []
+  return {
+    ...state,
+    byId: {
+      ...state.byId,
+      [delta.turn_id]: [...blocks, { kind: 'tool_use' as const, name: delta.name, summary: delta.summary }],
+    },
+    order: ensureOrder(state, delta.turn_id),
+  }
+}
+
+// Merge canonical transcript turns with accumulated live blocks. Transcript turns render
+// as-is and are authoritative; live blocks for ids NOT yet in the transcript append as
 // in-progress assistant bubbles (in arrival order, after the transcript).
 export function mergeTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
   const transcriptIds = new Set(transcript.map((t) => t.id))
   const liveOnly: TranscriptTurn[] = live.order
-    .filter((id) => !transcriptIds.has(id) && live.byId[id])
+    .filter((id) => !transcriptIds.has(id) && live.byId[id]?.length)
     .map((id) => ({
       id,
       role: 'assistant' as const,
-      blocks: [{ kind: 'text' as const, text: live.byId[id] }],
+      blocks: live.byId[id],
       at: '',
     }))
   return [...transcript, ...liveOnly]

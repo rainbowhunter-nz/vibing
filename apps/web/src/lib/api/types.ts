@@ -198,7 +198,6 @@ export interface TranscriptTurn {
 export type TranscriptState = 'has_turns' | 'empty' | 'summary_fallback' | 'error'
 
 // Per-session live turn-deltas (ADR-0010), relayed over the per-session SSE stream.
-// Text-only this slice; tool-call deltas are VIB-110.
 export interface RunStartedDelta {
   kind: 'run_started'
 }
@@ -214,7 +213,14 @@ export interface RunEndedDelta {
   kind: 'run_ended'
 }
 
-export type TurnDelta = RunStartedDelta | TextDelta | RunEndedDelta
+export interface ToolUseDelta {
+  kind: 'tool_use'
+  turn_id: string
+  name: string
+  summary: string
+}
+
+export type TurnDelta = RunStartedDelta | TextDelta | RunEndedDelta | ToolUseDelta
 
 export interface AgentSessionTranscript {
   state: TranscriptState

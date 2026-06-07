@@ -11,22 +11,14 @@ from pathlib import Path
 from logzero import logger
 from vibing_protocol import TextBlock, ToolUseBlock, TranscriptBlock, TranscriptTurn
 
+from ._tool_summary import summarize_tool_input
+
 _TURN_ROLES = {"user", "assistant"}
-_SUMMARY_LIMIT = 120
 
 
 def _encode_cwd(cwd: str) -> str:
     """Claude's project-dir convention: path separators become hyphens (/a/b -> -a-b)."""
     return cwd.replace("/", "-")
-
-
-def _summarize_tool_input(tool_input: object) -> str:
-    """Short rendering of a tool's input (never its result)."""
-    if isinstance(tool_input, dict):
-        rendered = ", ".join(f"{k}={v}" for k, v in tool_input.items())
-    else:
-        rendered = str(tool_input)
-    return rendered[:_SUMMARY_LIMIT]
 
 
 def _blocks_from_content(content: object) -> list[TranscriptBlock]:
@@ -46,7 +38,7 @@ def _blocks_from_content(content: object) -> list[TranscriptBlock]:
             name = raw.get("name")
             if isinstance(name, str):
                 blocks.append(
-                    ToolUseBlock(name=name, summary=_summarize_tool_input(raw.get("input")))
+                    ToolUseBlock(name=name, summary=summarize_tool_input(raw.get("input")))
                 )
     return blocks
 
