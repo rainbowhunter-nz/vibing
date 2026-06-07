@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
@@ -20,6 +20,18 @@ const trashIcon = (
     <path d="M10 11v6" />
     <path d="M14 11v6" />
     <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </svg>
+)
+
+const chevronLeftIcon = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+)
+
+const chevronRightIcon = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
   </svg>
 )
 
@@ -62,7 +74,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 function DevcontainerInfo({ dc }: { dc: DevcontainerView }) {
   return (
-    <div className="px-4 pt-4">
+    <div className="p-4">
       <h2 className="mb-4 text-base font-semibold text-text">{dc.name}</h2>
       <div className="rounded-md border border-border">
         <Row label="Local path">{dc.local_path}</Row>
@@ -73,91 +85,6 @@ function DevcontainerInfo({ dc }: { dc: DevcontainerView }) {
         </Row>
         <Row label="Created">{dc.created_at}</Row>
         <Row label="Updated">{dc.updated_at}</Row>
-      </div>
-    </div>
-  )
-}
-
-function SessionControls({
-  dc,
-  sessions,
-  onSessionChange,
-}: {
-  dc: DevcontainerView
-  sessions: AgentSession[]
-  onSessionChange: () => void
-}) {
-  const [prompt, setPrompt] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const activeSession = sessions.find((s) => ACTIVE_STATUSES.has(s.status)) ?? null
-  const hasActive = activeSession !== null
-  const agentConnected = dc.runtime.agent_connected
-
-  const startDisabled = busy || !agentConnected || hasActive || !prompt.trim()
-  const stopDisabled = busy || !agentConnected
-
-  const helperText = !agentConnected
-    ? 'Agent not connected'
-    : hasActive
-      ? 'A session is already active'
-      : null
-
-  async function handleStart() {
-    setBusy(true)
-    try {
-      await startAgentSession(dc.id, { prompt })
-      setPrompt('')
-      onSessionChange()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleStop() {
-    if (!activeSession) return
-    setBusy(true)
-    try {
-      await stopAgentSession(dc.id, activeSession.id)
-      onSessionChange()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="px-4 pt-6">
-      <h3 className="mb-3 text-sm font-semibold text-text">Start Agent Session</h3>
-      <div className="space-y-2">
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Enter a prompt…"
-          disabled={!agentConnected || hasActive || busy}
-          rows={3}
-          className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-        />
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleStart}
-            disabled={startDisabled}
-            className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
-          >
-            Start
-          </button>
-          {hasActive && (
-            <button
-              onClick={handleStop}
-              disabled={stopDisabled}
-              className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-text disabled:opacity-40"
-            >
-              Stop
-            </button>
-          )}
-          {helperText && (
-            <span className="text-[12px] text-text-muted">{helperText}</span>
-          )}
-        </div>
       </div>
     </div>
   )
@@ -260,29 +187,85 @@ function BlockContent({ blocks }: { blocks: TranscriptBlock[] }) {
   )
 }
 
-function ContinueComposer({
+// ---------------------------------------------------------------------------
+// Unified composer — handles start / resume / active-stop / disabled modes
+// ---------------------------------------------------------------------------
+
+type ComposerMode =
+  | { kind: 'start' }
+  | { kind: 'resume'; sessionId: string }
+  | { kind: 'active'; sessionId: string }
+  | { kind: 'disabled'; reason: string }
+
+function resolveComposerMode(
+  dc: DevcontainerView,
+  sessions: AgentSession[],
+  selectedId: string | null,
+): ComposerMode {
+  const activeSession = sessions.find((s) => ACTIVE_STATUSES.has(s.status)) ?? null
+  const agentConnected = dc.runtime.agent_connected
+
+  if (activeSession) {
+    return { kind: 'active', sessionId: activeSession.id }
+  }
+
+  if (!agentConnected) {
+    return { kind: 'disabled', reason: 'Agent not connected' }
+  }
+
+  const selected = selectedId ? sessions.find((s) => s.id === selectedId) ?? null : null
+  if (selected && RESTING_STATUSES.has(selected.status)) {
+    if (dc.status !== 'running') {
+      return { kind: 'disabled', reason: 'Start the devcontainer to continue' }
+    }
+    return { kind: 'resume', sessionId: selected.id }
+  }
+
+  return { kind: 'start' }
+}
+
+function ChatComposer({
   dc,
-  sessionId,
-  hasOtherActiveSession,
-  onResumed,
+  mode,
+  onAction,
 }: {
   dc: DevcontainerView
-  sessionId: string
-  hasOtherActiveSession: boolean
-  onResumed: () => void
+  mode: ComposerMode
+  onAction: () => void
 }) {
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const disabled = busy || hasOtherActiveSession
-  const helperText = hasOtherActiveSession ? 'A session is already active' : null
+  const isActive = mode.kind === 'active'
+  const isDisabled = mode.kind === 'disabled'
+  const textareaDisabled = busy || isActive || isDisabled
 
-  async function handleContinue() {
+  const placeholder = mode.kind === 'resume' ? 'Send a follow-up…' : 'Enter a prompt…'
+  const submitLabel = mode.kind === 'resume' ? 'Continue' : 'Start'
+  const helperText = isDisabled ? mode.reason : isActive ? 'A session is active' : null
+
+  async function handleSubmit() {
+    if (!prompt.trim()) return
     setBusy(true)
     try {
-      await resumeAgentSession(dc.id, sessionId, { prompt })
+      if (mode.kind === 'start') {
+        await startAgentSession(dc.id, { prompt })
+      } else if (mode.kind === 'resume') {
+        await resumeAgentSession(dc.id, mode.sessionId, { prompt })
+      }
       setPrompt('')
-      onResumed()
+      onAction()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleStop() {
+    if (mode.kind !== 'active') return
+    setBusy(true)
+    try {
+      await stopAgentSession(dc.id, mode.sessionId)
+      onAction()
     } finally {
       setBusy(false)
     }
@@ -290,24 +273,33 @@ function ContinueComposer({
 
   return (
     <div className="border-t border-border px-4 py-3">
-      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Continue</h4>
       <div className="space-y-2">
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Send a follow-up…"
-          disabled={disabled}
-          rows={2}
+          placeholder={placeholder}
+          disabled={textareaDisabled}
+          rows={3}
           className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
         />
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleContinue}
-            disabled={disabled || !prompt.trim()}
-            className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
-          >
-            Continue
-          </button>
+          {isActive ? (
+            <button
+              onClick={handleStop}
+              disabled={busy}
+              className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-text disabled:opacity-40"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={textareaDisabled || !prompt.trim()}
+              className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
+            >
+              {submitLabel}
+            </button>
+          )}
           {helperText && <span className="text-[12px] text-text-muted">{helperText}</span>}
         </div>
       </div>
@@ -315,18 +307,20 @@ function ContinueComposer({
   )
 }
 
-function SessionDetailPanel({
+// ---------------------------------------------------------------------------
+// Session detail — transcript body for the selected session
+// ---------------------------------------------------------------------------
+
+function ConversationBody({
   dc,
   sessionId,
-  hasOtherActiveSession,
-  onClose,
-  onResumed,
+  onRefetch,
+  onRegisterTranscriptRefetch,
 }: {
   dc: DevcontainerView
   sessionId: string
-  hasOtherActiveSession: boolean
-  onClose: () => void
-  onResumed: () => void
+  onRefetch: () => void
+  onRegisterTranscriptRefetch: (fn: () => void) => void
 }) {
   const devcontainerId = dc.id
   const { state, refetch } = useApiQuery(
@@ -342,10 +336,15 @@ function SessionDetailPanel({
   useEffect(() => register('agent_sessions', refetch), [register, refetch])
   useEffect(() => register('agent_sessions', transcriptRefetch), [register, transcriptRefetch])
 
+  // Register transcript refetch with parent so ChatComposer can call it post-resume.
+  useEffect(() => {
+    onRegisterTranscriptRefetch(transcriptRefetch)
+  }, [onRegisterTranscriptRefetch, transcriptRefetch])
+
   if (state.kind === 'loading') {
     return (
-      <div className="px-4 pt-4">
-        <div className="rounded-md border border-border p-4 text-[13px] text-text-muted">Loading session…</div>
+      <div className="flex-1 overflow-auto px-4 py-4">
+        <p className="text-[13px] text-text-muted">Loading session…</p>
       </div>
     )
   }
@@ -353,29 +352,21 @@ function SessionDetailPanel({
   if (state.kind === 'error') {
     if (state.error instanceof ApiError && state.error.code === 'AGENT_SESSION_NOT_FOUND') {
       return (
-        <div className="px-4 pt-4">
+        <div className="flex-1 overflow-auto px-4 py-4">
           <ErrorState title="Session not found" helper="This session doesn't exist or has been removed." />
         </div>
       )
     }
     return (
-      <div className="px-4 pt-4">
+      <div className="flex-1 overflow-auto px-4 py-4">
         <ErrorState {...loadError('session')} />
       </div>
     )
   }
 
   const session = state.data
-  const canContinue =
-    RESTING_STATUSES.has(session.status) && dc.status === 'running' && dc.runtime.agent_connected
 
-  function handleResumed() {
-    refetch()
-    transcriptRefetch()
-    onResumed()
-  }
-
-  function renderConversationBody() {
+  function renderTranscript() {
     if (transcriptState.kind === 'loading') {
       return <p className="text-[13px] text-text-muted">Loading conversation…</p>
     }
@@ -410,53 +401,34 @@ function SessionDetailPanel({
         )
       }
 
-      // empty
       return <p className="text-[13px] text-text-muted">No conversation yet.</p>
     }
 
     return null
   }
 
+  void onRefetch // onRefetch triggers session list update after stop; transcript updates via SSE
+
   return (
-    <div className="px-4 pt-4">
-      <div className="rounded-md border border-border">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[12px] text-text-muted">{session.id.slice(0, 8)}</span>
-            <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
-              {session.status}
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            title="Close"
-            className="flex h-7 w-7 items-center justify-center rounded-[5px] text-text-muted hover:bg-surface-muted"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="space-y-3 px-4 py-4">
-          {renderConversationBody()}
-        </div>
-
-        {canContinue && (
-          <ContinueComposer
-            dc={dc}
-            sessionId={session.id}
-            hasOtherActiveSession={hasOtherActiveSession}
-            onResumed={handleResumed}
-          />
-        )}
-
-        <div className="border-t border-border px-4 py-2 text-[11px] text-text-muted">
-          {session.started_at && <span>Started {formatRelativeTime(session.started_at)}</span>}
-          {session.ended_at && <span> · Ended {formatRelativeTime(session.ended_at)}</span>}
-        </div>
+    <>
+      <div className="border-b border-border px-4 py-2 text-[11px] text-text-muted flex items-center gap-2">
+        <span className="font-mono">{session.id.slice(0, 8)}</span>
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
+          {session.status}
+        </span>
+        {session.started_at && <span>· Started {formatRelativeTime(session.started_at)}</span>}
+        {session.ended_at && <span>· Ended {formatRelativeTime(session.ended_at)}</span>}
       </div>
-    </div>
+      <div className="flex-1 overflow-auto px-4 py-4">
+        {renderTranscript()}
+      </div>
+    </>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Left pane — devcontainer info + agent sessions list
+// ---------------------------------------------------------------------------
 
 function AgentSessionsList({
   dc,
@@ -473,7 +445,6 @@ function AgentSessionsList({
 }) {
   const devcontainerId = dc.id
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const hasActiveSession = sessions.some((s) => ACTIVE_STATUSES.has(s.status))
 
   async function handleDelete(sessionId: string) {
     setDeletingId(sessionId)
@@ -487,34 +458,23 @@ function AgentSessionsList({
   }
 
   return (
-    <div className="px-4 pt-6">
+    <div className="p-4">
       <h3 className="mb-3 text-sm font-semibold text-text">Agent Sessions</h3>
       {sessions.length === 0 ? (
         <p className="text-[13px] text-text-muted">No agent sessions</p>
       ) : (
-        <>
-          <div className="rounded-md border border-border">
-            {[...sessions].reverse().map((s) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                selected={s.id === selectedId}
-                onSelect={(id) => onSelect(selectedId === id ? null : id)}
-                onDelete={handleDelete}
-                deleting={deletingId === s.id}
-              />
-            ))}
-          </div>
-          {selectedId && (
-            <SessionDetailPanel
-              dc={dc}
-              sessionId={selectedId}
-              hasOtherActiveSession={hasActiveSession}
-              onClose={() => onSelect(null)}
-              onResumed={onSessionsChange}
+        <div className="rounded-md border border-border">
+          {[...sessions].reverse().map((s) => (
+            <SessionRow
+              key={s.id}
+              session={s}
+              selected={s.id === selectedId}
+              onSelect={(id) => onSelect(selectedId === id ? null : id)}
+              onDelete={handleDelete}
+              deleting={deletingId === s.id}
             />
-          )}
-        </>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -532,9 +492,85 @@ function errorElement(error: unknown) {
   return <ErrorState {...loadError('devcontainer')} />
 }
 
+// ---------------------------------------------------------------------------
+// Two-pane layout inside the loaded devcontainer
+// ---------------------------------------------------------------------------
+
+function TwoPaneLayout({
+  dc,
+  sessions,
+  refetchSessions,
+}: {
+  dc: DevcontainerView
+  sessions: AgentSession[]
+  refetchSessions: () => void
+}) {
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const transcriptRefetchRef = useRef<() => void>(() => {})
+
+  const composerMode = resolveComposerMode(dc, sessions, selectedSessionId)
+
+  function handleComposerAction() {
+    refetchSessions()
+    transcriptRefetchRef.current()
+  }
+
+  return (
+    <div className="flex flex-1 overflow-hidden">
+      {/* Left pane — collapsible */}
+      {!leftCollapsed && (
+        <div className="flex w-[280px] shrink-0 flex-col overflow-auto border-r border-border bg-surface-rail">
+          <DevcontainerInfo dc={dc} />
+          <AgentSessionsList
+            dc={dc}
+            sessions={sessions}
+            selectedId={selectedSessionId}
+            onSelect={setSelectedSessionId}
+            onSessionsChange={refetchSessions}
+          />
+        </div>
+      )}
+
+      {/* Collapse toggle */}
+      <button
+        onClick={() => setLeftCollapsed((v) => !v)}
+        title={leftCollapsed ? 'Expand panel' : 'Collapse panel'}
+        className="flex w-5 shrink-0 items-center justify-center border-r border-border bg-surface-rail text-text-muted hover:bg-surface-muted"
+      >
+        {leftCollapsed ? chevronRightIcon : chevronLeftIcon}
+      </button>
+
+      {/* Chat pane */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {selectedSessionId ? (
+          <ConversationBody
+            dc={dc}
+            sessionId={selectedSessionId}
+            onRefetch={refetchSessions}
+            onRegisterTranscriptRefetch={(fn) => { transcriptRefetchRef.current = fn }}
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            <p className="text-[13px] text-text-muted">Select a session to view the conversation</p>
+          </div>
+        )}
+        <ChatComposer
+          dc={dc}
+          mode={composerMode}
+          onAction={handleComposerAction}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Page root
+// ---------------------------------------------------------------------------
+
 export function DevcontainerDetail() {
   const { id } = useParams<{ id: string }>()
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const { register } = useSseInvalidation()
 
   const { state, refetch } = useApiQuery(() => fetchDevcontainer(id!), [id])
@@ -549,27 +585,17 @@ export function DevcontainerDetail() {
   return (
     <>
       <PageHeader title="Devcontainer" crumbs="Detail" />
-      <div className="flex-1 overflow-auto">
-        <QueryBoundary state={state} error={errorElement(state.kind === 'error' ? state.error : null)}>
-          {(dc) => (
-            <>
-              <DevcontainerInfo dc={dc} />
-              {sessionsState.kind === 'ready' && (
-                <>
-                  <SessionControls dc={dc} sessions={sessionsState.data.items} onSessionChange={refetchSessions} />
-                  <AgentSessionsList
-                    dc={dc}
-                    sessions={sessionsState.data.items}
-                    selectedId={selectedSessionId}
-                    onSelect={setSelectedSessionId}
-                    onSessionsChange={refetchSessions}
-                  />
-                </>
-              )}
-            </>
-          )}
-        </QueryBoundary>
-      </div>
+      <QueryBoundary state={state} error={errorElement(state.kind === 'error' ? state.error : null)}>
+        {(dc) => (
+          sessionsState.kind === 'ready' ? (
+            <TwoPaneLayout dc={dc} sessions={sessionsState.data.items} refetchSessions={refetchSessions} />
+          ) : sessionsState.kind === 'loading' ? (
+            <div className="flex flex-1 items-center justify-center">
+              <p className="text-[13px] text-text-muted">Loading…</p>
+            </div>
+          ) : null
+        )}
+      </QueryBoundary>
     </>
   )
 }

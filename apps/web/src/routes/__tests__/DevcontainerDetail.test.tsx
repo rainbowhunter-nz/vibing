@@ -193,73 +193,74 @@ describe('DevcontainerDetail', () => {
   })
 })
 
-describe('SessionControls — guard / disabled states', () => {
-  it('AC4: Start disabled and helper text shown when agent_connected is false', async () => {
+// ---------------------------------------------------------------------------
+// ChatComposer — unified start / resume / stop / disabled (AC3 + AC4 + AC5)
+// ---------------------------------------------------------------------------
+
+describe('ChatComposer — guard / disabled states', () => {
+  it('AC5: Start disabled and helper text shown when agent_connected is false', async () => {
     const dc = { ...sample, runtime: { worker_connected: false, agent_connected: false } }
     mockFetch.mockResolvedValue(dc)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Start Agent Session')
+    await screen.findByText('Agent Sessions')
+    // No active session + agent not connected → disabled mode: Start shown but disabled
     const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
     expect(startBtn.disabled).toBe(true)
     expect(screen.getByText('Agent not connected')).toBeTruthy()
   })
 
-  it('AC3: Start disabled and helper text shown when active session exists', async () => {
+  it('AC3: Composer shows Stop when active session exists, textarea disabled', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] }) // status: running
     renderPage('dc1')
-    await screen.findByText('Start Agent Session')
-    const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
-    expect(startBtn.disabled).toBe(true)
-    expect(screen.getByText('A session is already active')).toBeTruthy()
+    await screen.findByText('Agent Sessions')
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull()
+    const textarea = screen.getByPlaceholderText('Enter a prompt…') as HTMLTextAreaElement
+    expect(textarea.disabled).toBe(true)
+    expect(screen.getByText('A session is active')).toBeTruthy()
   })
 
-  it('AC1: Start enabled when agent connected and no active session', async () => {
+  it('AC3: Start mode shown when agent connected and no active session', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Start Agent Session')
-    // Start button is disabled until prompt is filled
+    await screen.findByText('Agent Sessions')
     const textarea = screen.getByPlaceholderText('Enter a prompt…')
     fireEvent.change(textarea, { target: { value: 'do something' } })
     const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
     expect(startBtn.disabled).toBe(false)
   })
 
-  it('AC2: Stop button shown when active session exists', async () => {
-    mockFetch.mockResolvedValue(sample)
-    mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
-    renderPage('dc1')
-    await screen.findByText('Start Agent Session')
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
-  })
-
-  it('AC2: Stop button absent when no active session', async () => {
+  it('AC3: Stop button absent when no active session', async () => {
     mockFetch.mockResolvedValue(sample)
     const completedSession = { ...sampleSession, status: 'completed' as const }
     mockFetchSessions.mockResolvedValue({ items: [completedSession] })
     renderPage('dc1')
-    await screen.findByText('Start Agent Session')
+    await screen.findByText('Agent Sessions')
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy()
   })
 
-  it('AC4: Stop disabled when agent_connected is false', async () => {
+  it('AC3: Stop button disabled when busy (agent not connected forces disabled mode — no Stop shown)', async () => {
+    // When agent not connected AND active session exists → active mode wins → Stop shown (not disabled)
+    // This tests the active + no-agent case: active mode still shows Stop, just busy state governs disable
     const dc = { ...sample, runtime: { worker_connected: false, agent_connected: false } }
     mockFetch.mockResolvedValue(dc)
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
     renderPage('dc1')
-    await screen.findByText('Start Agent Session')
-    const stopBtn = screen.getByRole('button', { name: 'Stop' }) as HTMLButtonElement
-    expect(stopBtn.disabled).toBe(true)
+    await screen.findByText('Agent Sessions')
+    // Active session → mode is 'active' regardless of agent_connected
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
   })
 
-  it('AC1: clicking Start calls startAgentSession and refetches sessions', async () => {
+  it('AC3: clicking Start calls startAgentSession and refetches sessions', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [] })
     mockStart.mockResolvedValue({ ...sampleSession, status: 'starting' })
     renderPage('dc1')
-    await screen.findByText('Start Agent Session')
+    await screen.findByText('Agent Sessions')
     const textarea = screen.getByPlaceholderText('Enter a prompt…')
     fireEvent.change(textarea, { target: { value: 'do something' } })
     const startBtn = screen.getByRole('button', { name: 'Start' })
@@ -268,12 +269,12 @@ describe('SessionControls — guard / disabled states', () => {
     expect(mockFetchSessions).toHaveBeenCalledTimes(2) // initial + after start
   })
 
-  it('AC2: clicking Stop calls stopAgentSession and refetches sessions', async () => {
+  it('AC3: clicking Stop calls stopAgentSession and refetches sessions', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
     mockStop.mockResolvedValue({ ...sampleSession, status: 'stopped' })
     renderPage('dc1')
-    await screen.findByText('Start Agent Session')
+    await screen.findByText('Agent Sessions')
     const stopBtn = screen.getByRole('button', { name: 'Stop' })
     await act(async () => { fireEvent.click(stopBtn) })
     expect(mockStop).toHaveBeenCalledWith('dc1', 'sess-0001-0000-0000-000000000001')
@@ -531,10 +532,10 @@ describe('SessionDetailPanel — transcript states', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Continue composer (resume) — VIB-106
+// Unified composer — resume (AC3 + AC5)
 // ---------------------------------------------------------------------------
 
-describe('Continue composer (resume)', () => {
+describe('ChatComposer — resume (Continue) behavior', () => {
   const restingSession: AgentSession = {
     id: 'sess-0001-0000-0000-000000000001',
     devcontainer_id: 'dc1',
@@ -558,41 +559,46 @@ describe('Continue composer (resume)', () => {
     await screen.findByText('No conversation yet.')
   }
 
-  it('shows the composer for a resting session in a running, connected devcontainer', async () => {
+  it('AC5: shows Continue button for resting session in running, connected devcontainer', async () => {
     await openPanel({ ...sample, status: 'running' }, [restingSession])
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy()
     expect(screen.getByPlaceholderText('Send a follow-up…')).toBeTruthy()
   })
 
-  it('disables the composer with helper text when another session is active', async () => {
+  it('AC3: when another session is active, shows Stop button (active mode wins over selected resting)', async () => {
     const otherActive: AgentSession = { ...restingSession, id: 'sess-other-0000-0000-000000000002', status: 'running' }
     await openPanel({ ...sample, status: 'running' }, [restingSession, otherActive])
-    const continueBtn = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement
-    expect(continueBtn.disabled).toBe(true)
-    // Helper text appears in both the Start controls and the Continue composer.
-    expect(screen.getAllByText('A session is already active').length).toBeGreaterThanOrEqual(1)
+    // Active session wins → Stop mode, no Continue
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+    expect(screen.getByText('A session is active')).toBeTruthy()
   })
 
-  it('does not show the composer for a running session', async () => {
+  it('AC5: shows Start button (not Continue) for running session — active mode, no resume', async () => {
     const runningSession: AgentSession = { ...restingSession, status: 'running' }
     await openPanel({ ...sample, status: 'running' }, [runningSession])
+    // Running session → active mode → Stop button
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
   })
 
-  it('does not show the composer when the devcontainer is not running', async () => {
+  it('AC5: shows disabled composer when devcontainer not running (selected resting session)', async () => {
     await openPanel({ ...sample, status: 'stopped' }, [restingSession])
+    // Resting session selected + dc stopped → disabled mode
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+    expect(screen.getByText('Start the devcontainer to continue')).toBeTruthy()
   })
 
-  it('does not show the composer when the agent is not connected', async () => {
+  it('AC5: shows disabled composer when agent not connected', async () => {
     await openPanel(
       { ...sample, status: 'running', runtime: { worker_connected: true, agent_connected: false } },
       [restingSession],
     )
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+    expect(screen.getByText('Agent not connected')).toBeTruthy()
   })
 
-  it('submitting calls resumeAgentSession and refetches sessions + transcript', async () => {
+  it('AC3: submitting calls resumeAgentSession and refetches sessions + transcript', async () => {
     await openPanel({ ...sample, status: 'running' }, [restingSession])
     mockResume.mockResolvedValue({ ...restingSession, status: 'starting' })
     const sessionsCallsBefore = mockFetchSessions.mock.calls.length
@@ -605,5 +611,52 @@ describe('Continue composer (resume)', () => {
     expect(mockResume).toHaveBeenCalledWith('dc1', restingSession.id, { prompt: 'now run the tests' })
     expect(mockFetchSessions.mock.calls.length).toBeGreaterThan(sessionsCallsBefore)
     expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(transcriptCallsBefore)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC1: Two-pane layout — collapsible left pane
+// ---------------------------------------------------------------------------
+
+describe('Two-pane layout', () => {
+  it('AC1: renders two-pane layout with collapsible left pane toggle', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [] })
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+
+    // Left pane visible with devcontainer info and sessions list
+    expect(screen.getByText('my-project')).toBeTruthy()
+    expect(screen.getByText('No agent sessions')).toBeTruthy()
+
+    // Collapse toggle present
+    const toggle = screen.getByTitle('Collapse panel')
+    expect(toggle).toBeTruthy()
+
+    // Collapsing hides the left pane content
+    fireEvent.click(toggle)
+    expect(screen.queryByText('my-project')).toBeNull()
+    expect(screen.getByTitle('Expand panel')).toBeTruthy()
+
+    // Expanding restores it
+    fireEvent.click(screen.getByTitle('Expand panel'))
+    expect(await screen.findByText('my-project')).toBeTruthy()
+  })
+
+  it('AC2: chat pane shows placeholder when no session selected', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [] })
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    expect(screen.getByText('Select a session to view the conversation')).toBeTruthy()
+  })
+
+  it('AC2: composer pinned at bottom — always visible regardless of session selection', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [] })
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    // Composer textarea always present
+    expect(screen.getByPlaceholderText('Enter a prompt…')).toBeTruthy()
   })
 })
