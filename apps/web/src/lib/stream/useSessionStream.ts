@@ -14,6 +14,7 @@ export function useSessionStream(
   sessionId: string,
   active: boolean,
   onRunEnded: () => void,
+  reconciledTurnIds?: ReadonlySet<string>,
 ): LiveState {
   // The owning ConversationBody is keyed by sessionId, so this hook remounts (and live
   // state resets) on session switch — no manual cross-session reset needed here.
@@ -46,6 +47,14 @@ export function useSessionStream(
       es.close()
     }
   }, [devcontainerId, sessionId, active])
+
+  // Drop stale live blocks once the refetched transcript contains every streamed turn id.
+  useEffect(() => {
+    if (!live.ended || live.order.length === 0 || !reconciledTurnIds) return
+    if (live.order.every((id) => reconciledTurnIds.has(id))) {
+      setLive(emptyLiveState())
+    }
+  }, [live, reconciledTurnIds])
 
   return live
 }

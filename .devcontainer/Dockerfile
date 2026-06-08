@@ -40,5 +40,6 @@ RUN npm install -g @anthropic-ai/claude-code \
    && corepack install -g pnpm@${PNPM_VERSION}
 
 RUN npx -y playwright@latest install
+RUN curl https://cursor.com/install -fsS | bash
 
 RUN echo '[ -f /workspaces/vibing/.devcontainer/bash_preference.bash ] && . /workspaces/vibing/.devcontainer/bash_preference.bash' >> /home/${USERNAME}/.bashrc

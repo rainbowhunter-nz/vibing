@@ -12,12 +12,12 @@
   "remoteUser": "vscode",
   "otherPortsAttributes": {
     "onAutoForward": "ignore"
-  },
-  "forwardPorts": [8080],
-  "portsAttributes": {
-    "8080": {
-      "label": "app",
-      "onAutoForward": "silent"
-    }
   }
+  // "forwardPorts": [8080],
+  // "portsAttributes": {
+  //   "8080": {
+  //     "label": "app",
+  //     "onAutoForward": "silent"
+  //   }
+  // }
 }

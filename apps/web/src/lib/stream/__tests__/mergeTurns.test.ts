@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { TranscriptTurn } from '../../api/types'
-import { emptyLiveState, liveReducer, mergeTurns } from '../mergeTurns'
+import { emptyLiveState, liveReducer, liveOnlyTurns, mergeTurns } from '../mergeTurns'
 
 const userTurn = (id: string, text: string): TranscriptTurn => ({
   id,
@@ -128,6 +128,15 @@ describe('mergeTurns', () => {
     const merged = mergeTurns(transcript, live)
     expect(merged).toEqual(transcript)
     expect(merged.filter((t) => t.id === 'a1')).toHaveLength(1)
+  })
+
+  it('drops live bubbles once run ends even when transcript turn ids differ', () => {
+    const transcript = [userTurn('u1', 'hi'), assistantTurn('canonical-id', 'Hello there')]
+    let live = emptyLiveState()
+    live = liveReducer(live, { kind: 'text', turn_id: 'stream-id', role: 'assistant', text: 'Hello there' })
+    live = liveReducer(live, { kind: 'run_ended' })
+    expect(liveOnlyTurns(transcript, live)).toEqual([])
+    expect(mergeTurns(transcript, live)).toEqual(transcript)
   })
 
   it('preserves transcript order and does not reorder', () => {

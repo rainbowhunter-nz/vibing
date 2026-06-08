@@ -32,8 +32,12 @@ def _fail() -> RunResult:
 # --- exec command structure ---
 
 
-def test_launch_builds_exact_exec_command(tmp_path: Path) -> None:
+def test_launch_builds_exact_exec_command(tmp_path: Path, monkeypatch) -> None:
     """Third runner call must be the devcontainer exec with correct bash payload."""
+    monkeypatch.setattr(
+        "vibing_host_runtime.agent_launcher.resolve_agent_control_plane_url",
+        lambda url: "ws://10.89.0.2:8000/api/v1/runtime/agent/ws",
+    )
     wheel = tmp_path / "vibing-1.0-py3-none-any.whl"
     wheel.touch()
     runner = FakeRunner(_ok())
@@ -59,7 +63,8 @@ def test_launch_builds_exact_exec_command(tmp_path: Path) -> None:
     assert "nohup" in payload
     assert "vibing runtime devcontainer" in payload
     assert "--control-plane-url" in payload
-    assert "ws://host.docker.internal:8000/api/v1/runtime/agent/ws" in payload
+    assert "ws://10.89.0.2:8000/api/v1/runtime/agent/ws" in payload
+    assert "host.docker.internal" not in payload
     assert "--devcontainer-id" in payload
     assert "dc-42" in payload
     assert "/tmp/vibing-agent.log" in payload

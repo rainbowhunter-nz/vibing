@@ -11,6 +11,7 @@ from pathlib import Path
 
 from logzero import logger
 
+from vibing_host_runtime.agent_url import resolve_agent_control_plane_url
 from vibing_host_runtime.devcontainer_cli import Runner, _default_runner
 
 _DEFAULT_UV_BINARY = "/usr/local/bin/uv"
@@ -59,11 +60,12 @@ class AgentLauncher:
         ):
             return
 
+        agent_url = resolve_agent_control_plane_url(self._agent_url)
         bash_payload = (
             f"{_CONTAINER_UV_DEST} tool install --python 3.13 --from {container_wheel_path} vibing"
             f' && export PATH="$HOME/.local/bin:$PATH"'
             f" && nohup vibing runtime devcontainer"
-            f" --control-plane-url {self._agent_url}"
+            f" --control-plane-url {agent_url}"
             f" --devcontainer-id {devcontainer_id}"
             f" >/tmp/vibing-agent.log 2>&1 &"
         )

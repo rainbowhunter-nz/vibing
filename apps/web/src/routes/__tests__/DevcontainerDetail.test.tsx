@@ -77,6 +77,12 @@ beforeEach(() => {
   vi.stubGlobal('EventSource', MockEventSource)
   vi.clearAllMocks()
   mockFetchTranscript.mockResolvedValue(emptyTranscript)
+  mockFetchSession.mockImplementation(async (_dcId, sessionId) => ({
+    ...sampleSession,
+    id: sessionId,
+    summary_text: null,
+  }))
+  mockOpenStream.mockReturnValue(null as unknown as EventSource)
   mockListInboxEvents.mockResolvedValue({ items: [] })
 })
 
@@ -133,10 +139,9 @@ describe('DevcontainerDetail', () => {
     renderPage('dc1')
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('dc1'))
     expect(await screen.findByText('my-project')).toBeTruthy()
-    expect(screen.getByText('/home/me/my-project')).toBeTruthy()
     expect(screen.getByText('stopped')).toBeTruthy()
-    expect(screen.getByText('2024-01-15T10:00:00Z')).toBeTruthy()
-    expect(screen.getByText('2024-01-16T12:30:00Z')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /details/i }))
+    expect(screen.getByText('/home/me/my-project')).toBeTruthy()
   })
 
   it('shows generic error state when fetch fails', async () => {
@@ -158,7 +163,7 @@ describe('DevcontainerDetail', () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     expect(screen.getByText('running')).toBeTruthy()
     expect(screen.getByText('sess-000')).toBeTruthy()
     expect(screen.queryByTitle('Delete')).toBeNull()
@@ -169,7 +174,7 @@ describe('DevcontainerDetail', () => {
     const completedSession = { ...sampleSession, status: 'completed' as const }
     mockFetchSessions.mockResolvedValue({ items: [sampleSession, completedSession] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     expect(screen.queryAllByTitle('Delete')).toHaveLength(1)
   })
 
@@ -183,7 +188,7 @@ describe('DevcontainerDetail', () => {
     mockFetchSessions.mockResolvedValue({ items: [completedSession] })
     mockDelete.mockResolvedValue(undefined)
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     await act(async () => { fireEvent.click(screen.getByTitle('Delete')) })
     expect(mockDelete).toHaveBeenCalledWith('dc1', completedSession.id)
     expect(mockFetchSessions).toHaveBeenCalledTimes(2)
@@ -193,8 +198,8 @@ describe('DevcontainerDetail', () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
-    expect(screen.getByText('No agent sessions')).toBeTruthy()
+    await screen.findByText('Sessions')
+    expect(screen.getByText('No chats yet — start one below.')).toBeTruthy()
   })
 })
 
@@ -208,9 +213,9 @@ describe('ChatComposer — guard / disabled states', () => {
     mockFetch.mockResolvedValue(dc)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     // No active session + agent not connected → disabled mode: Start shown but disabled
-    const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
+    const startBtn = screen.getByRole('button', { name: 'Start chat' }) as HTMLButtonElement
     expect(startBtn.disabled).toBe(true)
     expect(screen.getByText('Agent not connected')).toBeTruthy()
   })
@@ -219,22 +224,22 @@ describe('ChatComposer — guard / disabled states', () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] }) // status: running
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull()
-    const textarea = screen.getByPlaceholderText('Enter a prompt…') as HTMLTextAreaElement
+    expect(screen.queryByRole('button', { name: 'Start chat' })).toBeNull()
+    const textarea = screen.getByPlaceholderText('Message the agent…') as HTMLTextAreaElement
     expect(textarea.disabled).toBe(true)
-    expect(screen.getByText('A session is active')).toBeTruthy()
+    expect(screen.getByText('Agent is responding')).toBeTruthy()
   })
 
   it('AC3: Start mode shown when agent connected and no active session', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
-    const textarea = screen.getByPlaceholderText('Enter a prompt…')
+    await screen.findByText('Sessions')
+    const textarea = screen.getByPlaceholderText('Message the agent…')
     fireEvent.change(textarea, { target: { value: 'do something' } })
-    const startBtn = screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement
+    const startBtn = screen.getByRole('button', { name: 'Start chat' }) as HTMLButtonElement
     expect(startBtn.disabled).toBe(false)
   })
 
@@ -243,9 +248,9 @@ describe('ChatComposer — guard / disabled states', () => {
     const completedSession = { ...sampleSession, status: 'completed' as const }
     mockFetchSessions.mockResolvedValue({ items: [completedSession] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Start chat' })).toBeTruthy()
   })
 
   it('AC3: Stop button disabled when busy (agent not connected forces disabled mode — no Stop shown)', async () => {
@@ -255,7 +260,7 @@ describe('ChatComposer — guard / disabled states', () => {
     mockFetch.mockResolvedValue(dc)
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     // Active session → mode is 'active' regardless of agent_connected
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
   })
@@ -265,10 +270,10 @@ describe('ChatComposer — guard / disabled states', () => {
     mockFetchSessions.mockResolvedValue({ items: [] })
     mockStart.mockResolvedValue({ ...sampleSession, status: 'starting' })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
-    const textarea = screen.getByPlaceholderText('Enter a prompt…')
+    await screen.findByText('Sessions')
+    const textarea = screen.getByPlaceholderText('Message the agent…')
     fireEvent.change(textarea, { target: { value: 'do something' } })
-    const startBtn = screen.getByRole('button', { name: 'Start' })
+    const startBtn = screen.getByRole('button', { name: 'Start chat' })
     await act(async () => { fireEvent.click(startBtn) })
     expect(mockStart).toHaveBeenCalledWith('dc1', { prompt: 'do something' })
     expect(mockFetchSessions).toHaveBeenCalledTimes(2) // initial + after start
@@ -279,7 +284,7 @@ describe('ChatComposer — guard / disabled states', () => {
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
     mockStop.mockResolvedValue({ ...sampleSession, status: 'stopped' })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     const stopBtn = screen.getByRole('button', { name: 'Stop' })
     await act(async () => { fireEvent.click(stopBtn) })
     expect(mockStop).toHaveBeenCalledWith('dc1', 'sess-0001-0000-0000-000000000001')
@@ -388,7 +393,7 @@ describe('DevcontainerDetail SSE invalidation', () => {
     })
 
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
 
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     expect(await screen.findByText('hi')).toBeTruthy()
@@ -440,7 +445,7 @@ describe('SessionDetailPanel — transcript states', () => {
     mockFetchSessions.mockResolvedValue({ items: [completedSession] })
     mockFetchSession.mockResolvedValue({ ...completedSession, summary_text: null })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
   }
 
@@ -586,10 +591,10 @@ describe('SessionDetailPanel — live stream (ADR-0010)', () => {
     mockFetchSession.mockResolvedValue({ ...runningSession, summary_text: null })
     mockFetchTranscript.mockResolvedValue(emptyTranscript)
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     // Active session → working indicator shows instead of "No conversation yet."
-    await screen.findByText('Working…')
+    await screen.findByText(/Working/)
     return stream
   }
 
@@ -634,7 +639,7 @@ describe('SessionDetailPanel — live stream (ADR-0010)', () => {
     mockFetchSession.mockResolvedValue({ ...completed, summary_text: null })
     mockFetchTranscript.mockResolvedValue(emptyTranscript)
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     await screen.findByText('No conversation yet.')
     expect(mockOpenStream).not.toHaveBeenCalled()
@@ -666,17 +671,17 @@ describe('ChatComposer — resume (Continue) behavior', () => {
     mockFetchSession.mockResolvedValue({ ...sessions[0], summary_text: null })
     mockFetchTranscript.mockResolvedValue(emptyTranscript)
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     // The clicked session (sessions[0], id starts with 'sess-000') drives the panel state.
     // Active selected session → working indicator; resting selected session → "No conversation yet."
     const selectedActive = ACTIVE_SESSION_STATUSES.has(sessions[0].status)
-    await screen.findByText(selectedActive ? 'Working…' : 'No conversation yet.')
+    await screen.findByText(selectedActive ? /Working/ : 'No conversation yet.')
   }
 
   it('AC5: shows Continue button for resting session in running, connected devcontainer', async () => {
     await openPanel({ ...sample, status: 'running' }, [restingSession])
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
     expect(screen.getByPlaceholderText('Send a follow-up…')).toBeTruthy()
   })
 
@@ -685,8 +690,8 @@ describe('ChatComposer — resume (Continue) behavior', () => {
     await openPanel({ ...sample, status: 'running' }, [restingSession, otherActive])
     // Active session wins → Stop mode, no Continue
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
-    expect(screen.getByText('A session is active')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    expect(screen.getByText('Agent is responding')).toBeTruthy()
   })
 
   it('AC5: shows Start button (not Continue) for running session — active mode, no resume', async () => {
@@ -694,13 +699,13 @@ describe('ChatComposer — resume (Continue) behavior', () => {
     await openPanel({ ...sample, status: 'running' }, [runningSession])
     // Running session → active mode → Stop button
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
   })
 
   it('AC5: shows disabled composer when devcontainer not running (selected resting session)', async () => {
     await openPanel({ ...sample, status: 'stopped' }, [restingSession])
     // Resting session selected + dc stopped → disabled mode
-    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
     expect(screen.getByText('Start the devcontainer to continue')).toBeTruthy()
   })
 
@@ -709,7 +714,7 @@ describe('ChatComposer — resume (Continue) behavior', () => {
       { ...sample, status: 'running', runtime: { worker_connected: true, agent_connected: false } },
       [restingSession],
     )
-    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
     expect(screen.getByText('Agent not connected')).toBeTruthy()
   })
 
@@ -721,7 +726,7 @@ describe('ChatComposer — resume (Continue) behavior', () => {
 
     const textarea = screen.getByPlaceholderText('Send a follow-up…')
     fireEvent.change(textarea, { target: { value: 'now run the tests' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })) })
 
     expect(mockResume).toHaveBeenCalledWith('dc1', restingSession.id, { prompt: 'now run the tests' })
     expect(mockFetchSessions.mock.calls.length).toBeGreaterThan(sessionsCallsBefore)
@@ -734,45 +739,44 @@ describe('ChatComposer — resume (Continue) behavior', () => {
 // ---------------------------------------------------------------------------
 
 describe('Two-pane layout', () => {
-  it('AC1: renders two-pane layout with collapsible left pane toggle', async () => {
+  it('AC1: renders info bar plus collapsible sessions pane', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
 
-    // Left pane visible with devcontainer info and sessions list
+    // Info bar and sessions list both visible
     expect(screen.getByText('my-project')).toBeTruthy()
-    expect(screen.getByText('No agent sessions')).toBeTruthy()
+    expect(screen.getByText('No chats yet — start one below.')).toBeTruthy()
 
-    // Collapse toggle present
-    const toggle = screen.getByTitle('Collapse panel')
+    const toggle = screen.getByTitle('Collapse sessions')
     expect(toggle).toBeTruthy()
 
-    // Collapsing hides the left pane content
+    // Collapsing hides sessions but keeps devcontainer info visible
     fireEvent.click(toggle)
-    expect(screen.queryByText('my-project')).toBeNull()
-    expect(screen.getByTitle('Expand panel')).toBeTruthy()
+    expect(screen.getByText('my-project')).toBeTruthy()
+    expect(screen.queryByText('No chats yet — start one below.')).toBeNull()
+    expect(screen.getByTitle('Expand sessions')).toBeTruthy()
 
-    // Expanding restores it
-    fireEvent.click(screen.getByTitle('Expand panel'))
-    expect(await screen.findByText('my-project')).toBeTruthy()
+    fireEvent.click(screen.getByTitle('Expand sessions'))
+    expect(await screen.findByText('No chats yet — start one below.')).toBeTruthy()
   })
 
   it('AC2: chat pane shows placeholder when no session selected', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
-    expect(screen.getByText('Select a session to view the conversation')).toBeTruthy()
+    await screen.findByText('Sessions')
+    expect(screen.getByText('Start a conversation')).toBeTruthy()
   })
 
   it('AC2: composer pinned at bottom — always visible regardless of session selection', async () => {
     mockFetch.mockResolvedValue(sample)
     mockFetchSessions.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     // Composer textarea always present
-    expect(screen.getByPlaceholderText('Enter a prompt…')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Message the agent…')).toBeTruthy()
   })
 })
 
@@ -828,9 +832,9 @@ describe('VIB-112 snappy chat interactions', () => {
     mockFetchSession.mockResolvedValue({ ...runningSession, summary_text: null })
     mockFetchTranscript.mockResolvedValue(emptyTranscript)
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
-    await screen.findByText('Working…')
+    await screen.findByText(/Working/)
     return stream
   }
 
@@ -840,11 +844,11 @@ describe('VIB-112 snappy chat interactions', () => {
     mockFetchSessions.mockResolvedValue({ items: [] })
     mockStart.mockReturnValue(new Promise(() => {})) // never resolves — simulate network delay
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
 
-    const textarea = screen.getByPlaceholderText('Enter a prompt…') as HTMLTextAreaElement
+    const textarea = screen.getByPlaceholderText('Message the agent…') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: 'hello agent' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start chat' })) })
 
     // Input cleared immediately (before the API call resolves)
     expect(textarea.value).toBe('')
@@ -877,13 +881,13 @@ describe('VIB-112 snappy chat interactions', () => {
       })
 
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     await screen.findByText('No conversation yet.')
 
     const textarea = screen.getByPlaceholderText('Send a follow-up…') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: 'resume prompt' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })) })
 
     // Optimistic bubble visible immediately after click (before API resolves)
     expect(screen.getByText('resume prompt')).toBeTruthy()
@@ -928,18 +932,18 @@ describe('VIB-112 snappy chat interactions', () => {
   it('AC5: shows working indicator when session active and no live text', async () => {
     await openRunningPanel()
     // Working indicator already visible (waited for it in openRunningPanel)
-    expect(screen.getByText('Working…')).toBeTruthy()
+    expect(screen.getByText(/Working/)).toBeTruthy()
   })
 
   it('AC5: clears working indicator when live text starts streaming', async () => {
     const stream = await openRunningPanel()
-    expect(screen.getByText('Working…')).toBeTruthy()
+    expect(screen.getByText(/Working/)).toBeTruthy()
 
     act(() => {
       stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'Hi there' })
     })
 
-    await waitFor(() => expect(screen.queryByText('Working…')).toBeNull())
+    await waitFor(() => expect(screen.queryByText(/Working/)).toBeNull())
     expect(screen.getByText('Hi there')).toBeTruthy()
   })
 
@@ -965,16 +969,16 @@ describe('VIB-112 snappy chat interactions', () => {
     })
 
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     // Prior 'hello' turn visible; resting session → no 'Working…'
     await screen.findByText('hello')
-    expect(screen.queryByText('Working…')).toBeNull()
+    expect(screen.queryByText(/Working/)).toBeNull()
 
     // User sends 'hello' again — optimistic bubble must appear alongside the prior one
     const textarea = screen.getByPlaceholderText('Send a follow-up…') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: 'hello' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue' })) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })) })
 
     // Both the prior turn AND the optimistic bubble should be visible (two 'hello' texts).
     // The optimistic bubble must NOT be prematurely cleared against the pre-existing turn.
@@ -1008,10 +1012,76 @@ describe('VIB-112 snappy chat interactions', () => {
     mockFetchSession.mockResolvedValue({ ...restingSession, summary_text: null })
     mockFetchTranscript.mockResolvedValue(emptyTranscript)
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     await screen.findByText('No conversation yet.')
-    expect(screen.queryByText('Working…')).toBeNull()
+    expect(screen.queryByText(/Working/)).toBeNull()
+  })
+
+  it('AC3: pending user bubble renders before streaming assistant on resume', async () => {
+    const stream = new StreamES('/stream-order')
+    mockOpenStream.mockReturnValue(stream as unknown as EventSource)
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    mockFetchSessions
+      .mockResolvedValueOnce({ items: [restingSession] })
+      .mockResolvedValue({ items: [runningSession] })
+    mockFetchSession
+      .mockResolvedValueOnce({ ...restingSession, summary_text: null })
+      .mockResolvedValue({ ...runningSession, summary_text: null })
+    mockResume.mockResolvedValue(runningSession)
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns' as const,
+      turns: [{ id: 't-u0', role: 'user' as const, blocks: [{ kind: 'text' as const, text: 'Do the thing' }], at: '' }],
+      summary_text: null,
+    })
+
+    renderPage('dc1')
+    await screen.findByText('Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('Do the thing')
+
+    const textarea = screen.getByPlaceholderText('Send a follow-up…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'follow up' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send' })) })
+    await waitFor(() => expect(mockOpenStream).toHaveBeenCalled())
+
+    act(() => {
+      stream.emit({ kind: 'run_started' })
+      stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'On it' })
+    })
+    await waitFor(() => expect(screen.getByText('On it')).toBeTruthy())
+
+    const scroll = screen.getByTestId('conversation-scroll')
+    const bubbles = scroll.querySelectorAll('p')
+    const texts = [...bubbles].map((n) => n.textContent)
+    expect(texts.indexOf('follow up')).toBeLessThan(texts.indexOf('On it'))
+  })
+
+  it('AC4: auto-selects new session on Start so live stream connects immediately', async () => {
+    const stream = new StreamES('/stream-start')
+    mockOpenStream.mockReturnValue(stream as unknown as EventSource)
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    mockFetchSessions
+      .mockResolvedValueOnce({ items: [] })
+      .mockResolvedValueOnce({ items: [runningSession] })
+      .mockResolvedValue({ items: [runningSession] })
+    mockFetchSession.mockResolvedValue({ ...runningSession, summary_text: null })
+    mockStart.mockResolvedValue(runningSession)
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+
+    renderPage('dc1')
+    await screen.findByText('Sessions')
+
+    const textarea = screen.getByPlaceholderText('Message the agent…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'hello agent' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start chat' })) })
+
+    await waitFor(() => expect(mockOpenStream).toHaveBeenCalled())
+    act(() => {
+      stream.emit({ kind: 'run_started' })
+      stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'Hi there' })
+    })
+    await waitFor(() => expect(screen.getByText('Hi there')).toBeTruthy())
   })
 })
 
@@ -1061,10 +1131,10 @@ describe('VIB-113 inline intervention card', () => {
     mockFetchSession.mockResolvedValue({ ...waitingSession, summary_text: null })
     mockFetchTranscript.mockResolvedValue(emptyTranscript)
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     // wait for the session to load (working indicator shows because isActive)
-    await screen.findByText('Working…')
+    await screen.findByText(/Working/)
   }
 
   // AC1: pending approval renders inline card with Approve/Reject actions
@@ -1163,7 +1233,7 @@ describe('VIB-113 inline intervention card', () => {
     mockFetchTranscript.mockResolvedValue(emptyTranscript)
     mockListInboxEvents.mockResolvedValue({ items: [] })
     renderPage('dc1')
-    await screen.findByText('Agent Sessions')
+    await screen.findByText('Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     await screen.findByText('No conversation yet.')
     expect(screen.queryByText('Approve')).toBeNull()

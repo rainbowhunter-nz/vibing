@@ -106,7 +106,8 @@ def test_exec_is_third_command(tmp_path: Path) -> None:
     assert "nohup" in payload
     assert "vibing runtime devcontainer" in payload
     assert "--devcontainer-id dc-42" in payload
-    assert "ws://host.docker.internal:8000/api/v1/runtime/agent/ws" in payload
+    assert "host.docker.internal" not in payload
+    assert "--control-plane-url" in payload
     assert "/tmp/vibing-agent.log" in payload
 
 

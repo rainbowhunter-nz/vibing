@@ -1,0 +1,99 @@
+- generic [ref=e3]:
+  - complementary "Primary" [ref=e4]:
+    - generic [ref=e5]: Vibing
+    - navigation "Main" [ref=e6]:
+      - link "Devcontainers" [ref=e7] [cursor=pointer]:
+        - /url: /devcontainers
+      - link "Inbox" [ref=e8] [cursor=pointer]:
+        - /url: /inbox
+      - link "Approvals" [ref=e9] [cursor=pointer]:
+        - /url: /approvals
+      - link "Settings" [ref=e10] [cursor=pointer]:
+        - /url: /settings
+  - main [ref=e11]:
+    - generic [ref=e136]:
+      - generic [ref=e138]:
+        - heading "Devcontainer" [level=1] [ref=e139]
+        - generic [ref=e140]: Detail
+      - generic [ref=e141]:
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]: Name
+            - generic [ref=e146]: my-webapp
+          - generic [ref=e147]:
+            - generic [ref=e148]: Local path
+            - generic [ref=e149]: /home/dev/my-webapp
+          - generic [ref=e150]:
+            - generic [ref=e151]: Status
+            - generic [ref=e153]: running
+          - generic [ref=e154]:
+            - generic [ref=e155]: Created
+            - generic [ref=e156]: 2024-01-10T08:00:00.000Z
+          - generic [ref=e157]:
+            - generic [ref=e158]: Updated
+            - generic [ref=e159]: 2024-01-15T10:00:00.000Z
+        - generic [ref=e160]:
+          - generic [ref=e162]:
+            - heading "Agent Sessions" [level=3] [ref=e163]
+            - generic [ref=e164]:
+              - generic [ref=e165]:
+                - button "as-seed- failed Run pytest" [ref=e166]:
+                  - generic [ref=e167]: as-seed-
+                  - generic [ref=e168]: failed
+                  - generic [ref=e169]: Run pytest
+                - button "Delete" [ref=e170] [cursor=pointer]:
+                  - img [ref=e171]
+              - button "as-seed- running Add logging to the API" [ref=e175]:
+                - generic [ref=e176]: as-seed-
+                - generic [ref=e177]: running
+                - generic [ref=e178]: Add logging to the API
+              - generic [ref=e179]:
+                - button "as-seed- completed Fix the flaky test in auth" [ref=e180]:
+                  - generic [ref=e181]: as-seed-
+                  - generic [ref=e182]: completed
+                  - generic [ref=e183]: Fix the flaky test in auth
+                - button "Delete" [ref=e184] [cursor=pointer]:
+                  - img [ref=e185]
+              - button "as-seed- waiting_for_approval Refactor the auth module" [ref=e189]:
+                - generic [ref=e190]: as-seed-
+                - generic [ref=e191]: waiting_for_approval
+                - generic [ref=e192]: Refactor the auth module
+          - button "Collapse sessions" [ref=e193]:
+            - img [ref=e194]
+          - generic [ref=e196]:
+            - paragraph [ref=e199]: Select a session to view the conversation
+            - generic [ref=e201]:
+              - textbox "Enter a prompt…" [disabled] [ref=e202]
+              - generic [ref=e203]:
+                - button "Stop" [ref=e204]
+                - generic [ref=e205]: A session is active
+  - complementary "Activity" [ref=e102]:
+    - generic [ref=e103]:
+      - heading "Activity" [level=3] [ref=e104]
+      - paragraph [ref=e105]: No active agents yet.
+    - generic [ref=e107]:
+      - heading "Mock" [level=3] [ref=e108]
+      - generic [ref=e109]: happy
+      - link "switch scenario" [ref=e111] [cursor=pointer]:
+        - /url: /mock
+      - generic [ref=e112]:
+        - paragraph [ref=e113]: Stream
+        - generic [ref=e114]: connected
+        - generic [ref=e116]:
+          - button "connected" [ref=e117]
+          - button "reconnecting" [ref=e118]
+          - button "disconnected" [ref=e119]
+        - generic [ref=e120]:
+          - button "devcontainers" [ref=e121]
+          - button "agent_sessions" [ref=e122]
+          - button "inbox" [ref=e123]
+          - button "approvals" [ref=e124]
+          - button "runtime" [ref=e125]
+        - paragraph [ref=e126]: Session stream
+        - button "play live deltas (as-seed-000)" [ref=e127]
+    - generic [ref=e128]:
+      - heading "Backend" [level=3] [ref=e129]
+      - generic [ref=e130]: Connected
+      - generic [ref=e132]: "service: vibing"
+      - generic [ref=e133]: "api: /api/v1"
+      - generic [ref=e134]: Worker disconnected

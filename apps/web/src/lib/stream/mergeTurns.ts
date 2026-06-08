@@ -63,18 +63,23 @@ function appendToolUse(state: LiveState, delta: ToolUseDelta): LiveState {
   }
 }
 
-// Merge canonical transcript turns with accumulated live blocks. Transcript turns render
-// as-is and are authoritative; live blocks for ids NOT yet in the transcript append as
-// in-progress assistant bubbles (in arrival order, after the transcript).
-export function mergeTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
+// Live assistant turns not yet present in the canonical transcript (in arrival order).
+export function liveOnlyTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
+  if (live.ended) return []
   const transcriptIds = new Set(transcript.map((t) => t.id))
-  const liveOnly: TranscriptTurn[] = live.order
+  return live.order
     .filter((id) => !transcriptIds.has(id) && live.byId[id]?.length)
     .map((id) => ({
       id,
       role: 'assistant' as const,
-      blocks: live.byId[id],
+      blocks: live.byId[id]!,
       at: '',
     }))
-  return [...transcript, ...liveOnly]
+}
+
+// Merge canonical transcript turns with accumulated live blocks. Transcript turns render
+// as-is and are authoritative; live blocks for ids NOT yet in the transcript append as
+// in-progress assistant bubbles (in arrival order, after the transcript).
+export function mergeTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
+  return [...transcript, ...liveOnlyTurns(transcript, live)]
 }

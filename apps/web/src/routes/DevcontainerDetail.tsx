@@ -7,7 +7,7 @@ import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSes
 import type { AgentSession, DevcontainerView, TranscriptBlock, TranscriptTurn } from '../lib/api/types'
 import { formatRelativeTime } from '../lib/time'
 import { useSseInvalidation } from '../lib/events'
-import { mergeTurns, useSessionStream } from '../lib/stream'
+import { liveOnlyTurns, mergeTurns, useSessionStream } from '../lib/stream'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 import { shouldStick, isWorkingIndicatorVisible } from '../lib/chat/chatHelpers'
@@ -67,29 +67,49 @@ function agentSessionBadgeClass(status: string): string {
   }
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function InfoField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-4 border-b border-border px-4 py-3">
-      <span className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">{label}</span>
-      <span className="text-[13px] text-text">{children}</span>
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-muted">{label}</div>
+      <div className="mt-0.5 truncate text-[13px] text-text">{children}</div>
     </div>
   )
 }
 
 function DevcontainerInfo({ dc }: { dc: DevcontainerView }) {
+  const [expanded, setExpanded] = useState(false)
+  const agentOk = dc.runtime.agent_connected
+
   return (
-    <div className="p-4">
-      <h2 className="mb-4 text-base font-semibold text-text">{dc.name}</h2>
-      <div className="rounded-md border border-border">
-        <Row label="Local path">{dc.local_path}</Row>
-        <Row label="Status">
-          <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
+    <div className="shrink-0 border-b border-border bg-surface-rail px-4 py-2.5">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span className="truncate text-[14px] font-semibold text-text">{dc.name}</span>
+          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
             {dc.status}
           </span>
-        </Row>
-        <Row label="Created">{dc.created_at}</Row>
-        <Row label="Updated">{dc.updated_at}</Row>
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+              agentOk ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-muted text-text-muted',
+            )}
+          >
+            {agentOk ? 'agent connected' : 'agent offline'}
+          </span>
+          <span className="ml-auto shrink-0 text-[11px] text-text-muted">{expanded ? '▾' : '▸'} details</span>
+        </button>
       </div>
+      {expanded && (
+        <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-2 border-t border-border pt-3">
+          <InfoField label="Local path">{dc.local_path}</InfoField>
+          <InfoField label="Created">{formatRelativeTime(dc.created_at)}</InfoField>
+          <InfoField label="Updated">{formatRelativeTime(dc.updated_at)}</InfoField>
+        </div>
+      )}
     </div>
   )
 }
@@ -125,7 +145,10 @@ function SessionRow({
           {session.status}
         </span>
         {session.prompt && (
-          <span className="min-w-0 flex-1 truncate text-[12px] text-text-muted">{session.prompt}</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-text">{session.prompt}</span>
+        )}
+        {session.last_event_at && (
+          <span className="shrink-0 text-[11px] text-text-muted">{formatRelativeTime(session.last_event_at)}</span>
         )}
       </button>
       {!isActive && (
@@ -161,15 +184,33 @@ function ConversationBubble({
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[85%] rounded-[10px] px-3 py-2.5 text-[13px] leading-relaxed',
-          isUser ? 'bg-accent text-white' : 'bg-surface-muted text-text',
-          sending && 'opacity-60',
+          'max-w-[min(85%,42rem)] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm',
+          isUser ? 'bg-accent text-white' : 'bg-surface-muted text-text ring-1 ring-border/60',
+          sending && 'opacity-70',
         )}
       >
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.05em] opacity-70">
           {isUser ? 'You' : 'Agent'}
         </div>
         {children}
+      </div>
+    </div>
+  )
+}
+
+function WorkingIndicator() {
+  return (
+    <div className="flex justify-start">
+      <div className="rounded-2xl bg-surface-muted px-3.5 py-2.5 text-[13px] text-text-muted ring-1 ring-border/60">
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.05em] opacity-70">Agent</div>
+        <span className="inline-flex items-center gap-1">
+          Working
+          <span className="inline-flex gap-0.5" aria-hidden>
+            <span className="h-1 w-1 animate-bounce rounded-full bg-text-muted [animation-delay:0ms]" />
+            <span className="h-1 w-1 animate-bounce rounded-full bg-text-muted [animation-delay:150ms]" />
+            <span className="h-1 w-1 animate-bounce rounded-full bg-text-muted [animation-delay:300ms]" />
+          </span>
+        </span>
       </div>
     </div>
   )
@@ -251,7 +292,7 @@ function ChatComposer({
 }: {
   dc: DevcontainerView
   mode: ComposerMode
-  onAction: () => void
+  onAction: (sessionId?: string) => void
   onOptimisticSend: (text: string | null) => void
 }) {
   const [prompt, setPrompt] = useState('')
@@ -261,26 +302,25 @@ function ChatComposer({
   const isDisabled = mode.kind === 'disabled'
   const textareaDisabled = busy || isActive || isDisabled
 
-  const placeholder = mode.kind === 'resume' ? 'Send a follow-up…' : 'Enter a prompt…'
-  const submitLabel = mode.kind === 'resume' ? 'Continue' : 'Start'
-  const helperText = isDisabled ? mode.reason : isActive ? 'A session is active' : null
+  const placeholder = mode.kind === 'resume' ? 'Send a follow-up…' : 'Message the agent…'
+  const submitLabel = mode.kind === 'resume' ? 'Send' : 'Start chat'
+  const helperText = isDisabled ? mode.reason : null
 
   async function handleSubmit() {
-    if (!prompt.trim()) return
+    if (!prompt.trim() || textareaDisabled) return
     const text = prompt.trim()
-    // AC1: clear input and show optimistic bubble synchronously before the async call
     setPrompt('')
     onOptimisticSend(text)
     setBusy(true)
     try {
       if (mode.kind === 'start') {
-        await startAgentSession(dc.id, { prompt: text })
+        const session = await startAgentSession(dc.id, { prompt: text })
+        onAction(session.id)
       } else if (mode.kind === 'resume') {
         await resumeAgentSession(dc.id, mode.sessionId, { prompt: text })
+        onAction(mode.sessionId)
       }
-      onAction()
     } catch {
-      // On error clear the optimistic bubble — it will never reconcile
       onOptimisticSend(null)
     } finally {
       setBusy(false)
@@ -292,43 +332,56 @@ function ChatComposer({
     setBusy(true)
     try {
       await stopAgentSession(dc.id, mode.sessionId)
-      onAction()
+      onAction(mode.sessionId)
     } finally {
       setBusy(false)
     }
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void handleSubmit()
+    }
+  }
+
   return (
-    <div className="border-t border-border px-4 py-3">
-      <div className="space-y-2">
+    <div className="shrink-0 border-t border-border bg-surface px-4 py-3">
+      <div className="mx-auto flex max-w-3xl flex-col gap-2">
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={textareaDisabled}
-          rows={3}
-          className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-text placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+          rows={2}
+          className="w-full resize-none rounded-xl border border-border bg-bg px-3.5 py-2.5 text-[13px] text-text placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-50"
         />
-        <div className="flex items-center gap-2">
-          {isActive ? (
-            <button
-              onClick={handleStop}
-              disabled={busy}
-              className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-text disabled:opacity-40"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={textareaDisabled || !prompt.trim()}
-              className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40"
-            >
-              {submitLabel}
-            </button>
-          )}
-          {helperText && <span className="text-[12px] text-text-muted">{helperText}</span>}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-text-subtle">
+            {isActive ? 'Agent is responding' : 'Enter to send · Shift+Enter for newline'}
+          </span>
+          <div className="flex items-center gap-2">
+            {isActive ? (
+              <button
+                onClick={handleStop}
+                disabled={busy}
+                className="rounded-lg border border-border px-3.5 py-1.5 text-[13px] font-medium text-text hover:bg-surface-muted disabled:opacity-40"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={() => void handleSubmit()}
+                disabled={textareaDisabled || !prompt.trim()}
+                className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-accent/90 disabled:opacity-40"
+              >
+                {submitLabel}
+              </button>
+            )}
+          </div>
         </div>
+        {helperText && <p className="text-[12px] text-bad">{helperText}</p>}
       </div>
     </div>
   )
@@ -343,6 +396,7 @@ function ConversationBody({
   sessionId,
   onRefetch,
   onRegisterTranscriptRefetch,
+  onRegisterSessionRefetch,
   pendingUserText,
   onPendingReconciled,
 }: {
@@ -350,6 +404,7 @@ function ConversationBody({
   sessionId: string
   onRefetch: () => void
   onRegisterTranscriptRefetch: (fn: () => void) => void
+  onRegisterSessionRefetch: (fn: () => void) => void
   pendingUserText: string | null
   onPendingReconciled: () => void
 }) {
@@ -380,11 +435,23 @@ function ConversationBody({
     onRegisterTranscriptRefetch(transcriptRefetch)
   }, [onRegisterTranscriptRefetch, transcriptRefetch])
 
+  useEffect(() => {
+    onRegisterSessionRefetch(refetch)
+  }, [onRegisterSessionRefetch, refetch])
+
   // Open the per-session live stream ONLY while the session is active (ADR-0010).
-  // Resting/historical sessions render transcript-only — no stream opened. On the
-  // terminal run_ended delta, refetch the canonical transcript and reconcile by id.
   const isActive = state.kind === 'ready' && ACTIVE_STATUSES.has(state.data.status)
-  const live = useSessionStream(devcontainerId, sessionId, isActive, transcriptRefetch)
+  const transcriptTurns: TranscriptTurn[] = useMemo(
+    () =>
+      transcriptState.kind === 'ready' && transcriptState.data.state === 'has_turns'
+        ? transcriptState.data.turns
+        : [],
+    [transcriptState],
+  )
+  const reconciledTurnIds = useMemo(() => new Set(transcriptTurns.map((t) => t.id)), [transcriptTurns])
+  const live = useSessionStream(devcontainerId, sessionId, isActive, transcriptRefetch, reconciledTurnIds)
+  const streamingTurns = useMemo(() => liveOnlyTurns(transcriptTurns, live), [transcriptTurns, live])
+  const mergedTurns = useMemo(() => mergeTurns(transcriptTurns, live), [transcriptTurns, live])
 
   // Auto-scroll: stick to bottom, pause on user scroll-up, show jump button when unstuck.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -411,18 +478,8 @@ function ConversationBody({
     setStickToBottom(shouldStick(el.scrollTop, el.scrollHeight, el.clientHeight))
   }
 
-  // Compute merged turns outside renderTranscript so effects and scroll can reference it.
-  // useMemo: stable array reference so reconcile + scroll effects don't rerun on unrelated renders.
-  const mergedTurns: TranscriptTurn[] = useMemo(
-    () =>
-      transcriptState.kind === 'ready' && transcriptState.data.state !== 'error'
-        ? mergeTurns(
-            transcriptState.data.state === 'has_turns' ? transcriptState.data.turns : [],
-            live,
-          )
-        : [],
-    [transcriptState, live],
-  )
+  // Compute merged turns for reconcile counting (user turns land in the transcript only).
+  const mergedTurnsForReconcile: TranscriptTurn[] = mergedTurns
 
   // AC2 reconcile: clear the optimistic bubble only when a NEW matching user turn lands —
   // not when a pre-existing turn with the same text was already in the transcript.
@@ -439,7 +496,7 @@ function ConversationBody({
     }
     // Only set baseline once per pending — don't overwrite when mergedTurns later changes.
     if (reconcileBaselineRef.current === null) {
-      reconcileBaselineRef.current = countMatchingUserTurns(mergedTurns, pendingText)
+      reconcileBaselineRef.current = countMatchingUserTurns(mergedTurnsForReconcile, pendingText)
     }
   // Intentionally omit mergedTurns: baseline must reflect turns AT send time, not later.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -448,13 +505,13 @@ function ConversationBody({
   // Effect 2: clear pending once a new matching turn lands (count exceeds baseline).
   useEffect(() => {
     if (!pendingText || reconcileBaselineRef.current === null) return
-    if (countMatchingUserTurns(mergedTurns, pendingText) > reconcileBaselineRef.current) onPendingReconciled()
-  }, [mergedTurns, pendingText, onPendingReconciled])
+    if (countMatchingUserTurns(mergedTurnsForReconcile, pendingText) > reconcileBaselineRef.current) onPendingReconciled()
+  }, [mergedTurnsForReconcile, pendingText, onPendingReconciled])
 
   // Scroll to bottom when new content arrives (turns, live partials, or pending bubble).
   useEffect(() => {
     if (stickToBottom) scrollToBottom()
-  }, [mergedTurns.length, pendingUserText, live.order.length, stickToBottom, scrollToBottom])
+  }, [transcriptTurns.length, streamingTurns.length, pendingUserText, live.order.length, stickToBottom, scrollToBottom])
 
   if (state.kind === 'loading') {
     return (
@@ -501,10 +558,10 @@ function ConversationBody({
     if (transcriptState.kind === 'ready') {
       const transcript = transcriptState.data
 
-      if (mergedTurns.length > 0 || pendingUserText || showWorking || pendingIntervention) {
+      if (transcriptTurns.length > 0 || pendingUserText || streamingTurns.length > 0 || showWorking || pendingIntervention) {
         return (
-          <div className="space-y-3">
-            {mergedTurns.map((turn) => (
+          <div className="mx-auto flex max-w-3xl flex-col gap-3">
+            {transcriptTurns.map((turn) => (
               <ConversationBubble key={turn.id} role={turn.role === 'user' ? 'user' : 'agent'}>
                 <BlockContent blocks={turn.blocks} />
               </ConversationBubble>
@@ -514,14 +571,12 @@ function ConversationBody({
                 <p>{pendingUserText}</p>
               </ConversationBubble>
             )}
-            {showWorking && (
-              <div className="flex justify-start">
-                <div className="rounded-[10px] bg-surface-muted px-3 py-2.5 text-[13px] text-text-muted">
-                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.05em] opacity-70">Agent</div>
-                  <span>Working…</span>
-                </div>
-              </div>
-            )}
+            {streamingTurns.map((turn) => (
+              <ConversationBubble key={turn.id} role="agent">
+                <BlockContent blocks={turn.blocks} />
+              </ConversationBubble>
+            ))}
+            {showWorking && <WorkingIndicator />}
             {pendingIntervention && (
               <InlineInterventionCard
                 key={pendingIntervention.id}
@@ -555,13 +610,12 @@ function ConversationBody({
 
   return (
     <>
-      <div className="border-b border-border px-4 py-2 text-[11px] text-text-muted flex items-center gap-2">
-        <span className="font-mono">{session.id.slice(0, 8)}</span>
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-rail/50 px-4 py-2 text-[11px] text-text-muted">
+        <span className="font-mono text-text">{session.id.slice(0, 8)}</span>
         <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
           {session.status}
         </span>
-        {session.started_at && <span>· Started {formatRelativeTime(session.started_at)}</span>}
-        {session.ended_at && <span>· Ended {formatRelativeTime(session.ended_at)}</span>}
+        {session.prompt && <span className="min-w-0 truncate text-text">· {session.prompt}</span>}
       </div>
       <div className="relative flex-1 overflow-hidden">
         <div
@@ -617,12 +671,12 @@ function AgentSessionsList({
   }
 
   return (
-    <div className="p-4">
-      <h3 className="mb-3 text-sm font-semibold text-text">Agent Sessions</h3>
+    <div className="p-3">
+      <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">Sessions</h3>
       {sessions.length === 0 ? (
-        <p className="text-[13px] text-text-muted">No agent sessions</p>
+        <p className="px-1 text-[13px] text-text-muted">No chats yet — start one below.</p>
       ) : (
-        <div className="rounded-md border border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-bg">
           {[...sessions].reverse().map((s) => (
             <SessionRow
               key={s.id}
@@ -665,76 +719,92 @@ function TwoPaneLayout({
   refetchSessions: () => void
 }) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
   const transcriptRefetchRef = useRef<() => void>(() => {})
-  // Optimistic user bubble — lifted here because ChatComposer and ConversationBody are siblings.
+  const sessionRefetchRef = useRef<() => void>(() => {})
   const [pendingUserText, setPendingUserText] = useState<string | null>(null)
 
-  const composerMode = resolveComposerMode(dc, sessions, selectedSessionId)
+  // Follow the active session automatically; keeps streaming connected after Start.
+  useEffect(() => {
+    const active = sessions.find((s) => ACTIVE_STATUSES.has(s.status))
+    if (active) setSelectedSessionId((prev) => prev ?? active.id)
+  }, [sessions])
 
-  function handleComposerAction() {
+  const composerMode = resolveComposerMode(dc, sessions, selectedSessionId)
+  const activeSession = sessions.find((s) => ACTIVE_STATUSES.has(s.status)) ?? null
+  const conversationSessionId = selectedSessionId ?? activeSession?.id ?? null
+
+  function handleComposerAction(sessionId?: string) {
+    if (sessionId) setSelectedSessionId(sessionId)
     refetchSessions()
+    sessionRefetchRef.current()
     transcriptRefetchRef.current()
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* Left pane — collapsible */}
-      {!leftCollapsed && (
-        <div className="flex w-[280px] shrink-0 flex-col overflow-auto border-r border-border bg-surface-rail">
-          <DevcontainerInfo dc={dc} />
-          <AgentSessionsList
-            dc={dc}
-            sessions={sessions}
-            selectedId={selectedSessionId}
-            onSelect={setSelectedSessionId}
-            onSessionsChange={refetchSessions}
-          />
-        </div>
-      )}
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <DevcontainerInfo dc={dc} />
 
-      {/* Collapse toggle */}
-      <button
-        onClick={() => setLeftCollapsed((v) => !v)}
-        title={leftCollapsed ? 'Expand panel' : 'Collapse panel'}
-        className="flex w-5 shrink-0 items-center justify-center border-r border-border bg-surface-rail text-text-muted hover:bg-surface-muted"
-      >
-        {leftCollapsed ? chevronRightIcon : chevronLeftIcon}
-      </button>
-
-      {/* Chat pane */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {selectedSessionId ? (
-          <ConversationBody
-            key={selectedSessionId}
-            dc={dc}
-            sessionId={selectedSessionId}
-            onRefetch={refetchSessions}
-            onRegisterTranscriptRefetch={(fn) => { transcriptRefetchRef.current = fn }}
-            pendingUserText={pendingUserText}
-            onPendingReconciled={() => setPendingUserText(null)}
-          />
-        ) : (
-          <div className="flex flex-1 flex-col overflow-auto px-4 py-4">
-            {pendingUserText ? (
-              <div className="space-y-3">
-                <ConversationBubble role="user" sending>
-                  <p>{pendingUserText}</p>
-                </ConversationBubble>
-              </div>
-            ) : (
-              <div className="flex flex-1 items-center justify-center">
-                <p className="text-[13px] text-text-muted">Select a session to view the conversation</p>
-              </div>
-            )}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {!sessionsCollapsed && (
+          <div className="flex w-[260px] shrink-0 flex-col overflow-auto border-r border-border bg-surface-rail">
+            <AgentSessionsList
+              dc={dc}
+              sessions={sessions}
+              selectedId={conversationSessionId}
+              onSelect={setSelectedSessionId}
+              onSessionsChange={refetchSessions}
+            />
           </div>
         )}
-        <ChatComposer
-          dc={dc}
-          mode={composerMode}
-          onAction={handleComposerAction}
-          onOptimisticSend={(t) => setPendingUserText(t)}
-        />
+
+        <button
+          onClick={() => setSessionsCollapsed((v) => !v)}
+          title={sessionsCollapsed ? 'Expand sessions' : 'Collapse sessions'}
+          className="flex w-5 shrink-0 items-center justify-center border-r border-border bg-surface-rail text-text-muted hover:bg-surface-muted"
+        >
+          {sessionsCollapsed ? chevronRightIcon : chevronLeftIcon}
+        </button>
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
+          {conversationSessionId ? (
+            <ConversationBody
+              key={conversationSessionId}
+              dc={dc}
+              sessionId={conversationSessionId}
+              onRefetch={refetchSessions}
+              onRegisterTranscriptRefetch={(fn) => { transcriptRefetchRef.current = fn }}
+              onRegisterSessionRefetch={(fn) => { sessionRefetchRef.current = fn }}
+              pendingUserText={pendingUserText}
+              onPendingReconciled={() => setPendingUserText(null)}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {pendingUserText ? (
+                <div className="flex-1 overflow-auto px-4 py-4">
+                  <div className="mx-auto max-w-3xl">
+                    <ConversationBubble role="user" sending>
+                      <p>{pendingUserText}</p>
+                    </ConversationBubble>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-8 text-center">
+                  <p className="text-[15px] font-medium text-text">Start a conversation</p>
+                  <p className="max-w-sm text-[13px] text-text-muted">
+                    Type a message below to run the agent in this devcontainer.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <ChatComposer
+            dc={dc}
+            mode={composerMode}
+            onAction={handleComposerAction}
+            onOptimisticSend={(t) => setPendingUserText(t)}
+          />
+        </div>
       </div>
     </div>
   )
@@ -758,7 +828,7 @@ export function DevcontainerDetail() {
   useEffect(() => register('agent_sessions', refetchSessions), [register, refetchSessions])
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader title="Devcontainer" crumbs="Detail" />
       <QueryBoundary state={state} error={errorElement(state.kind === 'error' ? state.error : null)}>
         {(dc) => (
@@ -771,6 +841,6 @@ export function DevcontainerDetail() {
           ) : null
         )}
       </QueryBoundary>
-    </>
+    </div>
   )
 }
