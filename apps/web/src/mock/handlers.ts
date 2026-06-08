@@ -297,12 +297,17 @@ function stubSession(devcontainerId: string, sessionId: string): AgentSession {
 }
 
 const inboxHandlers = [
-  http.get('*/api/v1/inbox-events', () => {
+  http.get('*/api/v1/inbox-events', ({ request }) => {
     const failure = scenarioFailure()
     if (failure) return failure
     const scenario = getScenario()
     if (scenario === 'empty') return HttpResponse.json({ items: [] })
-    return HttpResponse.json(inbox.listInboxEvents())
+    const params = new URL(request.url).searchParams
+    return HttpResponse.json(inbox.listInboxEvents({
+      agentSessionId: params.get('agent_session_id') ?? undefined,
+      devcontainerId: params.get('devcontainer_id') ?? undefined,
+      status: params.get('status') ?? undefined,
+    }))
   }),
 
   http.get('*/api/v1/inbox-events/:id', ({ params }) => {

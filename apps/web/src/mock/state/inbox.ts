@@ -128,8 +128,12 @@ export function resetInbox(): void {
   store = SEED.map((e) => deepCopy(e))
 }
 
-export function listInboxEvents(): InboxEventList {
-  return { items: store.map(toInboxEvent) }
+export function listInboxEvents(filters?: { agentSessionId?: string; devcontainerId?: string; status?: string }): InboxEventList {
+  let items = store.map(toInboxEvent)
+  if (filters?.agentSessionId) items = items.filter((e) => e.agent_session_id === filters.agentSessionId)
+  if (filters?.devcontainerId) items = items.filter((e) => e.devcontainer_id === filters.devcontainerId)
+  if (filters?.status) items = items.filter((e) => e.status === filters.status)
+  return { items }
 }
 
 export function getInboxEvent(id: string): InboxEventDetail {

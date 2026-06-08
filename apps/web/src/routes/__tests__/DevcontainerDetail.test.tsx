@@ -3,9 +3,9 @@ import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-libra
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession, openAgentSessionStream } from '../../lib/api/endpoints'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession, openAgentSessionStream, listInboxEvents, resolveAgentSessionApproval, sendAgentSessionUserInput } from '../../lib/api/endpoints'
 import { ApiError } from '../../lib/api'
-import type { AgentSession, AgentSessionTranscript, DevcontainerView } from '../../lib/api/types'
+import type { AgentSession, AgentSessionTranscript, DevcontainerView, InboxEvent } from '../../lib/api/types'
 
 vi.mock('../../lib/api/endpoints')
 const mockFetch = vi.mocked(fetchDevcontainer)
@@ -17,6 +17,9 @@ const mockDelete = vi.mocked(deleteAgentSession)
 const mockFetchSession = vi.mocked(fetchAgentSession)
 const mockFetchTranscript = vi.mocked(fetchAgentSessionTranscript)
 const mockOpenStream = vi.mocked(openAgentSessionStream)
+const mockListInboxEvents = vi.mocked(listInboxEvents)
+const mockResolveApproval = vi.mocked(resolveAgentSessionApproval)
+const mockSendUserInput = vi.mocked(sendAgentSessionUserInput)
 
 // ---------------------------------------------------------------------------
 // MockEventSource
@@ -74,6 +77,7 @@ beforeEach(() => {
   vi.stubGlobal('EventSource', MockEventSource)
   vi.clearAllMocks()
   mockFetchTranscript.mockResolvedValue(emptyTranscript)
+  mockListInboxEvents.mockResolvedValue({ items: [] })
 })
 
 afterEach(() => {
@@ -1008,5 +1012,171 @@ describe('VIB-112 snappy chat interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
     await screen.findByText('No conversation yet.')
     expect(screen.queryByText('Working…')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// VIB-113: Inline User Interventions — approval + question cards in chat flow
+// ---------------------------------------------------------------------------
+
+describe('VIB-113 inline intervention card', () => {
+  const waitingSession: AgentSession = {
+    id: 'sess-0001-0000-0000-000000000001',
+    devcontainer_id: 'dc1',
+    status: 'waiting_for_approval',
+    prompt: 'Refactor auth',
+    started_at: '2024-01-16T10:00:00Z',
+    ended_at: null,
+    last_event_at: null,
+    created_at: '2024-01-16T10:00:00Z',
+    updated_at: '2024-01-16T10:00:00Z',
+  }
+
+  const approvalEvent: InboxEvent = {
+    id: 'ie-approval-0001',
+    devcontainer_id: 'dc1',
+    agent_session_id: 'sess-0001-0000-0000-000000000001',
+    approval_request_id: 'ar-0001',
+    event_type: 'approval_request',
+    status: 'unread',
+    created_at: '2024-01-16T10:01:00Z',
+    updated_at: '2024-01-16T10:01:00Z',
+  }
+
+  const questionEvent: InboxEvent = {
+    id: 'ie-question-0001',
+    devcontainer_id: 'dc1',
+    agent_session_id: 'sess-0001-0000-0000-000000000001',
+    approval_request_id: null,
+    event_type: 'question',
+    status: 'unread',
+    created_at: '2024-01-16T10:01:00Z',
+    updated_at: '2024-01-16T10:01:00Z',
+  }
+
+  // openWaitingPanel sets up session mocks; callers must set mockListInboxEvents before calling.
+  async function openWaitingPanel() {
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    mockFetchSessions.mockResolvedValue({ items: [waitingSession] })
+    mockFetchSession.mockResolvedValue({ ...waitingSession, summary_text: null })
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    // wait for the session to load (working indicator shows because isActive)
+    await screen.findByText('Working…')
+  }
+
+  // AC1: pending approval renders inline card with Approve/Reject actions
+  it('AC1: renders inline approval card when session waiting_for_approval', async () => {
+    mockListInboxEvents.mockResolvedValue({ items: [approvalEvent] })
+    await openWaitingPanel()
+    expect(await screen.findByText('Approve')).toBeTruthy()
+    expect(screen.getByText('Reject')).toBeTruthy()
+  })
+
+  // AC1: pending question renders inline card with answer textarea + send
+  it('AC1: renders inline question card when session has pending question', async () => {
+    mockListInboxEvents.mockResolvedValue({ items: [questionEvent] })
+    await openWaitingPanel()
+    expect(await screen.findByPlaceholderText('Type your answer…')).toBeTruthy()
+    expect(screen.getByText('Send answer')).toBeTruthy()
+  })
+
+  // AC4: reuses resolveAgentSessionApproval (existing endpoint, not reimplemented)
+  it('AC4: Approve calls resolveAgentSessionApproval with correct ids', async () => {
+    mockListInboxEvents.mockResolvedValue({ items: [approvalEvent] })
+    mockResolveApproval.mockResolvedValue({ ...waitingSession })
+    await openWaitingPanel()
+    await screen.findByText('Approve')
+    await act(async () => { fireEvent.click(screen.getByText('Approve')) })
+    expect(mockResolveApproval).toHaveBeenCalledWith('dc1', waitingSession.id, {
+      approval_request_id: approvalEvent.approval_request_id,
+      resolution: 'approved',
+    })
+  })
+
+  it('AC4: Reject calls resolveAgentSessionApproval with resolution=rejected', async () => {
+    mockListInboxEvents.mockResolvedValue({ items: [approvalEvent] })
+    mockResolveApproval.mockResolvedValue({ ...waitingSession })
+    await openWaitingPanel()
+    await screen.findByText('Reject')
+    await act(async () => { fireEvent.click(screen.getByText('Reject')) })
+    expect(mockResolveApproval).toHaveBeenCalledWith('dc1', waitingSession.id, {
+      approval_request_id: approvalEvent.approval_request_id,
+      resolution: 'rejected',
+    })
+  })
+
+  // AC4: reuses sendAgentSessionUserInput (existing endpoint)
+  it('AC4: Send answer calls sendAgentSessionUserInput with correct ids', async () => {
+    mockListInboxEvents.mockResolvedValue({ items: [questionEvent] })
+    mockSendUserInput.mockResolvedValue({ ...waitingSession })
+    await openWaitingPanel()
+    const textarea = await screen.findByPlaceholderText('Type your answer…')
+    fireEvent.change(textarea, { target: { value: 'Redis' } })
+    await act(async () => { fireEvent.click(screen.getByText('Send answer')) })
+    expect(mockSendUserInput).toHaveBeenCalledWith('dc1', waitingSession.id, {
+      inbox_event_id: questionEvent.id,
+      text: 'Redis',
+    })
+  })
+
+  // AC2: acting on card → state transitions to awaiting (card shows awaiting note, actions hidden)
+  it('AC2: after approve, card shows awaiting state and hides action buttons', async () => {
+    mockListInboxEvents.mockResolvedValue({ items: [approvalEvent] })
+    mockResolveApproval.mockResolvedValue({ ...waitingSession })
+    await openWaitingPanel()
+    await screen.findByText('Approve')
+    await act(async () => { fireEvent.click(screen.getByText('Approve')) })
+    // After submit: awaiting state — action buttons gone
+    await waitFor(() => expect(screen.queryByText('Approve')).toBeNull())
+    expect(screen.queryByText('Reject')).toBeNull()
+  })
+
+  // AC3: card clears (unmounts) once no pending intervention remains
+  it('AC3: card unmounts once inbox events refetch returns empty (resolved)', async () => {
+    // First call returns the pending event; on refetch (after SSE invalidation) returns empty
+    mockListInboxEvents
+      .mockResolvedValueOnce({ items: [approvalEvent] })
+      .mockResolvedValue({ items: [] })
+    await openWaitingPanel()
+    await screen.findByText('Approve')
+
+    // Simulate SSE invalidation that triggers inbox refetch
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: [] })
+    })
+
+    await waitFor(() => expect(screen.queryByText('Approve')).toBeNull())
+    expect(screen.queryByText('Reject')).toBeNull()
+  })
+
+  // AC3: card is keyed — no stale card when selected session has no pending intervention
+  it('AC3: no intervention card when selected session has no pending intervention', async () => {
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    const completedSess: AgentSession = { ...waitingSession, status: 'completed' }
+    mockFetchSessions.mockResolvedValue({ items: [completedSess] })
+    mockFetchSession.mockResolvedValue({ ...completedSess, summary_text: null })
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    mockListInboxEvents.mockResolvedValue({ items: [] })
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('No conversation yet.')
+    expect(screen.queryByText('Approve')).toBeNull()
+    expect(screen.queryByText('Send answer')).toBeNull()
+  })
+
+  // AC5: listInboxEvents is called with agentSessionId filter for the selected session
+  it('AC5: fetches inbox events filtered by agentSessionId for the selected session', async () => {
+    mockListInboxEvents.mockResolvedValue({ items: [approvalEvent] })
+    await openWaitingPanel()
+    await screen.findByText('Approve')
+    expect(mockListInboxEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ agentSessionId: waitingSession.id })
+    )
   })
 })
