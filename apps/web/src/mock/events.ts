@@ -44,6 +44,10 @@ export class MockEventSource {
   readonly url: string
   readyState: 0 | 1 | 2 = 0
 
+  // Tracks the last event id received — mirrors the native EventSource lastEventId
+  // property and is sent as Last-Event-ID on reconnect (VIB-111).
+  lastEventId: string = ''
+
   onopen: ((e: Event) => void) | null = null
   onerror: ((e: Event) => void) | null = null
 
@@ -74,10 +78,12 @@ export class MockEventSource {
     liveInstances.delete(this)
   }
 
-  // Internal: deliver a named event with string data
-  _deliver(type: string, data: string) {
+  // Internal: deliver a named event with optional id (mirrors SSE id: field).
+  // Updates lastEventId when id is provided, matching native EventSource behaviour.
+  _deliver(type: string, data: string, id?: string) {
     if (this.readyState !== 1) return
-    const e = Object.assign(new Event(type), { data }) as MessageEvent
+    if (id !== undefined) this.lastEventId = id
+    const e = Object.assign(new Event(type), { data, lastEventId: this.lastEventId }) as MessageEvent
     this._listeners[type]?.forEach((l) => l(e))
   }
 

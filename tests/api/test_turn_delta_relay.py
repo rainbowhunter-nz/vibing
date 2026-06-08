@@ -1,8 +1,8 @@
 """The agent WS routes turn_delta envelopes to the per-session SSE registry (ADR-0010).
 
 The agent registers on /runtime/agent/ws, then sends a turn_delta; a subscriber on the
-matching session sees the serialized delta. The global broadcaster is untouched
-(invalidation-only invariant, ADR-0005/0006).
+matching session sees the serialized delta as (event_id, data). The global broadcaster
+is untouched (invalidation-only invariant, ADR-0005/0006).
 """
 
 from fastapi.testclient import TestClient
@@ -20,7 +20,7 @@ def _agent_register(dc_id: str) -> dict:
 
 def test_turn_delta_is_relayed_to_session_subscribers(client: TestClient) -> None:
     registry = client.app.state.session_streams
-    q = registry.subscribe("sess-1")
+    _, q = registry.subscribe("sess-1")
 
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register("dc-1"))
@@ -33,19 +33,20 @@ def test_turn_delta_is_relayed_to_session_subscribers(client: TestClient) -> Non
                 "delta": {"kind": "text", "turn_id": "u-1", "role": "assistant", "text": "Hi"},
             }
         )
-        # Drain the queue (publish is synchronous on the WS intake thread).
         import json
         import time
 
         deadline = time.monotonic() + 2.0
-        data = None
+        item = None
         while time.monotonic() < deadline:
             try:
-                data = q.get_nowait()
+                item = q.get_nowait()
                 break
             except Exception:
                 time.sleep(0.01)
-        assert data is not None
+        assert item is not None
+        event_id, data = item
+        assert event_id  # non-empty id
         assert json.loads(data) == {
             "kind": "text",
             "turn_id": "u-1",
@@ -56,7 +57,7 @@ def test_turn_delta_is_relayed_to_session_subscribers(client: TestClient) -> Non
 
 def test_malformed_turn_delta_is_ignored(client: TestClient) -> None:
     registry = client.app.state.session_streams
-    q = registry.subscribe("sess-1")
+    _, q = registry.subscribe("sess-1")
 
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register("dc-1"))
@@ -76,12 +77,13 @@ def test_malformed_turn_delta_is_ignored(client: TestClient) -> None:
         import time
 
         deadline = time.monotonic() + 2.0
-        data = None
+        item = None
         while time.monotonic() < deadline:
             try:
-                data = q.get_nowait()
+                item = q.get_nowait()
                 break
             except Exception:
                 time.sleep(0.01)
-        assert data is not None
+        assert item is not None
+        event_id, data = item
         assert json.loads(data) == {"kind": "run_started"}

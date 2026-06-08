@@ -1,18 +1,22 @@
-// Mock per-session SSE delta playback (ADR-0010, VIB-109/110). Plays scripted assistant
-// text + tool_use deltas through the MockEventSource opened at a session's /stream URL,
-// so the live chat is inspectable without a real Control Plane. Mirrors how the real
-// per-session stream serializes turn-deltas (named `turn_delta` events, JSON data).
+// Mock per-session SSE delta playback with replay support (ADR-0010, VIB-111).
+// Plays scripted assistant text + tool_use deltas through the MockEventSource opened at
+// a session's /stream URL, so the live chat is inspectable without a real Control Plane.
+// Mirrors how the real per-session stream serializes turn-deltas (named `turn_delta`
+// events, JSON data) and carries a monotonic integer `id` on each event.
 //
-// Boundary (mock README): this is a UI inspection aid — it emits scripted deltas only,
-// it does NOT simulate Runtime Event processing or projection logic.
+// Replay support (VIB-111): the scripted buffer is kept in-memory per session.
+// deliverBuffered(sessionId, es) replays the buffer to a freshly-opened EventSource,
+// faithfully mirroring the real server's replay-on-connect behaviour. This makes
+// AC1/AC2 inspectable + testable with the mock: a fresh instance connects → replays
+// the buffer → continues live; a reconnect starting from lastEventId resumes mid-buffer.
+//
+// Boundary: scripted playback only — no Runtime Event simulation or projection logic.
 
 import type { TurnDelta } from '../lib/api/types'
-import { liveInstancesMatching } from './events'
+import { liveInstancesMatching, type MockEventSource } from './events'
 
-// Scripted deltas per session id. Each entry lists the steps after run_started / before
-// run_ended. Use the 'with-tool-use' session to see mixed text + tool_use cards live.
+// Scripted deltas per session id. Each entry lists the steps after run_started / before run_ended.
 const SCRIPTS: Record<string, { turnId: string; steps: TurnDelta[] }> = {
-  // Default script: token-by-token text only.
   default: {
     turnId: 'mock-live-turn',
     steps: ['Let', ' me', ' take', ' a', ' look', ' at', ' that', '.', ' Done!'].map((text) => ({
@@ -22,7 +26,6 @@ const SCRIPTS: Record<string, { turnId: string; steps: TurnDelta[] }> = {
       text,
     })),
   },
-  // Mixed text + tool_use cards, inspectable via the /mock route.
   'mock-tool-use-session': {
     turnId: 'mock-tool-turn',
     steps: [
@@ -35,6 +38,11 @@ const SCRIPTS: Record<string, { turnId: string; steps: TurnDelta[] }> = {
   },
 }
 
+// In-memory replay buffer per session: list of {id, data} for the current run.
+// Cleared on run_started, evicted on run_ended — mirrors the real registry lifecycle.
+const _buffers: Record<string, Array<{ id: string; data: string }>> = {}
+let _counters: Record<string, number> = {}
+
 function scriptFor(sessionId: string): { turnId: string; steps: TurnDelta[] } {
   return SCRIPTS[sessionId] ?? SCRIPTS.default
 }
@@ -44,10 +52,21 @@ function streamUrlMatcher(sessionId: string): (url: string) => boolean {
   return (url) => url.includes(needle)
 }
 
-function deliver(sessionId: string, delta: TurnDelta): void {
+function deliverToInstances(sessionId: string, delta: TurnDelta, id: string): void {
   const data = JSON.stringify(delta)
   for (const inst of liveInstancesMatching(streamUrlMatcher(sessionId))) {
-    inst._deliver('turn_delta', data)
+    inst._deliver('turn_delta', data, id)
+  }
+}
+
+/** Replay buffered events to a single EventSource instance starting after lastEventId. */
+export function deliverBuffered(sessionId: string, es: MockEventSource, lastEventId?: string): void {
+  const buf = _buffers[sessionId] ?? []
+  const after = lastEventId !== undefined ? parseInt(lastEventId, 10) : -1
+  for (const entry of buf) {
+    if (parseInt(entry.id, 10) > after) {
+      es._deliver('turn_delta', entry.data, entry.id)
+    }
   }
 }
 
@@ -63,6 +82,7 @@ const defaultSchedule = (fn: () => void, ms: number) => {
 }
 
 // Play a session's scripted deltas: run_started, then steps, then run_ended.
+// Each event is buffered (for replay on reconnect) and delivered with a monotonic id.
 // Returns a cancel function. Deterministic when a synchronous `schedule` is provided.
 export function playSessionStream(sessionId: string, opts: PlayOptions = {}): () => void {
   const { steps } = scriptFor(sessionId)
@@ -70,13 +90,30 @@ export function playSessionStream(sessionId: string, opts: PlayOptions = {}): ()
   const schedule = opts.schedule ?? defaultSchedule
   let cancelled = false
 
-  deliver(sessionId, { kind: 'run_started' })
+  // Reset buffer and counter for this run (matches registry begin_run).
+  _buffers[sessionId] = []
+  _counters[sessionId] = 1
+
+  const publish = (delta: TurnDelta): void => {
+    const id = String(_counters[sessionId]++)
+    const data = JSON.stringify(delta)
+    _buffers[sessionId].push({ id, data })
+    deliverToInstances(sessionId, delta, id)
+  }
+
+  publish({ kind: 'run_started' })
 
   const allSteps: TurnDelta[] = [...steps, { kind: 'run_ended' as const }]
 
   const step = (i: number) => {
     if (cancelled || i >= allSteps.length) return
-    deliver(sessionId, allSteps[i])
+    const delta = allSteps[i]
+    publish(delta)
+    // Evict buffer on run_ended (matches registry end_run).
+    if (delta.kind === 'run_ended') {
+      delete _buffers[sessionId]
+      delete _counters[sessionId]
+    }
     schedule(() => step(i + 1), delay)
   }
   step(0)
@@ -84,4 +121,10 @@ export function playSessionStream(sessionId: string, opts: PlayOptions = {}): ()
   return () => {
     cancelled = true
   }
+}
+
+/** Reset all mock buffer state (for tests). */
+export function resetMockSessionStreams(): void {
+  for (const key of Object.keys(_buffers)) delete _buffers[key]
+  _counters = {}
 }
