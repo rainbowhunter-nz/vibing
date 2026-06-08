@@ -63,9 +63,10 @@ function appendToolUse(state: LiveState, delta: ToolUseDelta): LiveState {
   }
 }
 
-// Live assistant turns not yet present in the canonical transcript (in arrival order).
-export function liveOnlyTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
-  if (live.ended) return []
+function pendingLiveTurns(
+  transcript: TranscriptTurn[],
+  live: LiveState,
+): TranscriptTurn[] {
   const transcriptIds = new Set(transcript.map((t) => t.id))
   return live.order
     .filter((id) => !transcriptIds.has(id) && live.byId[id]?.length)
@@ -77,9 +78,41 @@ export function liveOnlyTurns(transcript: TranscriptTurn[], live: LiveState): Tr
     }))
 }
 
+// Live assistant turns not yet present in the canonical transcript (in arrival order).
+// After run_ended, hold live bubbles until the refetched transcript reconciles them by id.
+// `runEndBaseline` is the transcript turn-id set captured when run_ended arrived — used to
+// detect canonical turns landing under different ids vs still waiting for the streamed turn.
+export function liveOnlyTurns(
+  transcript: TranscriptTurn[],
+  live: LiveState,
+  holdWhileRefetching = false,
+  runEndBaseline: ReadonlySet<string> | null = null,
+): TranscriptTurn[] {
+  const pending = pendingLiveTurns(transcript, live)
+  if (!live.ended || holdWhileRefetching) return pending
+  if (pending.length === 0) return []
+  if (transcript.length === 0) return pending
+
+  const baseline = runEndBaseline ?? new Set(transcript.map((t) => t.id))
+  const hasNewTurns = transcript.some((t) => !baseline.has(t.id))
+  if (hasNewTurns) return []
+
+  const baselineHadAssistant = transcript.some(
+    (t) => t.role === 'assistant' && baseline.has(t.id),
+  )
+  if (baselineHadAssistant) return []
+
+  return pending
+}
+
 // Merge canonical transcript turns with accumulated live blocks. Transcript turns render
 // as-is and are authoritative; live blocks for ids NOT yet in the transcript append as
 // in-progress assistant bubbles (in arrival order, after the transcript).
-export function mergeTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
-  return [...transcript, ...liveOnlyTurns(transcript, live)]
+export function mergeTurns(
+  transcript: TranscriptTurn[],
+  live: LiveState,
+  holdWhileRefetching = false,
+  runEndBaseline: ReadonlySet<string> | null = null,
+): TranscriptTurn[] {
+  return [...transcript, ...liveOnlyTurns(transcript, live, holdWhileRefetching, runEndBaseline)]
 }

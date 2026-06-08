@@ -631,6 +631,27 @@ describe('SessionDetailPanel — live stream (ADR-0010)', () => {
     await waitFor(() => expect(screen.getAllByText('Hello')).toHaveLength(1))
   })
 
+  it('repro: run_ended flicker — assistant reply stays visible until transcript reconciles', async () => {
+    const stream = await openRunningPanel()
+    act(() => {
+      stream.emit({ kind: 'run_started' })
+      stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'Hello' })
+    })
+    await waitFor(() => expect(screen.getByText('Hello')).toBeTruthy())
+
+    // Refetch completes before the streamed turn lands in the canonical transcript
+    // (mock play-live-deltas path; real backend can race similarly).
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    act(() => {
+      stream.emit({ kind: 'run_ended' })
+    })
+    await waitFor(() => expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(1))
+
+    // Expected after fix: reply stays visible (held from live state) until transcript catches up.
+    expect(screen.getByText('Hello')).toBeTruthy()
+    expect(screen.queryByText('No conversation yet.')).toBeNull()
+  })
+
   it('AC4: resting session opens NO stream (transcript-only)', async () => {
     mockOpenStream.mockClear()
     mockFetch.mockResolvedValue(sample)
@@ -718,10 +739,11 @@ describe('ChatComposer — resume (Continue) behavior', () => {
     expect(screen.getByText('Agent not connected')).toBeTruthy()
   })
 
-  it('AC3: submitting calls resumeAgentSession and refetches sessions + transcript', async () => {
+  it('AC3: submitting calls resumeAgentSession and refetches sessions + session detail', async () => {
     await openPanel({ ...sample, status: 'running' }, [restingSession])
     mockResume.mockResolvedValue({ ...restingSession, status: 'starting' })
     const sessionsCallsBefore = mockFetchSessions.mock.calls.length
+    const sessionCallsBefore = mockFetchSession.mock.calls.length
     const transcriptCallsBefore = mockFetchTranscript.mock.calls.length
 
     const textarea = screen.getByPlaceholderText('Send a follow-up…')
@@ -730,7 +752,8 @@ describe('ChatComposer — resume (Continue) behavior', () => {
 
     expect(mockResume).toHaveBeenCalledWith('dc1', restingSession.id, { prompt: 'now run the tests' })
     expect(mockFetchSessions.mock.calls.length).toBeGreaterThan(sessionsCallsBefore)
-    expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(transcriptCallsBefore)
+    expect(mockFetchSession.mock.calls.length).toBeGreaterThan(sessionCallsBefore)
+    expect(mockFetchTranscript.mock.calls.length).toBe(transcriptCallsBefore)
   })
 })
 

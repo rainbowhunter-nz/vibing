@@ -82,25 +82,25 @@ function DevcontainerInfo({ dc }: { dc: DevcontainerView }) {
 
   return (
     <div className="shrink-0 border-b border-border bg-surface-rail px-4 py-2.5">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="min-w-0 truncate text-[14px] font-semibold text-text">{dc.name}</span>
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
+          {dc.status}
+        </span>
+        <span
+          className={cn(
+            'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+            agentOk ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-muted text-text-muted',
+          )}
+        >
+          {agentOk ? 'agent connected' : 'agent offline'}
+        </span>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="ml-auto shrink-0 text-[11px] text-text-muted hover:text-text"
         >
-          <span className="truncate text-[14px] font-semibold text-text">{dc.name}</span>
-          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
-            {dc.status}
-          </span>
-          <span
-            className={cn(
-              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
-              agentOk ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-muted text-text-muted',
-            )}
-          >
-            {agentOk ? 'agent connected' : 'agent offline'}
-          </span>
-          <span className="ml-auto shrink-0 text-[11px] text-text-muted">{expanded ? '▾' : '▸'} details</span>
+          {expanded ? '▾' : '▸'} details
         </button>
       </div>
       {expanded && (
@@ -132,40 +132,41 @@ function SessionRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 border-b border-border last:border-b-0',
+        'border-b border-border last:border-b-0',
         selected ? 'border-l-[3px] border-l-accent bg-accent-bg/40' : 'hover:bg-surface-muted',
       )}
     >
-      <button
-        onClick={() => onSelect(session.id)}
-        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left"
-      >
-        <span className="font-mono text-[12px] text-text-muted">{session.id.slice(0, 8)}</span>
-        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
-          {session.status}
-        </span>
-        {session.prompt && (
-          <span className="min-w-0 flex-1 truncate text-[12px] text-text">{session.prompt}</span>
-        )}
-        {session.last_event_at && (
-          <span className="shrink-0 text-[11px] text-text-muted">{formatRelativeTime(session.last_event_at)}</span>
-        )}
-      </button>
-      {!isActive && (
+      <div className="flex min-w-0 items-start gap-1">
         <button
-          title="Delete"
-          disabled={deleting}
-          onClick={() => onDelete(session.id)}
-          className={cn(
-            'mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px]',
-            deleting
-              ? 'cursor-not-allowed text-bad opacity-[0.4]'
-              : 'cursor-pointer text-bad hover:bg-surface-muted',
-          )}
+          onClick={() => onSelect(session.id)}
+          className={cn('flex min-w-0 flex-1 flex-col gap-1 py-2.5 text-left', isActive ? 'px-4' : 'pl-4 pr-2')}
         >
-          {trashIcon}
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 font-mono text-[12px] text-text-muted">{session.id.slice(0, 8)}</span>
+            <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
+              {session.status}
+            </span>
+          </div>
+          {session.prompt && (
+            <span className="truncate text-[12px] text-text">{session.prompt}</span>
+          )}
         </button>
-      )}
+        {!isActive && (
+          <button
+            title="Delete"
+            disabled={deleting}
+            onClick={() => onDelete(session.id)}
+            className={cn(
+              'mr-1 mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px]',
+              deleting
+                ? 'cursor-not-allowed text-bad opacity-[0.4]'
+                : 'cursor-pointer text-bad hover:bg-surface-muted',
+            )}
+          >
+            {trashIcon}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -413,7 +414,7 @@ function ConversationBody({
     () => fetchAgentSession(devcontainerId, sessionId),
     [devcontainerId, sessionId],
   )
-  const { state: transcriptState, refetch: transcriptRefetch } = useApiQuery(
+  const { state: transcriptState, refetch: transcriptRefetch, isFetching: transcriptFetching } = useApiQuery(
     () => fetchAgentSessionTranscript(devcontainerId, sessionId),
     [devcontainerId, sessionId],
   )
@@ -450,8 +451,22 @@ function ConversationBody({
   )
   const reconciledTurnIds = useMemo(() => new Set(transcriptTurns.map((t) => t.id)), [transcriptTurns])
   const live = useSessionStream(devcontainerId, sessionId, isActive, transcriptRefetch, reconciledTurnIds)
-  const streamingTurns = useMemo(() => liveOnlyTurns(transcriptTurns, live), [transcriptTurns, live])
-  const mergedTurns = useMemo(() => mergeTurns(transcriptTurns, live), [transcriptTurns, live])
+  const runEndBaselineRef = useRef<Set<string> | null>(null)
+  const wasEndedRef = useRef(false)
+  if (live.ended && !wasEndedRef.current) {
+    runEndBaselineRef.current = new Set(transcriptTurns.map((t) => t.id))
+  }
+  if (!live.ended) runEndBaselineRef.current = null
+  wasEndedRef.current = live.ended
+  const runEndBaseline = runEndBaselineRef.current
+  const streamingTurns = useMemo(
+    () => liveOnlyTurns(transcriptTurns, live, transcriptFetching, runEndBaseline),
+    [transcriptTurns, live, transcriptFetching, runEndBaseline],
+  )
+  const mergedTurns = useMemo(
+    () => mergeTurns(transcriptTurns, live, transcriptFetching, runEndBaseline),
+    [transcriptTurns, live, transcriptFetching, runEndBaseline],
+  )
 
   // Auto-scroll: stick to bottom, pause on user scroll-up, show jump button when unstuck.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -513,7 +528,26 @@ function ConversationBody({
     if (stickToBottom) scrollToBottom()
   }, [transcriptTurns.length, streamingTurns.length, pendingUserText, live.order.length, stickToBottom, scrollToBottom])
 
-  if (state.kind === 'loading') {
+  if (state.kind === 'loading' && pendingUserText) {
+    return (
+      <>
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-surface-rail/50 px-4 py-2 text-[11px] text-text-muted">
+          <span className="shrink-0 font-mono text-text">{sessionId.slice(0, 8)}</span>
+        </div>
+        <div className="relative flex-1 overflow-hidden">
+          <div ref={scrollRef} data-testid="conversation-scroll" className="h-full overflow-auto px-4 py-4">
+            <div className="mx-auto flex max-w-3xl flex-col gap-3">
+              <ConversationBubble role="user" sending>
+                <p>{pendingUserText}</p>
+              </ConversationBubble>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  if (state.kind === 'loading' && !pendingUserText) {
     return (
       <div className="flex-1 overflow-auto px-4 py-4">
         <p className="text-[13px] text-text-muted">Loading session…</p>
@@ -536,6 +570,8 @@ function ConversationBody({
     )
   }
 
+  if (state.kind !== 'ready') return null
+
   const session = state.data
   const showWorking = isWorkingIndicatorVisible(isActive, live)
 
@@ -547,7 +583,7 @@ function ConversationBody({
       : null
 
   function renderTranscript() {
-    if (transcriptState.kind === 'loading') {
+    if (transcriptState.kind === 'loading' && !pendingUserText && transcriptTurns.length === 0) {
       return <p className="text-[13px] text-text-muted">Loading conversation…</p>
     }
 
@@ -610,12 +646,12 @@ function ConversationBody({
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-rail/50 px-4 py-2 text-[11px] text-text-muted">
-        <span className="font-mono text-text">{session.id.slice(0, 8)}</span>
-        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-surface-rail/50 px-4 py-2 text-[11px] text-text-muted">
+        <span className="shrink-0 font-mono text-text">{session.id.slice(0, 8)}</span>
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', agentSessionBadgeClass(session.status))}>
           {session.status}
         </span>
-        {session.prompt && <span className="min-w-0 truncate text-text">· {session.prompt}</span>}
+        {session.prompt && <span className="min-w-0 flex-1 truncate text-text">· {session.prompt}</span>}
       </div>
       <div className="relative flex-1 overflow-hidden">
         <div
@@ -720,7 +756,6 @@ function TwoPaneLayout({
 }) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
-  const transcriptRefetchRef = useRef<() => void>(() => {})
   const sessionRefetchRef = useRef<() => void>(() => {})
   const [pendingUserText, setPendingUserText] = useState<string | null>(null)
 
@@ -738,7 +773,6 @@ function TwoPaneLayout({
     if (sessionId) setSelectedSessionId(sessionId)
     refetchSessions()
     sessionRefetchRef.current()
-    transcriptRefetchRef.current()
   }
 
   return (
@@ -747,14 +781,16 @@ function TwoPaneLayout({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {!sessionsCollapsed && (
-          <div className="flex w-[260px] shrink-0 flex-col overflow-auto border-r border-border bg-surface-rail">
-            <AgentSessionsList
+          <div className="flex w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-surface-rail">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <AgentSessionsList
               dc={dc}
               sessions={sessions}
               selectedId={conversationSessionId}
               onSelect={setSelectedSessionId}
               onSessionsChange={refetchSessions}
             />
+            </div>
           </div>
         )}
 
@@ -773,7 +809,7 @@ function TwoPaneLayout({
               dc={dc}
               sessionId={conversationSessionId}
               onRefetch={refetchSessions}
-              onRegisterTranscriptRefetch={(fn) => { transcriptRefetchRef.current = fn }}
+              onRegisterTranscriptRefetch={() => {}}
               onRegisterSessionRefetch={(fn) => { sessionRefetchRef.current = fn }}
               pendingUserText={pendingUserText}
               onPendingReconciled={() => setPendingUserText(null)}
@@ -829,7 +865,9 @@ export function DevcontainerDetail() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PageHeader title="Devcontainer" crumbs="Detail" />
+      <div className="shrink-0">
+        <PageHeader title="Devcontainer" crumbs="Detail" />
+      </div>
       <QueryBoundary state={state} error={errorElement(state.kind === 'error' ? state.error : null)}>
         {(dc) => (
           sessionsState.kind === 'ready' ? (

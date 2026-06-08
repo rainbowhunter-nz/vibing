@@ -135,8 +135,27 @@ describe('mergeTurns', () => {
     let live = emptyLiveState()
     live = liveReducer(live, { kind: 'text', turn_id: 'stream-id', role: 'assistant', text: 'Hello there' })
     live = liveReducer(live, { kind: 'run_ended' })
-    expect(liveOnlyTurns(transcript, live)).toEqual([])
-    expect(mergeTurns(transcript, live)).toEqual(transcript)
+    const baseline = new Set(['u1', 'canonical-id'])
+    expect(liveOnlyTurns(transcript, live, false, baseline)).toEqual([])
+    expect(mergeTurns(transcript, live, false, baseline)).toEqual(transcript)
+  })
+
+  it('keeps live bubbles after run ends when transcript refetch is still empty', () => {
+    const transcript: TranscriptTurn[] = []
+    let live = emptyLiveState()
+    live = liveReducer(live, { kind: 'text', turn_id: 'stream-id', role: 'assistant', text: 'Hello there' })
+    live = liveReducer(live, { kind: 'run_ended' })
+    expect(liveOnlyTurns(transcript, live, false, new Set())).toEqual([
+      assistantTurn('stream-id', 'Hello there'),
+    ])
+  })
+
+  it('keeps live bubbles visible while transcript refetch is in flight after run ends', () => {
+    const transcript = [userTurn('u1', 'hi')]
+    let live = emptyLiveState()
+    live = liveReducer(live, { kind: 'text', turn_id: 'stream-id', role: 'assistant', text: 'Hello there' })
+    live = liveReducer(live, { kind: 'run_ended' })
+    expect(liveOnlyTurns(transcript, live, true)).toEqual([assistantTurn('stream-id', 'Hello there')])
   })
 
   it('preserves transcript order and does not reorder', () => {

@@ -4,12 +4,10 @@ Connects to the Control Plane agent channel, registers with a devcontainer_id,
 and handles Commands via AgentCommandHandler (runs Claude on start_agent_session).
 """
 
-import asyncio
-
 import typer
 from logzero import logger
 from vibing_protocol import RegisterEnvelope, RuntimeEventSource
-from vibing_runtime_client import RuntimeChannelClient
+from vibing_runtime_client import RuntimeChannelClient, run_client
 
 from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner
 from vibing_devcontainer_runtime.command_handler import AgentCommandHandler
@@ -44,7 +42,7 @@ def serve(
     client = RuntimeChannelClient(
         control_plane_url, register, handler, transcript_handler=transcript_handler
     )
-    asyncio.run(client.run())
+    run_client(client)
 
 
 def main() -> None:

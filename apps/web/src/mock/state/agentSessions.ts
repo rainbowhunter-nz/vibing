@@ -1,4 +1,4 @@
-import type { AgentSession, AgentSessionDetail, AgentSessionList, AgentSessionResumeBody, AgentSessionStartBody, AgentSessionTranscript, TranscriptTurn } from '../../lib/api/types'
+import type { AgentSession, AgentSessionDetail, AgentSessionList, AgentSessionResumeBody, AgentSessionStartBody, AgentSessionTranscript, TranscriptBlock, TranscriptTurn } from '../../lib/api/types'
 import { getDevcontainer } from './devcontainers'
 import { seedAgentSessions } from './seeds'
 
@@ -157,6 +157,40 @@ export function resumeAgentSession(devcontainerId: string, sessionId: string, bo
   const turns = transcriptStore[sessionId] ?? []
   transcriptStore[sessionId] = [...turns, { id: `${sessionId}-resume-${turns.length}`, role: 'user', blocks: [{ kind: 'text', text: body.prompt }], at: ts }]
 
+  return { ...store[idx] }
+}
+
+export function completeAgentSessionRun(
+  sessionId: string,
+  assistantTurn: { id: string; blocks: TranscriptBlock[] },
+): AgentSession {
+  const idx = findIdx(sessionId)
+  const ts = now()
+  const session = store[idx]
+  const turns = transcriptStore[sessionId] ?? []
+  const nextTurns = [...turns]
+  if (session.prompt && !nextTurns.some((t) => t.role === 'user')) {
+    nextTurns.push({
+      id: `${sessionId}-u0`,
+      role: 'user',
+      blocks: [{ kind: 'text', text: session.prompt }],
+      at: session.started_at ?? ts,
+    })
+  }
+  nextTurns.push({
+    id: assistantTurn.id,
+    role: 'assistant',
+    blocks: assistantTurn.blocks,
+    at: ts,
+  })
+  transcriptStore[sessionId] = nextTurns
+  store[idx] = {
+    ...session,
+    status: 'completed',
+    ended_at: ts,
+    last_event_at: ts,
+    updated_at: ts,
+  }
   return { ...store[idx] }
 }
 

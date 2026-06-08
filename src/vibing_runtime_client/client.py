@@ -109,9 +109,14 @@ class RuntimeChannelClient:
         self._sleep: SleepFn = sleep or asyncio.sleep
         self._backoff = backoff or Backoff()
         self._stopped = False
+        self._ws: Any | None = None
 
     def stop(self) -> None:
         self._stopped = True
+        ws = self._ws
+        if ws is not None:
+            with contextlib.suppress(Exception):
+                asyncio.get_running_loop().create_task(ws.close())
 
     async def run(self) -> None:
         """Reconnect forever (until stopped), backing off between attempts."""
@@ -131,27 +136,31 @@ class RuntimeChannelClient:
             await self._sleep(delay)
 
     async def _run_session(self, ws: Any) -> None:
-        await ws.send(json.dumps(self._register.model_dump()))
-        logger.info("Registered with control plane; awaiting commands")
-        queue: asyncio.Queue[Command] = asyncio.Queue()
-        consumer = asyncio.create_task(self._consume(queue, ws))
+        self._ws = ws
         try:
-            while True:
-                inbound = _parse_inbound(await ws.recv())
-                if isinstance(inbound, TranscriptRequestEnvelope):
-                    await self._reply_transcript(ws, inbound)
-                elif inbound is not None:
-                    logger.info(
-                        "Received command %s (devcontainer=%s, session=%s)",
-                        inbound.type,
-                        inbound.devcontainer_id,
-                        inbound.agent_session_id,
-                    )
-                    queue.put_nowait(inbound)
+            await ws.send(json.dumps(self._register.model_dump()))
+            logger.info("Registered with control plane; awaiting commands")
+            queue: asyncio.Queue[Command] = asyncio.Queue()
+            consumer = asyncio.create_task(self._consume(queue, ws))
+            try:
+                while not self._stopped:
+                    inbound = _parse_inbound(await ws.recv())
+                    if isinstance(inbound, TranscriptRequestEnvelope):
+                        await self._reply_transcript(ws, inbound)
+                    elif inbound is not None:
+                        logger.info(
+                            "Received command %s (devcontainer=%s, session=%s)",
+                            inbound.type,
+                            inbound.devcontainer_id,
+                            inbound.agent_session_id,
+                        )
+                        queue.put_nowait(inbound)
+            finally:
+                consumer.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await consumer
         finally:
-            consumer.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await consumer
+            self._ws = None
 
     async def _consume(self, queue: "asyncio.Queue[Command]", ws: Any) -> None:
         emit = self._make_emit(ws)

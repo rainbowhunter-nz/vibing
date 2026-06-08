@@ -228,6 +228,28 @@ def test_reconnects_with_bounded_backoff_after_failures() -> None:
     assert delays == [0.5, 1.0, 0.5]  # exponential growth, then reset after the success
 
 
+def test_stop_closes_active_websocket_and_exits() -> None:
+    closed = asyncio.Event()
+    unblock = asyncio.Event()
+
+    class ClosingWS(FakeWS):
+        async def close(self) -> None:
+            closed.set()
+            unblock.set()
+
+    ws = ClosingWS([unblock])
+    client = _client(connect=FakeConnect([ws]))
+
+    async def scenario() -> None:
+        run_task = asyncio.create_task(client.run())
+        await asyncio.sleep(0)
+        client.stop()
+        await asyncio.wait_for(run_task, timeout=1.0)
+
+    asyncio.run(scenario())
+    assert closed.is_set()
+
+
 def test_in_flight_command_not_replayed_after_reconnect() -> None:
     entered = asyncio.Event()
     block = asyncio.Event()  # never set: handler stays in-flight

@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { installMockEventSource, resetMockEvents, setStreamState } from '../events'
 import { playSessionStream } from '../agentSessionStreams'
+import {
+  getAgentSession,
+  getAgentSessionTranscript,
+  resetAgentSessions,
+} from '../state/agentSessions'
 import type { TurnDelta } from '../../lib/api/types'
 
 // Synchronous scheduler so playback is deterministic (no wall-clock dependency).
@@ -10,6 +15,7 @@ describe('mock per-session SSE delta playback', () => {
   beforeEach(() => {
     installMockEventSource()
     resetMockEvents()
+    resetAgentSessions()
     setStreamState('connected')
   })
   afterEach(() => {
@@ -89,5 +95,25 @@ describe('mock per-session SSE delta playback', () => {
     cancel()
     pending.forEach((fn) => fn()) // these should no-op after cancel
     expect(received.length).toBe(afterStart)
+  })
+
+  it('marks session completed and persists transcript when playback finishes', async () => {
+    openStream('as-seed-0005')
+    await Promise.resolve()
+
+    playSessionStream('as-seed-0005', { schedule: syncSchedule })
+
+    const session = getAgentSession('dc-seed-0001', 'as-seed-0005')
+    expect(session.status).toBe('completed')
+    expect(session.ended_at).not.toBeNull()
+
+    const transcript = getAgentSessionTranscript('dc-seed-0001', 'as-seed-0005')
+    expect(transcript.state).toBe('has_turns')
+    expect(transcript.turns).toHaveLength(2)
+    expect(transcript.turns[0]?.role).toBe('user')
+    expect(transcript.turns[1]?.role).toBe('assistant')
+    expect(transcript.turns[1]?.blocks).toEqual([
+      { kind: 'text', text: 'Let me take a look at that. Done!' },
+    ])
   })
 })

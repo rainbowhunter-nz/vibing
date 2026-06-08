@@ -12,8 +12,9 @@
 //
 // Boundary: scripted playback only — no Runtime Event simulation or projection logic.
 
-import type { TurnDelta } from '../lib/api/types'
-import { liveInstancesMatching, type MockEventSource } from './events'
+import type { TranscriptBlock, TurnDelta } from '../lib/api/types'
+import { emitInvalidation, liveInstancesMatching, type MockEventSource } from './events'
+import { completeAgentSessionRun, NotFoundError } from './state/agentSessions'
 
 // Scripted deltas per session id. Each entry lists the steps after run_started / before run_ended.
 const SCRIPTS: Record<string, { turnId: string; steps: TurnDelta[] }> = {
@@ -47,6 +48,26 @@ function scriptFor(sessionId: string): { turnId: string; steps: TurnDelta[] } {
   return SCRIPTS[sessionId] ?? SCRIPTS.default
 }
 
+function stepsToBlocks(steps: TurnDelta[]): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = []
+  let text = ''
+  const flush = () => {
+    if (text) {
+      blocks.push({ kind: 'text', text })
+      text = ''
+    }
+  }
+  for (const step of steps) {
+    if (step.kind === 'text') text += step.text
+    else if (step.kind === 'tool_use') {
+      flush()
+      blocks.push({ kind: 'tool_use', name: step.name, summary: step.summary })
+    }
+  }
+  flush()
+  return blocks
+}
+
 function streamUrlMatcher(sessionId: string): (url: string) => boolean {
   const needle = `/agent-sessions/${sessionId}/stream`
   return (url) => url.includes(needle)
@@ -75,6 +96,8 @@ export interface PlayOptions {
   tokenDelayMs?: number
   // Injectable scheduler so tests can drive playback deterministically (no wall-clock).
   schedule?: (fn: () => void, ms: number) => void
+  // When true (default), mark the session completed and persist transcript on run_ended.
+  completeSession?: boolean
 }
 
 const defaultSchedule = (fn: () => void, ms: number) => {
@@ -85,9 +108,11 @@ const defaultSchedule = (fn: () => void, ms: number) => {
 // Each event is buffered (for replay on reconnect) and delivered with a monotonic id.
 // Returns a cancel function. Deterministic when a synchronous `schedule` is provided.
 export function playSessionStream(sessionId: string, opts: PlayOptions = {}): () => void {
-  const { steps } = scriptFor(sessionId)
+  const script = scriptFor(sessionId)
+  const { steps } = script
   const delay = opts.tokenDelayMs ?? 0
   const schedule = opts.schedule ?? defaultSchedule
+  const completeSession = opts.completeSession ?? true
   let cancelled = false
 
   // Reset buffer and counter for this run (matches registry begin_run).
@@ -113,6 +138,17 @@ export function playSessionStream(sessionId: string, opts: PlayOptions = {}): ()
     if (delta.kind === 'run_ended') {
       delete _buffers[sessionId]
       delete _counters[sessionId]
+      if (completeSession) {
+        try {
+          completeAgentSessionRun(sessionId, {
+            id: script.turnId,
+            blocks: stepsToBlocks(steps),
+          })
+          emitInvalidation('agent_sessions')
+        } catch (e) {
+          if (!(e instanceof NotFoundError)) throw e
+        }
+      }
     }
     schedule(() => step(i + 1), delay)
   }

@@ -28,6 +28,7 @@ export function useSessionStream(
 
   useEffect(() => {
     if (!active || typeof EventSource === 'undefined') return
+    setLive(emptyLiveState())
     const es = openAgentSessionStream(devcontainerId, sessionId)
     if (!es || typeof es.addEventListener !== 'function') return
     const handle = (e: Event) => {

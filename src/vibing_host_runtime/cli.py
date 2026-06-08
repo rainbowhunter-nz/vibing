@@ -5,12 +5,10 @@ A single flat Typer command that builds a `WorkerConfig` and runs the worker loo
 `RuntimeChannelClient` from `vibing_runtime_client`.
 """
 
-import asyncio
-
 import typer
 from logzero import logger
 from vibing_protocol import RegisterEnvelope, RuntimeEventSource
-from vibing_runtime_client import RuntimeChannelClient
+from vibing_runtime_client import RuntimeChannelClient, run_client
 
 from vibing_host_runtime.client import (
     DEFAULT_AGENT_CONTROL_PLANE_URL,
@@ -67,7 +65,7 @@ def run_worker(config: WorkerConfig) -> None:
     handler = DevcontainerCommandHandler(adapter, launcher=launcher)
     register = RegisterEnvelope(source=RuntimeEventSource.HOST_RUNTIME_WORKER)
     client = RuntimeChannelClient(config.control_plane_url, register, handler.handle)
-    asyncio.run(client.run())
+    run_client(client)
 
 
 def main() -> None:

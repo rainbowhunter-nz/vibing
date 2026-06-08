@@ -84,6 +84,10 @@ logs/
 playwright-report/
 test-results/
 coverage/
+.playwright-mcp/
+
+# Ad-hoc manual verification screenshots (repo root only)
+/*.png
 
 # -----------------------------
 # Docker / devcontainer local files

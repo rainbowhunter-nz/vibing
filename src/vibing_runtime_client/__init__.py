@@ -8,6 +8,7 @@ from vibing_runtime_client.client import (
     SleepFn,
     TranscriptHandler,
 )
+from vibing_runtime_client.runner import run_client
 
 __all__ = [
     "Backoff",
@@ -16,6 +17,7 @@ __all__ = [
     "EmitDeltaFn",
     "EmitFn",
     "RuntimeChannelClient",
+    "run_client",
     "SleepFn",
     "TranscriptHandler",
 ]

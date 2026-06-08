@@ -2,8 +2,6 @@
 
 import pytest
 from typer.testing import CliRunner
-from collections.abc import Coroutine
-from typing import Any
 
 import vibing_devcontainer_runtime.cli as cli_module
 from vibing_devcontainer_runtime.cli import DEFAULT_CONTROL_PLANE_URL, cli
@@ -16,17 +14,10 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[RuntimeChannelClient]:
     """Capture the RuntimeChannelClient the CLI builds without running it."""
     clients: list[RuntimeChannelClient] = []
 
-    def fake_asyncio_run(coro: Coroutine[Any, Any, Any]) -> None:
-        coro.close()
+    def fake_run_client(client: RuntimeChannelClient) -> None:
+        clients.append(client)
 
-    monkeypatch.setattr(cli_module.asyncio, "run", fake_asyncio_run)
-
-    class CapturingClient(RuntimeChannelClient):
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            super().__init__(*args, **kwargs)  # type: ignore[arg-type]
-            clients.append(self)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(cli_module, "RuntimeChannelClient", CapturingClient)
+    monkeypatch.setattr(cli_module, "run_client", fake_run_client)
     return clients  # type: ignore[return-value]
 
 
