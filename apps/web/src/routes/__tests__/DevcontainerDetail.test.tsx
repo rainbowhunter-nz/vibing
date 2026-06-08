@@ -584,7 +584,8 @@ describe('SessionDetailPanel — live stream (ADR-0010)', () => {
     renderPage('dc1')
     await screen.findByText('Agent Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
-    await screen.findByText('No conversation yet.')
+    // Active session → working indicator shows instead of "No conversation yet."
+    await screen.findByText('Working…')
     return stream
   }
 
@@ -653,6 +654,8 @@ describe('ChatComposer — resume (Continue) behavior', () => {
     updated_at: '2024-01-16T10:05:00Z',
   }
 
+  const ACTIVE_SESSION_STATUSES = new Set(['starting', 'running', 'waiting_for_approval'])
+
   async function openPanel(dc: DevcontainerView, sessions: AgentSession[]) {
     mockFetch.mockResolvedValue(dc)
     mockFetchSessions.mockResolvedValue({ items: sessions })
@@ -661,7 +664,10 @@ describe('ChatComposer — resume (Continue) behavior', () => {
     renderPage('dc1')
     await screen.findByText('Agent Sessions')
     fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
-    await screen.findByText('No conversation yet.')
+    // The clicked session (sessions[0], id starts with 'sess-000') drives the panel state.
+    // Active selected session → working indicator; resting selected session → "No conversation yet."
+    const selectedActive = ACTIVE_SESSION_STATUSES.has(sessions[0].status)
+    await screen.findByText(selectedActive ? 'Working…' : 'No conversation yet.')
   }
 
   it('AC5: shows Continue button for resting session in running, connected devcontainer', async () => {
@@ -763,5 +769,244 @@ describe('Two-pane layout', () => {
     await screen.findByText('Agent Sessions')
     // Composer textarea always present
     expect(screen.getByPlaceholderText('Enter a prompt…')).toBeTruthy()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// VIB-112: Snappy chat — optimistic echo, scroll, working indicator
+// ---------------------------------------------------------------------------
+
+describe('VIB-112 snappy chat interactions', () => {
+  class StreamES {
+    url: string
+    private listeners: Record<string, Set<EventListener>> = {}
+    closed = false
+    constructor(url: string) { this.url = url }
+    addEventListener(type: string, l: EventListener) { (this.listeners[type] ??= new Set()).add(l) }
+    removeEventListener(type: string, l: EventListener) { this.listeners[type]?.delete(l) }
+    close() { this.closed = true }
+    emit(delta: unknown) {
+      const e = Object.assign(new Event('turn_delta'), { data: JSON.stringify(delta) }) as MessageEvent
+      this.listeners['turn_delta']?.forEach((l) => l(e))
+    }
+  }
+
+  const runningSession: AgentSession = {
+    id: 'sess-0001-0000-0000-000000000001',
+    devcontainer_id: 'dc1',
+    status: 'running',
+    prompt: 'Do the thing',
+    started_at: '2024-01-16T10:00:00Z',
+    ended_at: null,
+    last_event_at: null,
+    created_at: '2024-01-16T10:00:00Z',
+    updatedAt: '2024-01-16T10:00:00Z',
+    updated_at: '2024-01-16T10:00:00Z',
+  } as AgentSession
+
+  const restingSession: AgentSession = {
+    id: 'sess-0001-0000-0000-000000000001',
+    devcontainer_id: 'dc1',
+    status: 'completed',
+    prompt: 'Do the thing',
+    started_at: '2024-01-16T10:00:00Z',
+    ended_at: '2024-01-16T10:05:00Z',
+    last_event_at: null,
+    created_at: '2024-01-16T10:00:00Z',
+    updated_at: '2024-01-16T10:05:00Z',
+  }
+
+  async function openRunningPanel(): Promise<StreamES> {
+    const stream = new StreamES('/stream')
+    mockOpenStream.mockReturnValue(stream as unknown as EventSource)
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    mockFetchSessions.mockResolvedValue({ items: [runningSession] })
+    mockFetchSession.mockResolvedValue({ ...runningSession, summary_text: null })
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('Working…')
+    return stream
+  }
+
+  // AC1: optimistic echo — input cleared immediately, bubble shown
+  it('AC1: clears input immediately and shows optimistic bubble on send', async () => {
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    mockFetchSessions.mockResolvedValue({ items: [] })
+    mockStart.mockReturnValue(new Promise(() => {})) // never resolves — simulate network delay
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+
+    const textarea = screen.getByPlaceholderText('Enter a prompt…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'hello agent' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Start' })) })
+
+    // Input cleared immediately (before the API call resolves)
+    expect(textarea.value).toBe('')
+    // Optimistic bubble visible
+    expect(screen.getByText('hello agent')).toBeTruthy()
+  })
+
+  // AC2: reconcile — no duplicate bubble when real user turn arrives in the session transcript.
+  // Uses resume flow (session already selected) so ConversationBody is mounted and the
+  // reconcile useEffect can fire when the transcript refetch returns the real user turn.
+  it('AC2: reconciles optimistic bubble when real user turn arrives (no duplicate)', async () => {
+    const stream = new StreamES('/stream-ac2')
+    mockOpenStream.mockReturnValue(stream as unknown as EventSource)
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    // Session starts resting; after resume it becomes running
+    mockFetchSessions
+      .mockResolvedValueOnce({ items: [restingSession] })
+      .mockResolvedValue({ items: [runningSession] })
+    mockFetchSession
+      .mockResolvedValueOnce({ ...restingSession, summary_text: null })
+      .mockResolvedValue({ ...runningSession, summary_text: null })
+    mockResume.mockResolvedValue(runningSession)
+    // First transcript load: empty; after resume + refetch: real user turn present
+    mockFetchTranscript
+      .mockResolvedValueOnce(emptyTranscript)
+      .mockResolvedValue({
+        state: 'has_turns' as const,
+        turns: [{ id: 't-u1', role: 'user' as const, blocks: [{ kind: 'text' as const, text: 'resume prompt' }], at: '' }],
+        summary_text: null,
+      })
+
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('No conversation yet.')
+
+    const textarea = screen.getByPlaceholderText('Send a follow-up…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'resume prompt' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue' })) })
+
+    // Optimistic bubble visible immediately after click (before API resolves)
+    expect(screen.getByText('resume prompt')).toBeTruthy()
+
+    // After reconcile (transcript refetched with real user turn): exactly one bubble
+    await waitFor(() => {
+      expect(screen.getAllByText('resume prompt')).toHaveLength(1)
+    })
+  })
+
+  // AC4: scroll stick/pause + jump-to-latest affordance
+  it('AC4: shows Jump to latest button when user scrolls up', async () => {
+    await openRunningPanel()
+
+    // Simulate user scrolling up: patch scroll metrics so shouldStick → false
+    const scrollContainer = screen.getByTestId('conversation-scroll') as HTMLDivElement
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 1000, configurable: true })
+    Object.defineProperty(scrollContainer, 'clientHeight', { value: 300, configurable: true })
+    Object.defineProperty(scrollContainer, 'scrollTop', { value: 0, configurable: true })
+    fireEvent.scroll(scrollContainer)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Jump to latest' })).toBeTruthy()
+    })
+  })
+
+  it('AC4: clicking Jump to latest hides the button (re-sticks to bottom)', async () => {
+    await openRunningPanel()
+
+    const scrollContainer = screen.getByTestId('conversation-scroll') as HTMLDivElement
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 1000, configurable: true })
+    Object.defineProperty(scrollContainer, 'clientHeight', { value: 300, configurable: true })
+    Object.defineProperty(scrollContainer, 'scrollTop', { value: 0, configurable: true })
+    fireEvent.scroll(scrollContainer)
+
+    await waitFor(() => screen.getByRole('button', { name: 'Jump to latest' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' })) })
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Jump to latest' })).toBeNull())
+  })
+
+  // AC5: working indicator
+  it('AC5: shows working indicator when session active and no live text', async () => {
+    await openRunningPanel()
+    // Working indicator already visible (waited for it in openRunningPanel)
+    expect(screen.getByText('Working…')).toBeTruthy()
+  })
+
+  it('AC5: clears working indicator when live text starts streaming', async () => {
+    const stream = await openRunningPanel()
+    expect(screen.getByText('Working…')).toBeTruthy()
+
+    act(() => {
+      stream.emit({ kind: 'text', turn_id: 'live-1', role: 'assistant', text: 'Hi there' })
+    })
+
+    await waitFor(() => expect(screen.queryByText('Working…')).toBeNull())
+    expect(screen.getByText('Hi there')).toBeTruthy()
+  })
+
+  // Regression: prior turn with same text must NOT immediately reconcile the optimistic bubble.
+  it('AC2 regression: prior matching turn does not prematurely clear optimistic bubble', async () => {
+    const stream = new StreamES('/stream-reg')
+    mockOpenStream.mockReturnValue(stream as unknown as EventSource)
+    mockFetch.mockResolvedValue({ ...sample, status: 'running' })
+    // Session starts resting; becomes running after resume
+    mockFetchSessions
+      .mockResolvedValueOnce({ items: [restingSession] })
+      .mockResolvedValue({ items: [runningSession] })
+    mockFetchSession
+      .mockResolvedValueOnce({ ...restingSession, summary_text: null })
+      .mockResolvedValue({ ...runningSession, summary_text: null })
+    mockResume.mockReturnValue(new Promise(() => {})) // never resolves — keeps bubble alive
+
+    // Transcript already has a prior user turn with text 'hello'
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns' as const,
+      turns: [{ id: 't-prior', role: 'user' as const, blocks: [{ kind: 'text' as const, text: 'hello' }], at: '' }],
+      summary_text: null,
+    })
+
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    // Prior 'hello' turn visible; resting session → no 'Working…'
+    await screen.findByText('hello')
+    expect(screen.queryByText('Working…')).toBeNull()
+
+    // User sends 'hello' again — optimistic bubble must appear alongside the prior one
+    const textarea = screen.getByPlaceholderText('Send a follow-up…') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'hello' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue' })) })
+
+    // Both the prior turn AND the optimistic bubble should be visible (two 'hello' texts).
+    // The optimistic bubble must NOT be prematurely cleared against the pre-existing turn.
+    expect(screen.getAllByText('hello')).toHaveLength(2)
+
+    // Now the real new user turn arrives via transcript refetch (two user turns with 'hello')
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns' as const,
+      turns: [
+        { id: 't-prior', role: 'user' as const, blocks: [{ kind: 'text' as const, text: 'hello' }], at: '' },
+        { id: 't-new', role: 'user' as const, blocks: [{ kind: 'text' as const, text: 'hello' }], at: '' },
+      ],
+      summary_text: null,
+    })
+    // Trigger a transcript refetch via SSE invalidation
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+    })
+
+    // After reconcile: exactly two 'hello' bubbles (the two real turns), optimistic cleared
+    await waitFor(() => {
+      expect(screen.getAllByText('hello')).toHaveLength(2)
+    })
+  })
+
+  it('AC5: working indicator absent for completed (non-active) session', async () => {
+    mockFetch.mockResolvedValue(sample)
+    mockFetchSessions.mockResolvedValue({ items: [restingSession] })
+    mockFetchSession.mockResolvedValue({ ...restingSession, summary_text: null })
+    mockFetchTranscript.mockResolvedValue(emptyTranscript)
+    renderPage('dc1')
+    await screen.findByText('Agent Sessions')
+    fireEvent.click(screen.getByRole('button', { name: /sess-000/i }))
+    await screen.findByText('No conversation yet.')
+    expect(screen.queryByText('Working…')).toBeNull()
   })
 })

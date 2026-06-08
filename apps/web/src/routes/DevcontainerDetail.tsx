@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
@@ -10,6 +10,7 @@ import { useSseInvalidation } from '../lib/events'
 import { mergeTurns, useSessionStream } from '../lib/stream'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
+import { shouldStick, isWorkingIndicatorVisible } from '../lib/chat/chatHelpers'
 
 const ACTIVE_STATUSES = new Set<string>(['starting', 'running', 'waiting_for_approval'])
 const RESTING_STATUSES = new Set<string>(['completed', 'failed', 'stopped'])
@@ -144,7 +145,15 @@ function SessionRow({
   )
 }
 
-function ConversationBubble({ role, children }: { role: 'user' | 'agent'; children: React.ReactNode }) {
+function ConversationBubble({
+  role,
+  sending = false,
+  children,
+}: {
+  role: 'user' | 'agent'
+  sending?: boolean
+  children: React.ReactNode
+}) {
   const isUser = role === 'user'
   return (
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
@@ -152,6 +161,7 @@ function ConversationBubble({ role, children }: { role: 'user' | 'agent'; childr
         className={cn(
           'max-w-[85%] rounded-[10px] px-3 py-2.5 text-[13px] leading-relaxed',
           isUser ? 'bg-accent text-white' : 'bg-surface-muted text-text',
+          sending && 'opacity-60',
         )}
       >
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.05em] opacity-70">
@@ -186,6 +196,12 @@ function BlockContent({ blocks }: { blocks: TranscriptBlock[] }) {
       )}
     </div>
   )
+}
+
+function countMatchingUserTurns(turns: TranscriptTurn[], text: string): number {
+  return turns.filter(
+    (t) => t.role === 'user' && t.blocks.some((b) => b.kind === 'text' && b.text.trim() === text),
+  ).length
 }
 
 // ---------------------------------------------------------------------------
@@ -229,10 +245,12 @@ function ChatComposer({
   dc,
   mode,
   onAction,
+  onOptimisticSend,
 }: {
   dc: DevcontainerView
   mode: ComposerMode
   onAction: () => void
+  onOptimisticSend: (text: string | null) => void
 }) {
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
@@ -247,15 +265,21 @@ function ChatComposer({
 
   async function handleSubmit() {
     if (!prompt.trim()) return
+    const text = prompt.trim()
+    // AC1: clear input and show optimistic bubble synchronously before the async call
+    setPrompt('')
+    onOptimisticSend(text)
     setBusy(true)
     try {
       if (mode.kind === 'start') {
-        await startAgentSession(dc.id, { prompt })
+        await startAgentSession(dc.id, { prompt: text })
       } else if (mode.kind === 'resume') {
-        await resumeAgentSession(dc.id, mode.sessionId, { prompt })
+        await resumeAgentSession(dc.id, mode.sessionId, { prompt: text })
       }
-      setPrompt('')
       onAction()
+    } catch {
+      // On error clear the optimistic bubble — it will never reconcile
+      onOptimisticSend(null)
     } finally {
       setBusy(false)
     }
@@ -317,11 +341,15 @@ function ConversationBody({
   sessionId,
   onRefetch,
   onRegisterTranscriptRefetch,
+  pendingUserText,
+  onPendingReconciled,
 }: {
   dc: DevcontainerView
   sessionId: string
   onRefetch: () => void
   onRegisterTranscriptRefetch: (fn: () => void) => void
+  pendingUserText: string | null
+  onPendingReconciled: () => void
 }) {
   const devcontainerId = dc.id
   const { state, refetch } = useApiQuery(
@@ -348,6 +376,76 @@ function ConversationBody({
   const isActive = state.kind === 'ready' && ACTIVE_STATUSES.has(state.data.status)
   const live = useSessionStream(devcontainerId, sessionId, isActive, transcriptRefetch)
 
+  // Auto-scroll: stick to bottom, pause on user scroll-up, show jump button when unstuck.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [stickToBottom, setStickToBottom] = useState(true)
+  // Prevents the onScroll handler from overriding state when we scroll programmatically.
+  const programmaticScroll = useRef(false)
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    programmaticScroll.current = true
+    try {
+      el.scrollTop = el.scrollHeight
+    } catch {
+      // No-op: read-only scrollTop in test environments (happy-dom with patched metrics).
+    }
+    Promise.resolve().then(() => { programmaticScroll.current = false })
+  }, [])
+
+  function handleScroll() {
+    if (programmaticScroll.current) return
+    const el = scrollRef.current
+    if (!el) return
+    setStickToBottom(shouldStick(el.scrollTop, el.scrollHeight, el.clientHeight))
+  }
+
+  // Compute merged turns outside renderTranscript so effects and scroll can reference it.
+  // useMemo: stable array reference so reconcile + scroll effects don't rerun on unrelated renders.
+  const mergedTurns: TranscriptTurn[] = useMemo(
+    () =>
+      transcriptState.kind === 'ready' && transcriptState.data.state !== 'error'
+        ? mergeTurns(
+            transcriptState.data.state === 'has_turns' ? transcriptState.data.turns : [],
+            live,
+          )
+        : [],
+    [transcriptState, live],
+  )
+
+  // AC2 reconcile: clear the optimistic bubble only when a NEW matching user turn lands —
+  // not when a pre-existing turn with the same text was already in the transcript.
+  // Two effects: (1) capture baseline count when pendingText becomes non-empty (at send time,
+  // before any new turn lands); (2) clear when live count exceeds that baseline.
+  const pendingText = pendingUserText?.trim() ?? ''
+  const reconcileBaselineRef = useRef<number | null>(null)
+
+  // Effect 1: capture baseline the moment pendingText transitions null → set.
+  useEffect(() => {
+    if (!pendingText) {
+      reconcileBaselineRef.current = null
+      return
+    }
+    // Only set baseline once per pending — don't overwrite when mergedTurns later changes.
+    if (reconcileBaselineRef.current === null) {
+      reconcileBaselineRef.current = countMatchingUserTurns(mergedTurns, pendingText)
+    }
+  // Intentionally omit mergedTurns: baseline must reflect turns AT send time, not later.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingText])
+
+  // Effect 2: clear pending once a new matching turn lands (count exceeds baseline).
+  useEffect(() => {
+    if (!pendingText || reconcileBaselineRef.current === null) return
+    if (countMatchingUserTurns(mergedTurns, pendingText) > reconcileBaselineRef.current) onPendingReconciled()
+  }, [mergedTurns, pendingText, onPendingReconciled])
+
+  // Scroll to bottom when new content arrives (turns, live partials, or pending bubble).
+  useEffect(() => {
+    if (stickToBottom) scrollToBottom()
+  }, [mergedTurns.length, pendingUserText, live.order.length, stickToBottom, scrollToBottom])
+
   if (state.kind === 'loading') {
     return (
       <div className="flex-1 overflow-auto px-4 py-4">
@@ -372,6 +470,7 @@ function ConversationBody({
   }
 
   const session = state.data
+  const showWorking = isWorkingIndicatorVisible(isActive, live)
 
   function renderTranscript() {
     if (transcriptState.kind === 'loading') {
@@ -385,21 +484,27 @@ function ConversationBody({
     if (transcriptState.kind === 'ready') {
       const transcript = transcriptState.data
 
-      // Merge canonical transcript turns with live deltas, keyed by id (partials update
-      // in place; reconciles on refetch with no duplicate/flickering bubbles).
-      const merged: TranscriptTurn[] = mergeTurns(
-        transcript.state === 'has_turns' ? transcript.turns : [],
-        live,
-      )
-
-      if (merged.length > 0) {
+      if (mergedTurns.length > 0 || pendingUserText || showWorking) {
         return (
           <div className="space-y-3">
-            {merged.map((turn) => (
+            {mergedTurns.map((turn) => (
               <ConversationBubble key={turn.id} role={turn.role === 'user' ? 'user' : 'agent'}>
                 <BlockContent blocks={turn.blocks} />
               </ConversationBubble>
             ))}
+            {pendingUserText && (
+              <ConversationBubble role="user" sending>
+                <p>{pendingUserText}</p>
+              </ConversationBubble>
+            )}
+            {showWorking && (
+              <div className="flex justify-start">
+                <div className="rounded-[10px] bg-surface-muted px-3 py-2.5 text-[13px] text-text-muted">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.05em] opacity-70">Agent</div>
+                  <span>Working…</span>
+                </div>
+              </div>
+            )}
           </div>
         )
       }
@@ -433,8 +538,23 @@ function ConversationBody({
         {session.started_at && <span>· Started {formatRelativeTime(session.started_at)}</span>}
         {session.ended_at && <span>· Ended {formatRelativeTime(session.ended_at)}</span>}
       </div>
-      <div className="flex-1 overflow-auto px-4 py-4">
-        {renderTranscript()}
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          data-testid="conversation-scroll"
+          className="h-full overflow-auto px-4 py-4"
+        >
+          {renderTranscript()}
+        </div>
+        {!stickToBottom && (
+          <button
+            onClick={() => { scrollToBottom(); setStickToBottom(true) }}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-accent px-3 py-1 text-[12px] font-medium text-white shadow-md"
+          >
+            Jump to latest
+          </button>
+        )}
       </div>
     </>
   )
@@ -522,6 +642,8 @@ function TwoPaneLayout({
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const transcriptRefetchRef = useRef<() => void>(() => {})
+  // Optimistic user bubble — lifted here because ChatComposer and ConversationBody are siblings.
+  const [pendingUserText, setPendingUserText] = useState<string | null>(null)
 
   const composerMode = resolveComposerMode(dc, sessions, selectedSessionId)
 
@@ -564,16 +686,29 @@ function TwoPaneLayout({
             sessionId={selectedSessionId}
             onRefetch={refetchSessions}
             onRegisterTranscriptRefetch={(fn) => { transcriptRefetchRef.current = fn }}
+            pendingUserText={pendingUserText}
+            onPendingReconciled={() => setPendingUserText(null)}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center">
-            <p className="text-[13px] text-text-muted">Select a session to view the conversation</p>
+          <div className="flex flex-1 flex-col overflow-auto px-4 py-4">
+            {pendingUserText ? (
+              <div className="space-y-3">
+                <ConversationBubble role="user" sending>
+                  <p>{pendingUserText}</p>
+                </ConversationBubble>
+              </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center">
+                <p className="text-[13px] text-text-muted">Select a session to view the conversation</p>
+              </div>
+            )}
           </div>
         )}
         <ChatComposer
           dc={dc}
           mode={composerMode}
           onAction={handleComposerAction}
+          onOptimisticSend={(t) => setPendingUserText(t)}
         />
       </div>
     </div>
