@@ -1,22 +1,29 @@
-"""Tests for RuntimeChannelClient — no real Control Plane or network."""
+"""Tests for RuntimeChannelClient — no real Control Plane or network.
+
+The connection factory and backoff are implementation details, not constructor
+parameters: tests monkeypatch them on the client module.
+"""
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from types import SimpleNamespace
+from typing import Any, Literal
 
+import pytest
+from pydantic import BaseModel
 from vibing_protocol import (
     Command,
     CommandEnvelope,
     RegisterEnvelope,
     RuntimeEvent,
-    TextBlock,
-    TranscriptTurn,
+    RuntimeEventEnvelope,
+    RuntimeEventSource,
+    EventType,
 )
 
-from vibing_runtime_client.client import (
-    Backoff,
-    RuntimeChannelClient,
-)
+from vibing_protocol.commands import CommandType
+import vibing_runtime_client.client as client_mod
+from vibing_runtime_client.client import Backoff, RuntimeChannelClient, SendFn
 
 
 class _Closed(Exception):
@@ -40,8 +47,10 @@ class FakeWS:
         if isinstance(item, asyncio.Event):
             await item.wait()
             raise _Closed
-        assert isinstance(item, str)
-        return item
+        elif isinstance(item, str):
+            return item
+        else:
+            assert False, f"Script items must be str or Event, got {type(item)}"
 
 
 class FakeConnect:
@@ -68,28 +77,44 @@ class FakeConnect:
             return False
 
 
-def _register() -> RegisterEnvelope:
-    return RegisterEnvelope(source="host_runtime_worker")
+class StoppingBackoff(Backoff):
+    """Records real delays but sleeps 0; stops the client after `stop_after` delays."""
+
+    def __init__(self, stop_after: int) -> None:
+        super().__init__()
+        self.delays: list[float] = []
+        self.client: RuntimeChannelClient | None = None
+        self._stop_after = stop_after
+
+    def next_delay(self) -> float:
+        self.delays.append(super().next_delay())
+        if len(self.delays) >= self._stop_after and self.client is not None:
+            self.client.stop()
+        return 0.0
 
 
-def _client(**kwargs: object) -> RuntimeChannelClient:
-    return RuntimeChannelClient("ws://test/ws", _register(), **kwargs)  # type: ignore[arg-type]
+async def _ignore_command(command: Command, send: SendFn) -> None:
+    return None
 
 
-def _stop_after(
-    client: RuntimeChannelClient, n: int
-) -> tuple[Callable[[float], Awaitable[None]], list[float]]:
-    delays: list[float] = []
+def _make_client(
+    monkeypatch: pytest.MonkeyPatch,
+    outcomes: list[object],
+    handler: Any = _ignore_command,
+    stop_after: int = 1,
+) -> tuple[RuntimeChannelClient, FakeConnect, StoppingBackoff]:
+    connect = FakeConnect(outcomes)
+    monkeypatch.setattr(client_mod, "websockets", SimpleNamespace(connect=connect))
+    backoff = StoppingBackoff(stop_after)
+    monkeypatch.setattr(client_mod, "Backoff", lambda: backoff)
+    client = RuntimeChannelClient(
+        "ws://test/ws", RegisterEnvelope(source=RuntimeEventSource.HOST_RUNTIME_WORKER), handler
+    )
+    backoff.client = client
+    return client, connect, backoff
 
-    async def sleep(delay: float) -> None:
-        delays.append(delay)
-        if len(delays) >= n:
-            client.stop()
 
-    return sleep, delays
-
-
-def _command_json(devcontainer_id: str, command_type: str = "start_devcontainer") -> str:
+def _command_json(devcontainer_id: str, command_type: CommandType = CommandType.START_DEVCONTAINER) -> str:
     envelope = CommandEnvelope(command=Command(type=command_type, devcontainer_id=devcontainer_id))
     return json.dumps(envelope.model_dump())
 
@@ -107,128 +132,134 @@ def test_backoff_is_bounded_and_resets() -> None:
 # --- session behavior -----------------------------------------------------
 
 
-def test_registers_then_handles_received_command() -> None:
+def test_registers_then_handler_gets_command_and_sends_on_same_ws(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     entered = asyncio.Event()
     received: list[Command] = []
 
-    async def handler(command: Command, emit: object, emit_delta: object = None) -> None:
+    async def handler(command: Command, send: SendFn) -> None:
         received.append(command)
+        await send(
+            RuntimeEventEnvelope(
+                event=RuntimeEvent(
+                    event_type=EventType.DEVCONTAINER_STARTING,
+                    source=RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT,
+                    devcontainer_id=command.devcontainer_id,
+                )
+            )
+        )
         entered.set()
 
     ws = FakeWS([_command_json("dc1"), entered])
-    client = _client(handler=handler, connect=FakeConnect([ws]))
-    sleep, _ = _stop_after(client, 1)
-    client._sleep = sleep  # type: ignore[assignment]
+    client, _, _ = _make_client(monkeypatch, [ws], handler=handler)
     asyncio.run(client.run())
 
-    sent = json.loads(ws.sent[0])
-    assert sent["type"] == "runtime_registered"
-    assert sent["source"] == "host_runtime_worker"
-    assert sent.get("devcontainer_id") is None
+    register = json.loads(ws.sent[0])
+    assert register["type"] == "runtime_registered"
+    assert register["source"] == "host_runtime_worker"
+    assert register.get("devcontainer_id") is None
     assert [c.devcontainer_id for c in received] == ["dc1"]
+    event = json.loads(ws.sent[1])  # handler's send reaches the same ws, serialized
+    assert event["type"] == "runtime_event"
+    assert event["event"]["devcontainer_id"] == "dc1"
 
 
-def test_consumer_processes_commands_serially_in_fifo_order() -> None:
+def test_commands_run_serially_in_fifo_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    entered = asyncio.Event()
     order: list[str] = []
 
-    async def handler(command: Command, emit: object, emit_delta: object = None) -> None:
+    async def handler(command: Command, send: SendFn) -> None:
         order.append(f"start:{command.devcontainer_id}")
-        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # yield so a concurrent handler could interleave
         order.append(f"end:{command.devcontainer_id}")
+        if command.devcontainer_id == "b":
+            entered.set()
 
-    async def scenario() -> None:
-        client = _client(handler=handler)
-        queue: asyncio.Queue[Command] = asyncio.Queue()
-        queue.put_nowait(Command(type="start_devcontainer", devcontainer_id="a"))
-        queue.put_nowait(Command(type="stop_devcontainer", devcontainer_id="b"))
-        consumer = asyncio.create_task(client._consume(queue, FakeWS([])))
-        await queue.join()
-        consumer.cancel()
+    ws = FakeWS([_command_json("a"), _command_json("b"), entered])
+    client, _, _ = _make_client(monkeypatch, [ws], handler=handler)
+    asyncio.run(client.run())
 
-    asyncio.run(scenario())
     assert order == ["start:a", "end:a", "start:b", "end:b"]
 
 
-def test_emit_sends_runtime_event_envelope() -> None:
-    async def scenario() -> None:
-        client = _client()
-        ws = FakeWS([])
-        emit = client._make_emit(ws)
-        await emit(
-            RuntimeEvent(
-                event_type="devcontainer_started",
-                source="host_runtime_worker",
-                devcontainer_id="dc1",
-            )
-        )
-        sent = json.loads(ws.sent[0])
-        assert sent["type"] == "runtime_event"
-        assert sent["event"]["event_type"] == "devcontainer_started"
-        assert sent["event"]["devcontainer_id"] == "dc1"
-
-    asyncio.run(scenario())
+# --- request/reply (ADR-0009): generic correlation, no domain types --------
 
 
-# --- transcript request/reply (VIB-104) -----------------------------------
+class _EchoReply(BaseModel):
+    type: Literal["echo_response"] = "echo_response"
+    request_id: str
+    payload: str
 
 
-def _transcript_request_json(request_id: str, agent_session_id: str) -> str:
-    return json.dumps(
-        {
-            "type": "transcript_request",
-            "request_id": request_id,
-            "agent_session_id": agent_session_id,
-        }
-    )
+def _request_json(request_id: str) -> str:
+    return json.dumps({"type": "echo_request", "request_id": request_id, "payload": "hi"})
 
 
-def test_transcript_request_dispatches_handler_and_replies() -> None:
-    done = asyncio.Event()
-    asked: list[str] = []
+def test_registered_request_handler_replies_on_same_ws(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def respond(message: dict[str, Any]) -> _EchoReply:
+        return _EchoReply(request_id=message["request_id"], payload=message["payload"])
 
-    async def transcript_handler(agent_session_id: str) -> list[TranscriptTurn]:
-        asked.append(agent_session_id)
-        return [TranscriptTurn(role="user", blocks=[TextBlock(text="hi")], at="t")]
+    # The reply is awaited inline in the read loop, so it is sent before the next recv.
+    ws = FakeWS([_request_json("req-9")])
+    client, _, _ = _make_client(monkeypatch, [ws])
+    client.on_request("echo_request", respond)
+    asyncio.run(client.run())
 
-    ws = FakeWS([_transcript_request_json("req-9", "sess-7"), done])
-
-    async def watcher() -> None:
-        # let the read-loop process the request and send the reply
-        while len(ws.sent) < 2:
-            await asyncio.sleep(0)
-        done.set()
-
-    client = _client(transcript_handler=transcript_handler, connect=FakeConnect([ws]))
-    sleep, _ = _stop_after(client, 1)
-    client._sleep = sleep  # type: ignore[assignment]
-
-    async def scenario() -> None:
-        await asyncio.gather(client.run(), watcher())
-
-    asyncio.run(scenario())
-
-    assert asked == ["sess-7"]
     reply = json.loads(ws.sent[1])  # sent[0] is the register envelope
-    assert reply["type"] == "transcript_response"
-    assert reply["request_id"] == "req-9"
-    assert reply["turns"][0]["blocks"][0] == {"kind": "text", "text": "hi"}
+    assert reply == {"type": "echo_response", "request_id": "req-9", "payload": "hi"}
+
+
+def test_failing_request_handler_sends_no_reply_and_session_survives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = asyncio.Event()
+    handled: list[str] = []
+
+    async def respond(message: dict[str, Any]) -> _EchoReply:
+        raise RuntimeError("boom")
+
+    async def handler(command: Command, send: SendFn) -> None:
+        handled.append(command.devcontainer_id or "")
+        entered.set()
+
+    ws = FakeWS([_request_json("req-1"), _command_json("dc1"), entered])
+    client, _, _ = _make_client(monkeypatch, [ws], handler=handler)
+    client.on_request("echo_request", respond)
+    asyncio.run(client.run())
+
+    assert handled == ["dc1"]  # the command after the failing request is still processed
+    assert len(ws.sent) == 1  # register envelope only, no reply
+
+
+def test_unregistered_message_types_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    entered = asyncio.Event()
+    handled: list[str] = []
+
+    async def handler(command: Command, send: SendFn) -> None:
+        handled.append(command.devcontainer_id or "")
+        entered.set()
+
+    ws = FakeWS(["not json", json.dumps({"type": "mystery"}), _command_json("dc1"), entered])
+    client, _, _ = _make_client(monkeypatch, [ws], handler=handler)
+    asyncio.run(client.run())
+
+    assert handled == ["dc1"]
 
 
 # --- reconnect / no-replay ------------------------------------------------
 
 
-def test_reconnects_with_bounded_backoff_after_failures() -> None:
-    connect = FakeConnect([ConnectionRefusedError(), ConnectionRefusedError(), FakeWS([])])
-    client = _client(connect=connect)
-    sleep, delays = _stop_after(client, 3)
-    client._sleep = sleep  # type: ignore[assignment]
+def test_reconnects_with_bounded_backoff_after_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    outcomes = [ConnectionRefusedError(), ConnectionRefusedError(), FakeWS([])]
+    client, connect, backoff = _make_client(monkeypatch, outcomes, stop_after=3)
     asyncio.run(client.run())
 
     assert connect.calls == 3  # two failures + one success
-    assert delays == [0.5, 1.0, 0.5]  # exponential growth, then reset after the success
+    assert backoff.delays == [0.5, 1.0, 0.5]  # exponential growth, then reset after the success
 
 
-def test_stop_closes_active_websocket_and_exits() -> None:
+def test_stop_closes_active_websocket_and_exits(monkeypatch: pytest.MonkeyPatch) -> None:
     closed = asyncio.Event()
     unblock = asyncio.Event()
 
@@ -238,7 +269,7 @@ def test_stop_closes_active_websocket_and_exits() -> None:
             unblock.set()
 
     ws = ClosingWS([unblock])
-    client = _client(connect=FakeConnect([ws]))
+    client, _, _ = _make_client(monkeypatch, [ws], stop_after=99)
 
     async def scenario() -> None:
         run_task = asyncio.create_task(client.run())
@@ -250,22 +281,19 @@ def test_stop_closes_active_websocket_and_exits() -> None:
     assert closed.is_set()
 
 
-def test_in_flight_command_not_replayed_after_reconnect() -> None:
+def test_in_flight_command_not_replayed_after_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
     entered = asyncio.Event()
     block = asyncio.Event()  # never set: handler stays in-flight
     starts: list[str] = []
 
-    async def handler(command: Command, emit: object, emit_delta: object = None) -> None:
+    async def handler(command: Command, send: SendFn) -> None:
         starts.append(command.devcontainer_id or "")
         entered.set()
         await block.wait()
 
     ws1 = FakeWS([_command_json("dc1"), entered])  # close once the command is picked up
     ws2 = FakeWS([])  # fresh session, nothing queued
-    connect = FakeConnect([ws1, ws2])
-    client = _client(handler=handler, connect=connect)
-    sleep, _ = _stop_after(client, 2)
-    client._sleep = sleep  # type: ignore[assignment]
+    client, connect, _ = _make_client(monkeypatch, [ws1, ws2], handler=handler, stop_after=2)
     asyncio.run(client.run())
 
     assert starts == ["dc1"]  # handled once in session 1, not replayed in session 2
