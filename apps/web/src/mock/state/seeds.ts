@@ -1,4 +1,4 @@
-import type { Devcontainer, HarnessStatus, DelegatedRun } from '../../lib/api/types'
+import type { Devcontainer, HarnessStatus } from '../../lib/api/types'
 
 // Single source of truth for cross-module mock identities: a given devcontainer id
 // describes the same object everywhere. Modules that need richer shapes (DevcontainerView)
@@ -29,13 +29,4 @@ export function seedDevcontainer(id: string): Devcontainer {
   const d = seedDevcontainers.find((x) => x.id === id)
   if (!d) throw new Error(`Unknown seed devcontainer: ${id}`)
   return d
-}
-
-// Delegated runs per devcontainer — one of each terminal state plus a live one.
-export const seedDelegatedRuns: Record<string, DelegatedRun[]> = {
-  'dc-seed-0001': [
-    { run_id: 'run-4', harness: 'codex', model: 'gpt-5-codex', status: 'running', result: null, error: null, started_at: '2024-01-15T10:00:00.000Z' },
-    { run_id: 'run-3', harness: 'claude-code', model: 'opus-4.8', status: 'completed', result: 'Refactored auth module; 3 files changed, tests pass.', error: null, started_at: '2024-01-15T09:55:00.000Z' },
-    { run_id: 'run-2', harness: 'cursor', model: 'auto', status: 'failed', result: null, error: { exit_code: 1, stderr_tail: 'ENOENT: package.json not found' }, started_at: '2024-01-15T09:40:00.000Z' },
-  ],
 }

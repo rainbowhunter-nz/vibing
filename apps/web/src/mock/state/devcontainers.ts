@@ -1,12 +1,12 @@
 import type { Devcontainer, DevcontainerCreateBody, DevcontainerUpdateBody, DevcontainerView, DevcontainerViewList, RuntimeConnection } from '../../lib/api/types'
 import { seedDevcontainers } from './seeds'
 
-// Runtime connection per seed devcontainer; my-webapp is fully connected for inspection.
+// Runtime connection per seed devcontainer; my-webapp is connected for inspection.
 const SEED_RUNTIME: Record<string, RuntimeConnection> = {
-  'dc-seed-0001': { worker_connected: true, agent_connected: true },
-  'dc-seed-0002': { worker_connected: false, agent_connected: false },
-  'dc-seed-0003': { worker_connected: false, agent_connected: false },
-  'dc-seed-0004': { worker_connected: false, agent_connected: false },
+  'dc-seed-0001': { runtime_connected: true },
+  'dc-seed-0002': { runtime_connected: false },
+  'dc-seed-0003': { runtime_connected: false },
+  'dc-seed-0004': { runtime_connected: false },
 }
 
 const SEED: DevcontainerView[] = seedDevcontainers.map((d) => ({ ...d, runtime: SEED_RUNTIME[d.id] }))
@@ -64,7 +64,7 @@ export function createDevcontainer(body: DevcontainerCreateBody): Devcontainer {
     status: 'created',
     created_at: ts,
     updated_at: ts,
-    runtime: { worker_connected: false, agent_connected: false },
+    runtime: { runtime_connected: false },
   }
   store.push(view)
   return toDevcontainer(view)

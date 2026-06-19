@@ -28,8 +28,7 @@ export interface Devcontainer {
 }
 
 export interface RuntimeConnection {
-  worker_connected: boolean
-  agent_connected: boolean
+  runtime_connected: boolean
 }
 
 export interface DevcontainerView extends Devcontainer {
@@ -52,10 +51,6 @@ export interface DevcontainerList {
 
 export interface DevcontainerViewList {
   items: DevcontainerView[]
-}
-
-export interface RuntimeStatus {
-  worker_connected: boolean
 }
 
 export interface RuntimeDetection {
@@ -93,23 +88,6 @@ export interface HarnessStatus {
 
 export interface HarnessStatusList {
   items: HarnessStatus[]
-}
-
-// Delegated runs (runtime DelegatedRunManager, ADR-0013).
-export type DelegatedRunStatus = 'running' | 'completed' | 'failed' | 'stopped'
-
-export interface DelegatedRun {
-  run_id: string
-  harness: string
-  model: string
-  status: DelegatedRunStatus
-  result: string | null
-  error: Record<string, unknown> | null
-  started_at: string
-}
-
-export interface DelegatedRunList {
-  items: DelegatedRun[]
 }
 
 // Backend error envelope (src/vibing_api/core/errors.py).

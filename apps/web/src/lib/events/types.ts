@@ -1,4 +1,4 @@
-export type Scope = 'devcontainers' | 'runtime' | 'harnesses' | 'delegated_runs'
+export type Scope = 'devcontainers' | 'runtime' | 'harnesses'
 
 export interface InvalidationEvent {
   event_type: string

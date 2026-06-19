@@ -7,7 +7,7 @@ RUN pnpm install --frozen-lockfile
 COPY apps/web/ ./
 RUN pnpm build
 
-# Stage 2: run backend + host-runtime + serve built frontend
+# Stage 2: run backend + serve built frontend
 FROM python:3.13-slim AS final
 COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /usr/local/bin/uv
 
@@ -47,8 +47,6 @@ COPY deploy/supervisord.conf /etc/supervisor/conf.d/vibing.conf
 
 ENV VIBING_DATABASE_URL=sqlite:////data/vibing.db
 ENV VIBING_STATIC_DIR=/repo/dist
-ENV VIBING_CONTROL_PLANE_URL=ws://127.0.0.1:8080/api/v1/runtime/ws
-ENV VIBING_AGENT_CONTROL_PLANE_URL=ws://host.docker.internal:8080/api/v1/runtime/agent/ws
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 VOLUME /data

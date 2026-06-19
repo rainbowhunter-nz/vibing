@@ -5,7 +5,6 @@ import { getScenario } from './scenario'
 import type { ApiErrorEnvelope, DevcontainerUpdateBody } from '../lib/api/types'
 import * as dc from './state/devcontainers'
 import * as hn from './state/harnesses'
-import * as dr from './state/delegatedRuns'
 import { emitInvalidation } from './events'
 
 // Wildcard origin so handlers work in both browser (service worker) and Node (vitest/msw node).
@@ -161,21 +160,6 @@ const devcontainerHandlers = [
     return HttpResponse.json(hn.listHarnesses(params.id as string))
   }),
 
-  http.post('*/api/v1/devcontainers/:id/harnesses/:name/install', ({ params }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'HARNESS_NOT_FOUND')
-    if (failure) return failure
-    try {
-      const status = hn.installHarness(params.id as string, params.name as string)
-      emitInvalidation('harnesses')
-      return HttpResponse.json(status)
-    } catch (e) {
-      if (e instanceof hn.NotFoundError) {
-        return HttpResponse.json(errorEnvelope('HARNESS_NOT_FOUND', e.message), { status: 404 })
-      }
-      throw e
-    }
-  }),
-
   http.post('*/api/v1/devcontainers/:id/harnesses/:name/authenticate', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'HARNESS_NOT_FOUND')
     if (failure) return failure
@@ -191,40 +175,12 @@ const devcontainerHandlers = [
     }
   }),
 
-  http.get('*/api/v1/devcontainers/:id/delegated-runs', ({ params }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
-    if (failure) return failure
-    try {
-      dc.getDevcontainer(params.id as string)
-    } catch (e) {
-      if (e instanceof dc.NotFoundError) return notFound(params.id as string)
-      throw e
-    }
-    if (getScenario() === 'empty') return HttpResponse.json({ items: [] })
-    return HttpResponse.json(dr.listDelegatedRuns(params.id as string))
-  }),
-
-  http.post('*/api/v1/devcontainers/:id/delegated-runs/:runId/stop', ({ params }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'DELEGATED_RUN_NOT_FOUND')
-    if (failure) return failure
-    try {
-      const run = dr.stopDelegatedRun(params.id as string, params.runId as string)
-      emitInvalidation('delegated_runs')
-      return HttpResponse.json(run)
-    } catch (e) {
-      if (e instanceof dr.NotFoundError) {
-        return HttpResponse.json(errorEnvelope('DELEGATED_RUN_NOT_FOUND', e.message), { status: 404 })
-      }
-      throw e
-    }
-  }),
 ]
 
 export const handlers = [
   http.get('*/api/v1/health', () => scenarioResponse(f.health)),
   http.get('*/api/v1/status', () => scenarioResponse(f.status)),
   http.get('*/api/v1/config', () => scenarioResponse(f.config)),
-  http.get('*/api/v1/runtime/status', () => scenarioResponse(f.runtimeStatus)),
   http.get('*/api/v1/settings', () => scenarioResponse(f.settings)),
   http.get('*/api/v1/diagnostics', () => scenarioResponse(f.diagnostics)),
   ...devcontainerHandlers,

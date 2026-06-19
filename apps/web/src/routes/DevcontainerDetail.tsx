@@ -4,13 +4,11 @@ import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
 import { HarnessList } from '../components/HarnessList'
-import { DelegatedRuns } from '../components/DelegatedRuns'
 import {
   fetchDevcontainer,
   startDevcontainer,
   stopDevcontainer,
   fetchHarnesses,
-  fetchDelegatedRuns,
   useApiQuery,
   ApiError,
 } from '../lib/api'
@@ -67,8 +65,7 @@ function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () 
         <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
           {dc.status}
         </span>
-        <ConnDot label="worker" ok={dc.runtime.worker_connected} />
-        <ConnDot label="agent" ok={dc.runtime.agent_connected} />
+        <ConnDot label="runtime" ok={dc.runtime.runtime_connected} />
         <div className="ml-auto flex items-center gap-2">
           {dc.status === 'running' ? (
             <button
@@ -125,13 +122,11 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function ControlPanel({ dc }: { dc: DevcontainerView }) {
   const { register } = useSseInvalidation()
   const { state: harnessState, refetch: refetchHarnesses } = useApiQuery(() => fetchHarnesses(dc.id), [dc.id])
-  const { state: runsState, refetch: refetchRuns } = useApiQuery(() => fetchDelegatedRuns(dc.id), [dc.id])
 
   useEffect(() => register('harnesses', refetchHarnesses), [register, refetchHarnesses])
-  useEffect(() => register('delegated_runs', refetchRuns), [register, refetchRuns])
 
   return (
-    <div className="grid grid-cols-1 gap-6 p-4 lg:grid-cols-2">
+    <div className="p-4">
       <section>
         <SectionTitle>Coding harnesses</SectionTitle>
         {harnessState.kind === 'ready' ? (
@@ -140,16 +135,6 @@ function ControlPanel({ dc }: { dc: DevcontainerView }) {
           <ErrorState {...loadError('harnesses')} />
         ) : (
           <p className="text-[13px] text-text-muted">Loading harnesses…</p>
-        )}
-      </section>
-      <section>
-        <SectionTitle>Delegated runs</SectionTitle>
-        {runsState.kind === 'ready' ? (
-          <DelegatedRuns devcontainerId={dc.id} runs={runsState.data.items} onChange={refetchRuns} />
-        ) : runsState.kind === 'error' ? (
-          <ErrorState {...loadError('delegated runs')} />
-        ) : (
-          <p className="text-[13px] text-text-muted">Loading runs…</p>
         )}
       </section>
     </div>
@@ -169,6 +154,7 @@ export function DevcontainerDetail() {
   const { state, refetch } = useApiQuery(() => fetchDevcontainer(id!), [id])
 
   useEffect(() => register('devcontainers', refetch), [register, refetch])
+  useEffect(() => register('runtime', refetch), [register, refetch])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

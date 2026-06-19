@@ -3,7 +3,6 @@ import type {
   ConfigResponse,
   DiagnosticsResponse,
   HealthResponse,
-  RuntimeStatus,
   SettingsResponse,
   StatusResponse,
 } from '../lib/api/types'
@@ -13,8 +12,6 @@ export const health: HealthResponse = { status: 'ok', service: 'vibing' }
 export const status: StatusResponse = { status: 'ok', service: 'vibing', version: '0.0.0' }
 
 export const config: ConfigResponse = { app_name: 'vibing', api_v1_prefix: '/api/v1' }
-
-export const runtimeStatus: RuntimeStatus = { worker_connected: false }
 
 export const settings: SettingsResponse = {
   backend_host: '127.0.0.1',

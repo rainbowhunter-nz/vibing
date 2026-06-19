@@ -28,12 +28,6 @@ function find(devcontainerId: string, name: string): HarnessStatus {
   return h
 }
 
-export function installHarness(devcontainerId: string, name: string): HarnessStatus {
-  const h = find(devcontainerId, name)
-  h.installed = true
-  return { ...h }
-}
-
 export function authenticateHarness(devcontainerId: string, name: string): HarnessStatus {
   const h = find(devcontainerId, name)
   h.authenticated = true

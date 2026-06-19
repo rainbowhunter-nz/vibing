@@ -30,10 +30,6 @@ describe('mock handlers — healthy baseline', () => {
     expect(await get('/api/v1/config')).toEqual(f.config)
   })
 
-  it('GET /api/v1/runtime/status', async () => {
-    expect(await get('/api/v1/runtime/status')).toEqual(f.runtimeStatus)
-  })
-
   it('GET /api/v1/settings', async () => {
     expect(await get('/api/v1/settings')).toEqual(f.settings)
   })

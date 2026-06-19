@@ -133,7 +133,7 @@ describe('coordinator — scope-based callbacks', () => {
   it('AC4: all scopes are routable', () => {
     const coord = createCoordinator()
     coord.connect()
-    const scopes: Scope[] = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs']
+    const scopes: Scope[] = ['devcontainers', 'runtime', 'harnesses']
     const cbs = scopes.map((s) => {
       const cb = vi.fn()
       coord.register(s, cb)
@@ -259,7 +259,7 @@ describe('coordinator — reconnect catch-up', () => {
 
   it('AC4: reconnect catch-up covers all scopes', () => {
     const coord = createCoordinator()
-    const scopes: Scope[] = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs']
+    const scopes: Scope[] = ['devcontainers', 'runtime', 'harnesses']
     const cbs = scopes.map((s) => {
       const cb = vi.fn()
       coord.register(s, cb)

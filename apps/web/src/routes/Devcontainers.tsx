@@ -149,8 +149,8 @@ function DevcontainerTable({
             </span>
             <span className="text-xs text-text-muted">
               {formatRelativeTime(devcontainer.updated_at)}
-              {devcontainer.runtime.agent_connected && (
-                <span title="Agent connected" className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ok align-middle" />
+              {devcontainer.runtime.runtime_connected && (
+                <span title="Runtime connected" className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ok align-middle" />
               )}
             </span>
             <div className="flex items-center justify-end gap-0.5">
