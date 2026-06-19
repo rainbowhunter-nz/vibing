@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { DelegatedRun } from '../lib/api/types'
 import { stopDelegatedRun } from '../lib/api'
 import { formatRelativeTime } from '../lib/time'
 import { cn } from '../lib/cn'
+import { Modal } from './Modal'
 
 function badgeClass(status: DelegatedRun['status']): string {
   switch (status) {
@@ -77,73 +78,51 @@ function RunRow({ devcontainerId, run, onChange, onOpen }: {
 }
 
 function RunDialog({ run, onClose }: { run: DelegatedRun; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   const error = errorText(run.error)
   const body = run.status === 'failed' ? error : run.result
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Run ${run.run_id}`}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-24"
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[70vh] w-[480px] flex-col overflow-hidden rounded-[10px] border border-border bg-bg shadow-xl"
-      >
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3.5">
+    <Modal
+      ariaLabel={`Run ${run.run_id}`}
+      onClose={onClose}
+      header={
+        <>
           <span className="font-mono text-[13px] font-semibold text-text">{run.run_id}</span>
           <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', badgeClass(run.status))}>
             {run.status}
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="ml-auto text-text-muted hover:text-text"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="overflow-y-auto p-4">
-          <div className="mb-3 text-[11px] text-text-subtle">
-            {run.harness} · {run.model} · {formatRelativeTime(run.started_at)}
-          </div>
-          {body ? (
-            <pre className={cn('overflow-x-auto rounded-md border border-border bg-surface-muted p-3 text-[12px]', run.status === 'failed' ? 'text-bad' : 'text-text-muted')}>
-              {body}
-            </pre>
-          ) : (
-            <p className="text-[12px] text-text-muted">
-              {run.status === 'running' ? 'Run in progress — no result yet.' : 'No output recorded.'}
-            </p>
-          )}
-        </div>
+        </>
+      }
+    >
+      <div className="mb-3 text-[11px] text-text-subtle">
+        {run.harness} · {run.model} · {formatRelativeTime(run.started_at)}
       </div>
-    </div>
+      {body ? (
+        <pre className={cn('overflow-x-auto rounded-md border border-border bg-surface-muted p-3 text-[12px]', run.status === 'failed' ? 'text-bad' : 'text-text-muted')}>
+          {body}
+        </pre>
+      ) : (
+        <p className="text-[12px] text-text-muted">
+          {run.status === 'running' ? 'Run in progress — no result yet.' : 'No output recorded.'}
+        </p>
+      )}
+    </Modal>
   )
 }
 
-export function DelegatedRuns({ devcontainerId, runs, onChange }: {
+export function DelegatedRuns({ devcontainerId, runs, onChange, emptyMessage, className = 'max-h-[26rem]' }: {
   devcontainerId: string
   runs: DelegatedRun[]
   onChange: () => void
+  emptyMessage?: string
+  className?: string
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
 
   if (runs.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-[13px] text-text-muted">
-        No delegated runs — the harness will list them here when it spawns one.
+        {emptyMessage ?? 'No delegated runs — the harness will list them here when it spawns one.'}
       </p>
     )
   }
@@ -152,7 +131,7 @@ export function DelegatedRuns({ devcontainerId, runs, onChange }: {
 
   return (
     <>
-      <div className="max-h-[26rem] overflow-y-auto rounded-xl border border-border bg-surface-muted">
+      <div className={cn('overflow-y-auto rounded-xl border border-border bg-surface-muted', className)}>
         <div className="divide-y divide-border">
           {runs.map((run) => (
             <RunRow

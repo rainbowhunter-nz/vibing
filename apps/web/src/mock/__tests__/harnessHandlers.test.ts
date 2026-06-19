@@ -38,7 +38,7 @@ describe('harness + delegated-run handlers', () => {
 
   it('GET /delegated-runs returns seeded runs', async () => {
     const body = await (await get('/api/v1/devcontainers/dc-seed-0001/delegated-runs')).json()
-    expect(body.items.map((r: { run_id: string }) => r.run_id)).toEqual(['run-4', 'run-3', 'run-2'])
+    expect(body.items.map((r: { run_id: string }) => r.run_id)).toEqual(['run-6', 'run-4', 'run-3', 'run-2', 'run-1', 'run-0'])
   })
 
   it('POST stop flips a running run to stopped', async () => {

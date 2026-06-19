@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 interface PageHeaderProps {
   title: string
-  crumbs?: string
+  crumbs?: ReactNode
   action?: ReactNode
 }
 

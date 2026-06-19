@@ -11,10 +11,10 @@ never hardcode `http://localhost:8000`. Read the root `CONTEXT.md` for domain te
 - `index.html`, `src/main.tsx` — entry; mounts the router.
 - `src/index.css` — Tailwind + global styles.
 - `src/routes/` — pages and routing.
-  - `router.tsx` — route table (`/devcontainers`, `/devcontainers/:id`, `/settings`).
+  - `router.tsx` — route table (`/devcontainers`, `/devcontainers/:id`, `/devcontainers/:id/runs`, `/settings`).
   - `AppShell.tsx` — layout wrapper (sidebar + rails + outlet).
-  - `Devcontainers.tsx`, `DevcontainerDetail.tsx`, `Settings.tsx` — one per route.
-- `src/components/` — shared UI: `Sidebar`, `PageHeader`, `EmptyState`, `RailActivity`, `RailBackend`.
+  - `Devcontainers.tsx`, `DevcontainerDetail.tsx`, `DevcontainerRuns.tsx`, `Settings.tsx` — one per route. `DevcontainerDetail` shows only active (running) delegated runs; `DevcontainerRuns` is the full history with status-filter tabs.
+- `src/components/` — shared UI: `Sidebar`, `PageHeader`, `EmptyState`, `RailActivity`, `RailBackend`, `Modal` (backdrop + Escape dialog shell), `DelegatedRuns` (run list + result dialog).
 - `src/lib/api/` — the only place that talks to the backend.
   - `client.ts` — fetch wrapper + `ApiError`. `endpoints.ts` — typed endpoint functions. `useApiQuery.ts` — React data-fetching hook. `types.ts` — API DTOs. `index.ts` — barrel.
 - `src/lib/cn.ts` — `clsx` + `tailwind-merge` className helper.

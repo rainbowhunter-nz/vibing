@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
 import { HarnessList } from '../components/HarnessList'
 import { DelegatedRuns } from '../components/DelegatedRuns'
+import { Modal } from '../components/Modal'
 import {
   fetchDevcontainer,
   startDevcontainer,
@@ -45,9 +46,37 @@ function ConnDot({ label, ok }: { label: string; ok: boolean }) {
   )
 }
 
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">{label}</div>
+      <div className="mt-0.5 break-all text-[13px] text-text">{value}</div>
+    </div>
+  )
+}
+
+function DetailsDialog({ dc, onClose }: { dc: DevcontainerView; onClose: () => void }) {
+  return (
+    <Modal
+      ariaLabel={`${dc.name} details`}
+      onClose={onClose}
+      className="w-[420px]"
+      header={<span className="text-[13px] font-semibold text-text">{dc.name}</span>}
+    >
+      <div className="space-y-3.5">
+        <DetailRow label="Status" value={dc.status} />
+        <DetailRow label="Runtime" value={dc.runtime.agent_connected ? 'connected' : 'disconnected'} />
+        <DetailRow label="Local path" value={dc.local_path} />
+        <DetailRow label="Created" value={formatRelativeTime(dc.created_at)} />
+        <DetailRow label="Updated" value={formatRelativeTime(dc.updated_at)} />
+      </div>
+    </Modal>
+  )
+}
+
 function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () => void }) {
   const [busy, setBusy] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
   const running = RUNNING.has(dc.status)
 
   async function act(fn: () => Promise<unknown>) {
@@ -63,12 +92,17 @@ function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () 
   return (
     <div className="border-b border-border bg-surface-rail px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="text-[15px] font-semibold text-text">{dc.name}</span>
+        <button
+          type="button"
+          onClick={() => setShowDetails(true)}
+          className="text-[15px] font-semibold text-text hover:text-accent"
+        >
+          {dc.name}
+        </button>
         <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
           {dc.status}
         </span>
-        <ConnDot label="worker" ok={dc.runtime.worker_connected} />
-        <ConnDot label="agent" ok={dc.runtime.agent_connected} />
+        <ConnDot label="runtime" ok={dc.runtime.agent_connected} />
         <div className="ml-auto flex items-center gap-2">
           {dc.status === 'running' ? (
             <button
@@ -89,31 +123,9 @@ function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () 
               Start
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="text-[11px] text-text-muted hover:text-text"
-          >
-            {expanded ? '▾' : '▸'} details
-          </button>
         </div>
       </div>
-      {expanded && (
-        <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-2 border-t border-border pt-3 text-[13px]">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">Local path</div>
-            <div className="mt-0.5 text-text">{dc.local_path}</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">Created</div>
-            <div className="mt-0.5 text-text">{formatRelativeTime(dc.created_at)}</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">Updated</div>
-            <div className="mt-0.5 text-text">{formatRelativeTime(dc.updated_at)}</div>
-          </div>
-        </div>
-      )}
+      {showDetails && <DetailsDialog dc={dc} onClose={() => setShowDetails(false)} />}
     </div>
   )
 }
@@ -143,9 +155,19 @@ function ControlPanel({ dc }: { dc: DevcontainerView }) {
         )}
       </section>
       <section>
-        <SectionTitle>Delegated runs</SectionTitle>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">Active delegated runs</h3>
+          <Link to={`/devcontainers/${dc.id}/runs`} className="text-[11px] font-medium text-accent hover:underline">
+            View all →
+          </Link>
+        </div>
         {runsState.kind === 'ready' ? (
-          <DelegatedRuns devcontainerId={dc.id} runs={runsState.data.items} onChange={refetchRuns} />
+          <DelegatedRuns
+            devcontainerId={dc.id}
+            runs={runsState.data.items.filter((r) => r.status === 'running')}
+            onChange={refetchRuns}
+            emptyMessage="No active runs — the harness will list them here while one is running."
+          />
         ) : runsState.kind === 'error' ? (
           <ErrorState {...loadError('delegated runs')} />
         ) : (
