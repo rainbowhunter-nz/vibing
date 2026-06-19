@@ -1,91 +1,102 @@
 # Vibing
 
-A local operations center for managing AI coding agents across isolated devcontainers. This glossary is the canonical language for the domain — code, docs, and conversation should use these terms.
+A local control panel for running coding harnesses across isolated devcontainers. It spins
+containers up and down, manages harness credentials once on the host, and runs an in-container
+companion that reduces the friction of using coding harnesses (install, auth, MCP delegation).
+This glossary is the canonical language for the domain — code, docs, and conversation should use
+these terms.
 
 ## Language
 
 **Devcontainer**:
-The central persistent entity: one isolated development container bound to exactly one local folder path. Owns its agent-sessions, approvals, inbox, and history. Exists even when not running (`created`/`stopped`); "running" means the container is up. Everything else hangs off it.
+The central persistent entity: one isolated development container bound to exactly one local
+folder path. Owns its harness status and credentials wiring. Exists even when not running
+(`created`/`stopped`); "running" means the container is up. Everything else hangs off it.
 _Avoid_: Workspace, project, environment, repo
 
-**Agent Session**:
-The durable conversation between a user and a coding agent inside a Devcontainer — *not* a single run. Identified by one stable id that is also the agent's own session id and names its Session Transcript. Re-openable: after a run ends it rests in a resumable state and can be **continued in place**, appending more turns to the same conversation. At most one is active per Devcontainer. The agent is Claude Code today, but the entity is named for the role, not the vendor — domain terms, table (`agent_sessions`), and FKs all use `agent_session`. Spelled "agent-session" in prose. "Claude" may appear in user-facing UI copy only.
-_Avoid_: Claude session, agent run, single-shot run
+**Control Plane**:
+The backend (FastAPI + SQLite) and the only hub. It holds all metadata, drives the Devcontainer
+lifecycle **directly** by shelling out to the Dev Container CLI in-process (no separate worker),
+stores Coding Harness credentials, sends Commands to Devcontainer Runtimes, and consumes the
+Harness Status they report. It is the only writer of derived state, which it mutates directly —
+there is no event log. The frontend is a separate client over `/api/v1` HTTP and is *not* part of
+the Control Plane.
+_Avoid_: server, orchestrator, host runtime worker; do not include the frontend
+
+**Devcontainer Runtime**:
+The in-container companion process, one per running Devcontainer. Its purpose is to reduce the
+friction of using Coding Harnesses inside an ephemeral container and to add capability on top of
+them. Today it (1) checks/installs/authenticates *managed* harnesses from credentials the Control
+Plane delivers and reports their Harness Status, and (2) hosts an MCP server the main harness calls
+to start Delegated Runs. Designed to grow more capabilities (e.g. skills management). Connects out
+to the Control Plane over a WebSocket, routed by `devcontainer_id`.
+_Avoid_: agent, runtime agent, worker, daemon; never call it "the agent" (the harness is the agent)
 
 **Coding Harness**:
-The installable CLI program that runs a coding agent non-interactively inside a Devcontainer — Claude Code (`claude`), Codex CLI (`codex`), Cursor CLI (`cursor-agent`). A harness has two queryable states: **installed** (the binary is present) and **authenticated** (it has working credentials). A model is a *parameter* passed when spawning, not part of the harness identity. Two roles a harness plays: the **main harness** is the one a human drives directly inside the Devcontainer (Claude Code today) — it is the *client* of the MCP server and is never managed by the runtime; a **managed harness** is one the Devcontainer Runtime Agent checks, installs, authenticates, and spawns on the main harness's behalf (Codex, Cursor; extensible). Claude Code is also the harness behind an Agent Session today.
-_Avoid_: tool, agent, vendor, provider; do not conflate with Agent Session (the conversation) or coding agent (the role)
+The installable CLI program that runs a coding agent inside a Devcontainer — Claude Code (`claude`),
+Codex CLI (`codex`), Cursor CLI (`cursor-agent`). Two queryable states: **installed** (binary
+present) and **authenticated** (working credentials). A model is a *parameter* passed when spawning,
+not part of the harness identity. Two roles: the **main harness** is the one a human drives directly
+inside the Devcontainer (Claude Code today) — it is the *client* of the MCP server and is never
+managed by the runtime; a **managed harness** is one the Devcontainer Runtime checks, installs,
+authenticates, and spawns on the main harness's behalf (Codex, Cursor; extensible).
+_Avoid_: tool, agent, vendor, provider; do not conflate with coding agent (the role)
+
+**Harness Credentials**:
+A generic credential blob — API key or a captured subscription auth file — identical in shape
+either way. Captured once from a **host login** (a `vibing` command reads the harness's on-disk auth
+file) and stored plaintext in the Control Plane (single-user local tool; see
+[ADR-0012](docs/adr/0012-harness-credentials-are-host-captured-stored-plaintext-and-injected-per-container.md)).
+Delivered **on demand** to a Devcontainer Runtime via an `authenticate_harness` Command; the
+per-harness adapter installs the harness if missing and drops the credential into place.
+_Avoid_: secret, token (when ambiguous), api key (it is the api-key *or* file case)
+
+**Harness Status**:
+The Devcontainer Runtime's report of a managed harness's `installed`/`authenticated` state for its
+Devcontainer. Reported up over the runtime WebSocket on connect and after each authenticate, written
+directly to the read model by the Control Plane, and shown per-Devcontainer in the web. A plain
+status report, *not* an event in a log.
+_Avoid_: runtime event, harness event
 
 **Delegated Run**:
-One one-shot execution of a *managed* Coding Harness, spawned through the runtime agent's MCP server when the main harness delegates a task. Carries a harness, a model, and a prompt; produces a result. Keyed by its own run id, owned by the Devcontainer, and independent of any Agent Session (the in-container workflow may have no Agent Session at all). Unattended and fully autonomous (it runs in the harness's bypass mode — no human to answer approvals). Not a durable, resumable conversation — when it ends, it is done. Its lifecycle is reported to the Control Plane as Runtime Events for visibility, but it is *not* an Agent Session and does not use that machinery.
+One one-shot execution of a *managed* Coding Harness, spawned through the Devcontainer Runtime's MCP
+server when the main harness delegates a task. Carries a harness, a model, and a prompt; produces a
+result. Unattended and fully autonomous (runs in the harness's bypass mode — no human to answer
+approvals). Not durable or resumable — when it ends, it is done. **In-container only**: observable
+by the main harness via MCP (`get_status`/`get_result`); the Control Plane does not track it.
 _Avoid_: agent-session, subagent session, job, task (when ambiguous)
 
-**Control Plane**:
-The backend (FastAPI + SQLite). The single hub: it holds all metadata, sends Commands to runtimes and consumes the Runtime Events they emit (over TCP/IP, star topology — see [ADR-0003](docs/adr/0003-runtimes-connect-to-the-control-plane-over-tcp-ip-in-a-star-topology.md)), and is the only writer of derived state. The frontend is a separate client over `/api/v1` HTTP and is *not* part of the Control Plane.
-_Avoid_: server, backend, orchestrator; do not include the frontend
+**Command**:
+A message the Control Plane sends to a Devcontainer Runtime expressing intent. The extensible
+runtime channel; today only `authenticate_harness`. Flows Control Plane → Devcontainer Runtime.
+_Avoid_: action, request, message; not used for the Devcontainer lifecycle (the Control Plane drives
+that in-process, not via a Command)
 
 **Control Plane API Mocking**:
-A frontend development mode where the browser receives mock `/api/v1` Control Plane HTTP responses and live invalidation events without requiring a running Control Plane. It is a UI inspection aid, not a substitute source of truth for Runtime Events or projections.
+A frontend development mode where the browser receives mock `/api/v1` Control Plane HTTP responses
+and live invalidation events without requiring a running Control Plane. A UI inspection aid, not a
+substitute source of truth.
 _Avoid_: backendless mode, fake backend, mock server
 
-**Runtime**:
-A process that executes Commands and emits Runtime Events. Two kinds: the **Host Runtime Worker** (owns Devcontainer lifecycle — containers on the host) and the **Devcontainer Runtime Agent** (runs inside a Devcontainer). The agent owns Agent Session lifecycle *and* manages Coding Harnesses for the main harness: it checks whether managed harnesses are installed/authenticated, installs them on demand, authenticates them from credentials the Control Plane sends, and hosts the MCP server that the main harness calls to start Delegated Runs.
-_Avoid_: worker, daemon (when ambiguous)
+## Lifecycle
 
-**Command**:
-A control-plane request directed at a Runtime expressing user/system intent (e.g. `start_devcontainer`, `start_agent_session`). Flows Control Plane → Runtime. Restart is not a Command; it is a convenience workflow composed from stop then start.
-_Avoid_: action, request, message
+One lifecycle now — the Devcontainer's, owned by the **Control Plane**.
 
-**Runtime Event**:
-A structured, low-volume, persisted fact emitted by a Runtime to the Control Plane. The append-only single source of truth for everything a Runtime reports. A distinct channel from Session Output — terminal output is never a Runtime Event.
-_Avoid_: message, notification, log
-
-**Session Output**:
-The high-volume raw character stream from an Agent Session's terminal. Ephemeral — deliberately not persisted (a non-goal). Kept separate from Runtime Events precisely so that persisting it in a future revision is a purely additive change (attach a sink), not a redesign. Distinct from the Session Stream: the live *chat* view is served by the structured Session Stream, not by this raw-character channel.
-_Avoid_: log, terminal log (when it implies persistence)
-
-**Session Stream**:
-The live, incremental projection of an *active* Agent Session's conversation — the same turns as the Session Transcript, but built progressively as the agent works and pushed to the browser in real time (down to token-level partial text). Ephemeral: it exists only for the duration of a run and is never persisted; when the run ends it yields to the durable Session Transcript as the source of truth. The basis for the live chat view. Distinct from Session Output (raw terminal characters) and from the Session Transcript (the durable, on-demand source of truth for *what was said*).
-_Avoid_: streaming transcript, live output, Session Output
-
-**Session Transcript**:
-The durable, append-only conversation history of an Agent Session — the structured record of turns the agent itself persists to disk, owned by the Devcontainer Runtime Agent. The single source of truth for *what was said*, and the basis for continuing the conversation. Fetched on demand from the runtime, never a projection of Runtime Events and not stored by the Control Plane. Distinct from Session Output (an ephemeral live character stream) and from a Session Summary (a one-line final record).
-_Avoid_: conversation log, history, output
-
-**Inbox Event**:
-A stateful (`unread`/`read`/`resolved`) notification a human acts on, derived as a projection of the four notable Runtime Event types (question, approval request, failure, completion). Never a source of truth.
-_Avoid_: notification, alert, message
-
-**Approval Request**:
-A pending action an Agent Session needs the user to approve or reject before proceeding. Status: `pending → approved | rejected`. No expiry state — if the session ends, an outstanding request is left `pending` and hidden.
-_Avoid_: permission, confirmation, prompt; "denied" (use `rejected`)
-
-**User Intervention**:
-A human response required for an Agent Session to continue, such as answering a question or approving/rejecting an Approval Request. The intervention is the user action; an Inbox Event is only the projected notification for it.
-_Avoid_: notification, inbox item, alert
-
-**Session Summary**:
-The final record of a terminated Agent Session (one per session), written on its terminal event. Outlives nothing — it is a projection, not a separate source of truth.
-_Avoid_: report, recap
-
-## Lifecycles
-
-Two independent lifecycles. Keep the verbs distinct.
-
-**Devcontainer lifecycle** — owned by the Host Runtime Worker.
 - States: `created → starting → running → stopping → stopped`, plus `error`.
-- Commands: `start_devcontainer`, `stop_devcontainer`.
-- "**Stop the devcontainer**" stops the container without deleting its reusable environment; it necessarily ends any active agent-session inside it.
-
-**Agent Session lifecycle** — owned by the Devcontainer Runtime Agent.
-- States: `starting → running ⇄ waiting_for_approval → completed / failed / stopped`.
-- The three end states are **resumable resting states, not terminal**: `resume_agent_session` takes any of them back to `starting`, continuing the same conversation.
-- Commands: `start_agent_session`, `resume_agent_session`, `stop_agent_session`.
-- "**Stop the agent-session**" ends the current run only; the devcontainer keeps running and the session can be resumed later.
-- "**Resume the agent-session**" re-opens a rested session in place — same id, same conversation. Gated by the one-active-per-devcontainer invariant.
-
-**Rules**: An agent-session can only be `starting`/`running` while its Devcontainer is `running`. Never say "stop the session" to mean the container, or "stop the devcontainer" to mean the agent run.
+- Commands map to the Dev Container CLI: start → `devcontainer up`, stop → stop the container by
+  its `devcontainer.local_folder` label. Restart is not a command; it is stop then start.
+- Start and stop are long-running. The HTTP endpoint returns `202 Accepted` and the Control Plane
+  runs the CLI in a background task, writing status (`starting → running`, or `error`) directly as it
+  progresses. The browser sees changes via the SSE invalidation stream.
+- After a successful `up`, the Control Plane injects and launches the Devcontainer Runtime into the
+  container.
+- "**Stop the devcontainer**" stops the container without deleting its reusable environment.
 
 ## Notes
 
-*All* read-model state is a projection of the `runtime_events` stream, with no exceptions — Inbox, agent-session status, devcontainer status, approval-request status, and session summaries. See [ADR-0002](docs/adr/0002-inbox-is-a-projection-of-the-runtime-event-stream.md). Every state transition must have a corresponding Runtime Event or the projection goes stale. Commands never write projected state directly: a `resolve_approval` command produces an `approval_resolved` event, and only that event mutates the approval projection.
+The Control Plane is the **single writer of derived state and mutates it directly** — there is no
+`runtime_events` log and no projection/reducer layer. When the Dev Container CLI advances the
+lifecycle, or a Devcontainer Runtime reports Harness Status, the Control Plane writes the read model
+and publishes an SSE invalidation in the same step. The runtime channel carries exactly three
+message kinds: `register`, `command` (Control Plane → Runtime), and `harness_status`
+(Runtime → Control Plane).

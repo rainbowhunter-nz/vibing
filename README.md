@@ -1,17 +1,19 @@
 # vibing
 
-Vibing is a local operations center for managing AI coding agents across isolated devcontainers.
+Vibing is a local control panel for running coding harnesses across isolated devcontainers.
 
-It helps developers run Claude Code across multiple local projects without losing track of running containers, agent sessions, approvals, questions, blocked work, or completed work.
+It helps developers run Claude Code and other coding harnesses across multiple local projects
+without losing track of running containers, harness status, or delegated work.
 
 ## What Runs
 
 - **Frontend:** React + Vite app in `apps/web`.
-- **Control Plane:** FastAPI + SQLite backend in the root Python package.
-- **Host Runtime Worker:** `vibing host-runtime`, runs on the host and controls the Dev Container CLI.
-- **Devcontainer Runtime Agent:** `vibing devcontainer-runtime`, runs inside a devcontainer and controls Claude Code.
+- **Control Plane:** FastAPI + SQLite backend in the root Python package. Drives the Devcontainer
+  lifecycle directly in-process (no separate host worker).
+- **Devcontainer Runtime:** `vibing devcontainer-runtime`, runs inside a devcontainer. Manages
+  harness credentials, reports Harness Status, and hosts the MCP delegation server.
 
-For deeper architecture, domain language, and MVP scope, see [`docs/overview.md`](docs/overview.md).
+For deeper architecture, domain language, and ADRs, see [`docs/overview.md`](docs/overview.md).
 
 ## Prerequisites
 
@@ -61,15 +63,8 @@ Frontend: `http://localhost:5173`
 
 The Vite dev server proxies `/api/v1/*` to `http://localhost:8000`.
 
-### 3. Host Runtime Worker
-
-Start after the backend is running:
-
-```bash
-uv run vibing host-runtime
-```
-
-This connects to the Control Plane at `ws://127.0.0.1:8000/api/v1/runtime/ws` and runs devcontainer lifecycle commands through the local `devcontainer` CLI.
+The Control Plane drives devcontainer lifecycles directly. No additional process is needed for
+lifecycle operations — start the backend and the frontend and you have the full local stack.
 
 ## Build
 
@@ -93,8 +88,8 @@ Production-like container preview:
 ./scripts/start.sh --stop
 ```
 
-For a full single-container deployment (control plane + frontend + host-runtime)
-via docker compose, see [`docs/deployment.md`](docs/deployment.md).
+For a full single-container deployment (control plane + frontend) via docker compose,
+see [`docs/deployment.md`](docs/deployment.md).
 
 ## Test And Check
 
@@ -130,8 +125,9 @@ Runtime help:
 
 ```bash
 uv run vibing --help
-uv run vibing host-runtime --help
 uv run vibing devcontainer-runtime --help
+uv run vibing harness --help
+uv run vibing system --help
 ```
 
 ## Configuration

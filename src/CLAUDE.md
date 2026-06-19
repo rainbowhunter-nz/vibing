@@ -8,11 +8,9 @@ Single uv Python package. Import packages below are domains, not separate distri
 ## Packages
 
 - `vibing_cli`: root `vibing` Typer command.
-- `vibing_api`: FastAPI control plane, SQLite, projections, runtime WS intake.
-- `vibing_protocol`: shared command/event/envelope contract.
-- `vibing_runtime_client`: shared runtime WebSocket client.
-- `vibing_host_runtime`: host worker. Controls Dev Container CLI.
-- `vibing_devcontainer_runtime`: agent worker. Runs inside container.
+- `vibing_api`: FastAPI Control Plane. Drives Devcontainer lifecycle in-process. Stores harness credentials. Mutates read-model directly.
+- `vibing_protocol`: shared command/envelope/harness-status contract.
+- `vibing_devcontainer_runtime`: in-container companion. Manages harness install/auth, reports Harness Status, hosts MCP delegation server.
 
 ## Checks
 

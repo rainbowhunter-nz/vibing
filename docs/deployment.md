@@ -1,8 +1,9 @@
 # Deployment (single-image, docker-out-of-docker)
 
-Vibing ships as one image running the Control Plane, frontend, and Host Runtime
-Worker together. It drives the host's container engine through a mounted socket
-(docker-out-of-docker), so the devcontainers it starts are siblings on the host.
+Vibing ships as one image running the Control Plane and frontend together. It drives the host's
+container engine through a mounted socket (docker-out-of-docker), so the devcontainers it starts
+are siblings on the host. The Control Plane injects the Devcontainer Runtime directly after each
+successful `devcontainer up` — no separate host worker process is needed.
 
 ## Prerequisites
 
@@ -57,24 +58,23 @@ The `devcontainer_examples/sandbox` example already includes this.
 
 ## Devcontainer contract
 
-Vibing injects the Devcontainer Runtime Agent when a devcontainer starts — it
+The Control Plane injects the Devcontainer Runtime when a devcontainer starts — it
 copies `uv` and the `vibing` wheel from the Control Plane image into the
 container and runs `uv tool install` before launching `vibing devcontainer-runtime`.
-Your project's devcontainer image does **not** need Vibing-specific packages.
+Your project's devcontainer image does **not** need Vibing-specific packages pre-installed.
 
 Each devcontainer must provide:
 
-- **`claude` on `PATH`, authenticated** — agent sessions invoke Claude Code.
-- **Network egress** — injection resolves Python deps online; the agent calls the Anthropic API.
+- **A package manager available in `PATH`** — injection uses it to resolve Python deps.
+- **Network egress** — injection resolves Python deps online; managed harnesses reach external APIs.
 - **Linux: host-gateway `runArgs`** — see the Linux caveat above so
   `host.docker.internal` resolves inside the container.
 
-See [`devcontainer_examples/sandbox/README.md`](../devcontainer_examples/sandbox/README.md)
-and [ADR-0004](adr/0004-devcontainer-runtime-agents-connect-on-a-dedicated-endpoint-routed-by-devcontainer-id.md).
+See [`devcontainer_examples/sandbox/README.md`](../devcontainer_examples/sandbox/README.md).
 
 ## Verify end-to-end
 
 1. `docker compose up --build`, then open the UI.
 2. Create a devcontainer whose `local_path` is a folder under `PROJECTS_DIR`.
 3. Start it; confirm the container appears on the host (`docker ps`) and the
-   agent-session reaches `running`.
+   Devcontainer Runtime connects (Harness Status appears in the UI).
