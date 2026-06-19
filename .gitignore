@@ -109,3 +109,4 @@ temp/
 # Superpowers brainstorm session files
 # -----------------------------
 .superpowers/
+.claude/worktrees
