@@ -7,7 +7,6 @@ import pytest
 from vibing_devcontainer_runtime.delegated_runs import DelegatedRunManager
 from vibing_devcontainer_runtime.harness.base import HarnessAdapter
 from vibing_devcontainer_runtime.harness.process import CompletedCommand, HarnessProcess
-from vibing_protocol import RuntimeEvent
 
 
 class FakeAdapter(HarnessAdapter):
@@ -52,90 +51,62 @@ class ScriptedProcess(HarnessProcess):
             self._gate.set()
 
 
-def collector():
-    events: list[RuntimeEvent] = []
+def _mgr(**kwargs: Any) -> DelegatedRunManager:
+    return DelegatedRunManager(
+        kwargs.pop("adapters", {"codex": FakeAdapter()}),
+        kwargs.pop("factory", lambda *a: ScriptedProcess(CompletedCommand(0, "ok", ""))),
+        devcontainer_id=kwargs.pop("devcontainer_id", "dc-1"),
+        workspace=kwargs.pop("workspace", "/ws"),
+        **kwargs,
+    )
 
-    async def emit(e: RuntimeEvent) -> None:
-        events.append(e)
 
-    return events, emit
-
-
-def test_blocking_spawn_returns_result_and_emits_lifecycle():
-    events, emit = collector()
-
+def test_blocking_spawn_returns_result():
     def factory(argv, cwd, env):
         return ScriptedProcess(CompletedCommand(0, "the answer\n", ""))
 
-    mgr = DelegatedRunManager(
-        {"codex": FakeAdapter()}, factory, emit, devcontainer_id="dc-1", workspace="/ws"
-    )
+    mgr = _mgr(factory=factory)
     out = asyncio.run(mgr.spawn("codex", "gpt-5.4", "do it"))
     assert out == {"run_id": "run-1", "status": "completed", "result": "the answer"}
-    types = [e.event_type for e in events]
-    assert types == ["delegated_run_started", "delegated_run_completed"]
-    assert events[0].payload == {
-        "delegated_run_id": "run-1",
-        "harness": "codex",
-        "model": "gpt-5.4",
-    }
 
 
 def test_spawn_uses_workspace_as_default_cwd_and_spawn_env():
-    events, emit = collector()
-    captured = {}
+    captured: dict[str, Any] = {}
 
     def factory(argv, cwd, env):
         captured["cwd"] = cwd
         captured["env"] = env
         return ScriptedProcess(CompletedCommand(0, "ok", ""))
 
-    mgr = DelegatedRunManager(
-        {"codex": FakeAdapter()}, factory, emit, devcontainer_id="dc-1", workspace="/ws"
-    )
+    mgr = _mgr(factory=factory)
     asyncio.run(mgr.spawn("codex", "m", "p"))
     assert captured["cwd"] == "/ws"
 
 
-def test_failed_run_emits_failed_event():
-    events, emit = collector()
-
+def test_failed_run_status():
     def factory(argv, cwd, env):
         return ScriptedProcess(CompletedCommand(2, "", "boom"))
 
-    mgr = DelegatedRunManager(
-        {"codex": FakeAdapter()}, factory, emit, devcontainer_id="dc-1", workspace="/ws"
-    )
+    mgr = _mgr(factory=factory)
     out = asyncio.run(mgr.spawn("codex", "m", "p"))
     assert out["status"] == "failed"
-    assert events[-1].event_type == "delegated_run_failed"
-    assert events[-1].payload["exit_code"] == 2
+    assert mgr.get_result("run-1")["error"]["exit_code"] == 2
 
 
 def test_unauthenticated_harness_raises():
-    _, emit = collector()
-    mgr = DelegatedRunManager(
-        {"codex": FakeAdapter(authed=False)},
-        lambda *a: None,
-        emit,
-        devcontainer_id="dc-1",
-        workspace="/ws",
-    )
+    mgr = _mgr(adapters={"codex": FakeAdapter(authed=False)})
     with pytest.raises(RuntimeError, match="not authenticated"):
         asyncio.run(mgr.spawn("codex", "m", "p"))
 
 
 def test_detached_spawn_returns_running_then_pollable():
-    events, emit = collector()
     gate = asyncio.Event()
 
     def factory(argv, cwd, env):
         return ScriptedProcess(CompletedCommand(0, "late result", ""), gate=gate)
 
     async def scenario():
-        mgr = DelegatedRunManager(
-            {"codex": FakeAdapter()}, factory, emit, devcontainer_id="dc-1", workspace="/ws"
-        )
+        mgr = _mgr(factory=factory)
         started = await mgr.spawn("codex", "m", "p", detached=True)
         assert started == {"run_id": "run-1", "status": "running"}
         assert mgr.get_status("run-1")["status"] == "running"
@@ -148,21 +119,13 @@ def test_detached_spawn_returns_running_then_pollable():
 
 
 def test_capacity_cap_rejects_when_full():
-    events, emit = collector()
     gate = asyncio.Event()
 
     def factory(argv, cwd, env):
         return ScriptedProcess(CompletedCommand(0, "x", ""), gate=gate)
 
     async def scenario():
-        mgr = DelegatedRunManager(
-            {"codex": FakeAdapter()},
-            factory,
-            emit,
-            devcontainer_id="dc-1",
-            workspace="/ws",
-            max_concurrent=1,
-        )
+        mgr = _mgr(factory=factory, max_concurrent=1)
         await mgr.spawn("codex", "m", "p", detached=True)
         with pytest.raises(RuntimeError, match="at capacity"):
             await mgr.spawn("codex", "m", "p", detached=True)
@@ -173,16 +136,10 @@ def test_capacity_cap_rejects_when_full():
 
 
 def test_stop_preserves_terminal_status_of_completed_run():
-    events, emit = collector()
     proc = ScriptedProcess(CompletedCommand(0, "done", ""))
 
-    def factory(argv, cwd, env):
-        return proc
-
     async def scenario():
-        mgr = DelegatedRunManager(
-            {"codex": FakeAdapter()}, factory, emit, devcontainer_id="dc-1", workspace="/ws"
-        )
+        mgr = _mgr(factory=lambda *a: proc)
         await mgr.spawn("codex", "m", "p")  # blocking — completes before stop
         out = await mgr.stop("run-1")
         assert out["status"] == "completed"
@@ -192,17 +149,11 @@ def test_stop_preserves_terminal_status_of_completed_run():
 
 
 def test_stop_terminates_detached_run():
-    events, emit = collector()
     gate = asyncio.Event()
     proc = ScriptedProcess(CompletedCommand(0, "x", ""), gate=gate)
 
-    def factory(argv, cwd, env):
-        return proc
-
     async def scenario():
-        mgr = DelegatedRunManager(
-            {"codex": FakeAdapter()}, factory, emit, devcontainer_id="dc-1", workspace="/ws"
-        )
+        mgr = _mgr(factory=lambda *a: proc)
         await mgr.spawn("codex", "m", "p", detached=True)
         out = await mgr.stop("run-1")
         assert out["status"] == "stopped"
@@ -223,24 +174,11 @@ class BoomProcess(HarnessProcess):
 
 
 def test_wait_exception_marks_failed_and_frees_slot():
-    events, emit = collector()
-
-    def factory(argv, cwd, env):
-        return BoomProcess()
-
     async def scenario():
-        mgr = DelegatedRunManager(
-            {"codex": FakeAdapter()},
-            factory,
-            emit,
-            devcontainer_id="dc-1",
-            workspace="/ws",
-            max_concurrent=1,
-        )
+        mgr = _mgr(factory=lambda *a: BoomProcess(), max_concurrent=1)
         # blocking spawn — must return failed without raising
         out = await mgr.spawn("codex", "m", "p")
         assert out["status"] == "failed"
-        assert events[-1].event_type == "delegated_run_failed"
 
         # slot must be freed — second spawn must not raise "at capacity"
         out2 = await mgr.spawn("codex", "m", "p")

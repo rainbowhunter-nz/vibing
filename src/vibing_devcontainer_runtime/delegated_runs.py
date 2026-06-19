@@ -1,22 +1,16 @@
 """DelegatedRunManager: runs managed harnesses unattended (ADR-0013).
 
-Concurrent up to a cap; each run is a HarnessProcess tracked by run id. Emits
-delegated_run_started then _completed/_failed runtime events. Runs are not durable —
-results live in memory for the process lifetime.
+Concurrent up to a cap; each run is a HarnessProcess tracked by run id. Runs are not
+durable — results live in memory for the process lifetime. Delegated runs are in-container
+only (ADR-0015 Q9=A); no upward event emission.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from vibing_protocol import EventType, RuntimeEvent, RuntimeEventSource
-
 from vibing_devcontainer_runtime.harness.base import HarnessAdapter
 from vibing_devcontainer_runtime.harness.process import HarnessProcess, HarnessProcessFactory
-
-_SOURCE = RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT
-EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
 
 
 @dataclass
@@ -36,7 +30,6 @@ class DelegatedRunManager:
         self,
         adapters: dict[str, HarnessAdapter],
         factory: HarnessProcessFactory,
-        emit: EmitFn,
         *,
         devcontainer_id: str,
         workspace: str,
@@ -44,7 +37,6 @@ class DelegatedRunManager:
     ) -> None:
         self._adapters = adapters
         self._factory = factory
-        self._emit = emit
         self._devcontainer_id = devcontainer_id
         self._workspace = workspace
         self._max = max_concurrent
@@ -75,14 +67,6 @@ class DelegatedRunManager:
 
         argv = adapter.build_spawn_argv(model, prompt)
         run.process = self._factory(argv, cwd or self._workspace, adapter.spawn_env())
-        await self._emit(
-            RuntimeEvent(
-                event_type=EventType.DELEGATED_RUN_STARTED,
-                source=_SOURCE,
-                devcontainer_id=self._devcontainer_id,
-                payload={"delegated_run_id": run.run_id, "harness": harness, "model": model},
-            )
-        )
 
         if detached:
             run.task = asyncio.create_task(self._await_run(run, adapter))
@@ -102,37 +86,13 @@ class DelegatedRunManager:
         except Exception as exc:
             run.status = "failed"
             run.error = {"exit_code": None, "stderr_tail": str(exc)[-4000:]}
-            await self._emit(
-                RuntimeEvent(
-                    event_type=EventType.DELEGATED_RUN_FAILED,
-                    source=_SOURCE,
-                    devcontainer_id=self._devcontainer_id,
-                    payload={"delegated_run_id": run.run_id, **run.error},
-                )
-            )
             return
         if result.returncode == 0:
             run.status = "completed"
             run.result = adapter.extract_result(result.stdout)
-            await self._emit(
-                RuntimeEvent(
-                    event_type=EventType.DELEGATED_RUN_COMPLETED,
-                    source=_SOURCE,
-                    devcontainer_id=self._devcontainer_id,
-                    payload={"delegated_run_id": run.run_id, "result": run.result},
-                )
-            )
         else:
             run.status = "failed"
             run.error = {"exit_code": result.returncode, "stderr_tail": result.stderr[-4000:]}
-            await self._emit(
-                RuntimeEvent(
-                    event_type=EventType.DELEGATED_RUN_FAILED,
-                    source=_SOURCE,
-                    devcontainer_id=self._devcontainer_id,
-                    payload={"delegated_run_id": run.run_id, **run.error},
-                )
-            )
 
     def _get(self, run_id: str) -> _Run:
         return self._runs[run_id]  # KeyError on unknown run

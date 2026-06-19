@@ -1,4 +1,4 @@
-from vibing_protocol import Command, CommandType, EventType, RuntimeEvent, RuntimeEventSource
+from vibing_protocol import Command, CommandType, HarnessStatusEnvelope, HarnessStatusItem
 
 
 def test_authenticate_harness_command_type_wire_value():
@@ -12,15 +12,16 @@ def test_authenticate_harness_command_type_wire_value():
     assert cmd.payload["harness"] == "codex"
 
 
-def test_delegated_run_and_harness_status_event_types():
-    assert EventType.HARNESS_STATUS == "harness_status"
-    assert EventType.DELEGATED_RUN_STARTED == "delegated_run_started"
-    assert EventType.DELEGATED_RUN_COMPLETED == "delegated_run_completed"
-    assert EventType.DELEGATED_RUN_FAILED == "delegated_run_failed"
-    evt = RuntimeEvent(
-        event_type=EventType.DELEGATED_RUN_COMPLETED,
-        source=RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT,
+def test_harness_status_envelope_round_trips():
+    env = HarnessStatusEnvelope(
         devcontainer_id="dc-1",
-        payload={"delegated_run_id": "run-1", "result": "done"},
+        items=[
+            HarnessStatusItem(name="codex", installed=True, authenticated=True),
+            HarnessStatusItem(name="cursor", installed=False, authenticated=False),
+        ],
     )
-    assert evt.payload is not None and evt.payload["delegated_run_id"] == "run-1"
+    assert env.type == "harness_status"
+    dumped = env.model_dump()
+    assert dumped["devcontainer_id"] == "dc-1"
+    assert dumped["items"][0] == {"name": "codex", "installed": True, "authenticated": True}
+    assert HarnessStatusEnvelope.model_validate(dumped) == env

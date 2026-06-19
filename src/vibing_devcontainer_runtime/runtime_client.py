@@ -1,14 +1,9 @@
-"""Shared runtime-channel WebSocket client: reconnect loop and command queue.
+"""Runtime-channel WebSocket client: reconnect loop and command queue.
 
 Connects to the Control Plane runtime WebSocket (ADR-0003), registers, and serially
 processes the Commands it receives. Connection failures and disconnects trigger
 reconnection with bounded exponential backoff. The command queue is in-memory and
 per-session, so in-flight Commands are never replayed after a disconnect or process exit.
-
-The channel carries three message patterns (ADR-0009): commands in, envelopes out
-(via the `send` passed to the command handler), and request/reply correlated by the
-caller-registered responder (`on_request`). The client knows no domain message types
-beyond Command itself.
 """
 
 import asyncio
@@ -25,8 +20,6 @@ from vibing_protocol import Command, CommandEnvelope, RegisterEnvelope
 
 SendFn = Callable[[BaseModel], Awaitable[None]]
 CommandHandler = Callable[[Command, SendFn], Awaitable[None]]
-# Receives the raw request message, returns the reply envelope (correlation id included).
-RequestHandler = Callable[[dict[str, Any]], Awaitable[BaseModel]]
 
 
 class Backoff:
@@ -51,19 +44,19 @@ class RuntimeChannelClient:
     """Connects to the Control Plane runtime channel and serially runs received Commands."""
 
     def __init__(
-        self, control_plane_url: str, register: RegisterEnvelope, handler: CommandHandler
+        self,
+        control_plane_url: str,
+        register: RegisterEnvelope,
+        handler: CommandHandler,
+        on_registered: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._url = control_plane_url
         self._register = register
         self._handler = handler
-        self._request_handlers: dict[str, RequestHandler] = {}
+        self._on_registered = on_registered
         self._backoff = Backoff()
         self._stopped = False
         self._ws: Any | None = None
-
-    def on_request(self, message_type: str, respond: RequestHandler) -> None:
-        """Register the responder for one request/reply message type (ADR-0009)."""
-        self._request_handlers[message_type] = respond
 
     def stop(self) -> None:
         self._stopped = True
@@ -114,6 +107,8 @@ class RuntimeChannelClient:
         try:
             await ws.send(json.dumps(self._register.model_dump()))
             logger.info("Registered with control plane; awaiting commands")
+            if self._on_registered is not None:
+                await self._on_registered()
             send = self._make_send(ws)
             queue: asyncio.Queue[Command] = asyncio.Queue()
             consumer = asyncio.create_task(self._consume(queue, send))
@@ -132,31 +127,18 @@ class RuntimeChannelClient:
     async def _dispatch(
         self, message: dict[str, Any], queue: "asyncio.Queue[Command]", send: SendFn
     ) -> None:
-        msg_type = message.get("type")
-        if msg_type == "command":
-            try:
-                command = CommandEnvelope.model_validate(message).command
-            except ValidationError:
-                return
-            logger.info(
-                "Received command %s (devcontainer=%s, session=%s)",
-                command.type,
-                command.devcontainer_id,
-                command.agent_session_id,
-            )
-            queue.put_nowait(command)
+        if message.get("type") != "command":
             return
-        respond = self._request_handlers.get(msg_type) if isinstance(msg_type, str) else None
-        if respond is None:
-            return
-        logger.info("Received request %s", msg_type)
         try:
-            reply = await respond(message)
-        except Exception:
-            # No reply on failure; the Control Plane's request timeout handles it (ADR-0009).
-            logger.exception("Request handler for %s failed", msg_type)
+            command = CommandEnvelope.model_validate(message).command
+        except ValidationError:
             return
-        await send(reply)
+        logger.info(
+            "Received command %s (devcontainer=%s)",
+            command.type,
+            command.devcontainer_id,
+        )
+        queue.put_nowait(command)
 
     async def _consume(self, queue: "asyncio.Queue[Command]", send: SendFn) -> None:
         while True:

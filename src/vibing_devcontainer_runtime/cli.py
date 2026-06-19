@@ -1,8 +1,7 @@
-"""Command-line entry point for the Devcontainer Runtime Agent.
+"""Command-line entry point for the Devcontainer Runtime.
 
-Connects to the Control Plane agent channel, registers with a devcontainer_id, and runs
-two concurrent jobs in one asyncio loop (ADR-0011): the Command/event WebSocket client
-(Agent Sessions) and the MCP server the main harness calls to spawn Delegated Runs.
+Connects to the Control Plane harness command channel, reports initial harness status on
+connect, and concurrently runs the MCP delegation server (ADR-0011, ADR-0015).
 """
 
 import asyncio
@@ -11,23 +10,21 @@ from pathlib import Path
 import typer
 from logzero import logger
 from mcp.server.fastmcp import FastMCP
-from vibing_protocol import RegisterEnvelope, RuntimeEventSource
-from vibing_runtime_client import RuntimeChannelClient
+from vibing_protocol import RegisterEnvelope
 
-from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner
-from vibing_devcontainer_runtime.command_handler import AgentCommandHandler, _make_emit
+from vibing_devcontainer_runtime.command_handler import HarnessCommandHandler
 from vibing_devcontainer_runtime.delegated_runs import DelegatedRunManager
 from vibing_devcontainer_runtime.harness.process import real_process_factory
 from vibing_devcontainer_runtime.harness.registry import build_adapters
 from vibing_devcontainer_runtime.harness_manager import HarnessManager
 from vibing_devcontainer_runtime.mcp_server import build_mcp_server
-from vibing_devcontainer_runtime.transcript import TranscriptReader
+from vibing_devcontainer_runtime.runtime_client import RuntimeChannelClient
 
-DEFAULT_CONTROL_PLANE_URL = "ws://host.docker.internal:8000/api/v1/runtime/agent/ws"
+DEFAULT_CONTROL_PLANE_URL = "ws://host.docker.internal:8080/api/v1/runtime/agent/ws"
 
 cli = typer.Typer(
     add_completion=False,
-    help="Devcontainer Runtime Agent: Agent Sessions + harness delegation MCP server.",
+    help="Devcontainer Runtime: harness management + MCP delegation server.",
 )
 
 
@@ -37,19 +34,18 @@ async def _serve_async(
     adapters = build_adapters(real_process_factory, Path.home())
     harness_manager = HarnessManager(adapters)
 
-    register = RegisterEnvelope(
-        source=RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT, devcontainer_id=devcontainer_id
+    register = RegisterEnvelope(devcontainer_id=devcontainer_id)
+    handler = HarnessCommandHandler(harness_manager, devcontainer_id)
+    client = RuntimeChannelClient(
+        control_plane_url,
+        register,
+        handler.handle,
+        on_registered=lambda: handler.report_all(client.send_envelope),
     )
-    handler = AgentCommandHandler(ClaudeCodeRunner(), harness_manager=harness_manager)
-    client = RuntimeChannelClient(control_plane_url, register, handler.handle)
-    client.on_request("transcript_request", TranscriptReader().respond)
 
-    # Delegated runs emit over the same channel; reuse the client's send via a forwarding emit.
-    emit = _make_emit(client.send_envelope)
     delegated_runs = DelegatedRunManager(
         adapters,
         real_process_factory,
-        emit,
         devcontainer_id=devcontainer_id,
         workspace=workspace,
     )
@@ -80,7 +76,7 @@ def serve(
 ) -> None:
     """Connect to the Control Plane and serve the harness-delegation MCP server."""
     logger.info(
-        "Starting devcontainer runtime agent (cp=%s, dc=%s, mcp=%s:%d, ws=%s)",
+        "Starting devcontainer runtime (cp=%s, dc=%s, mcp=%s:%d, ws=%s)",
         control_plane_url,
         devcontainer_id,
         mcp_host,

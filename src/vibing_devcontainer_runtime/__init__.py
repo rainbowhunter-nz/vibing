@@ -1,11 +1,4 @@
-from vibing_devcontainer_runtime.cli import main
-from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner, ClaudeFailure, ClaudeSuccess
-from vibing_devcontainer_runtime.command_handler import AgentCommandHandler
+# Imports deferred until Phase 3 (Task 3.2/3.3 rewrite cli/command_handler).
+# For now, the package doesn't export these top-level; tests import direct from modules.
 
-__all__ = [
-    "AgentCommandHandler",
-    "ClaudeCodeRunner",
-    "ClaudeFailure",
-    "ClaudeSuccess",
-    "main",
-]
+__all__: list[str] = []
