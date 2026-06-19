@@ -7,7 +7,7 @@ and handles Commands via AgentCommandHandler (runs Claude on start_agent_session
 import typer
 from logzero import logger
 from vibing_protocol import RegisterEnvelope, RuntimeEventSource
-from vibing_runtime_client import RuntimeChannelClient, run_client
+from vibing_runtime_client import RuntimeChannelClient
 
 from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner
 from vibing_devcontainer_runtime.command_handler import AgentCommandHandler
@@ -38,11 +38,9 @@ def serve(
         source=RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT, devcontainer_id=devcontainer_id
     )
     handler = AgentCommandHandler(ClaudeCodeRunner()).handle
-    transcript_handler = TranscriptReader().read
-    client = RuntimeChannelClient(
-        control_plane_url, register, handler, transcript_handler=transcript_handler
-    )
-    run_client(client)
+    client = RuntimeChannelClient(control_plane_url, register, handler)
+    client.on_request("transcript_request", TranscriptReader().respond)
+    client.run_blocking()
 
 
 def main() -> None:

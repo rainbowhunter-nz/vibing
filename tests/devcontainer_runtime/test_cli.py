@@ -3,7 +3,6 @@
 import pytest
 from typer.testing import CliRunner
 
-import vibing_devcontainer_runtime.cli as cli_module
 from vibing_devcontainer_runtime.cli import DEFAULT_CONTROL_PLANE_URL, cli
 from vibing_protocol import RegisterEnvelope
 from vibing_runtime_client import RuntimeChannelClient
@@ -13,11 +12,7 @@ from vibing_runtime_client import RuntimeChannelClient
 def captured(monkeypatch: pytest.MonkeyPatch) -> list[RuntimeChannelClient]:
     """Capture the RuntimeChannelClient the CLI builds without running it."""
     clients: list[RuntimeChannelClient] = []
-
-    def fake_run_client(client: RuntimeChannelClient) -> None:
-        clients.append(client)
-
-    monkeypatch.setattr(cli_module, "run_client", fake_run_client)
+    monkeypatch.setattr(RuntimeChannelClient, "run_blocking", lambda client: clients.append(client))
     return clients  # type: ignore[return-value]
 
 
@@ -29,6 +24,7 @@ def test_cli_defaults(captured: list[RuntimeChannelClient]) -> None:
     assert DEFAULT_CONTROL_PLANE_URL == "ws://host.docker.internal:8000/api/v1/runtime/agent/ws"
     assert client._register.source == "devcontainer_runtime_agent"
     assert client._register.devcontainer_id == "dc-test"
+    assert "transcript_request" in client._request_handlers  # transcript responder wired
 
 
 def test_cli_overrides(captured: list[RuntimeChannelClient]) -> None:

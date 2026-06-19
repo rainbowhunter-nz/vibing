@@ -1,12 +1,16 @@
-"""ClaudeCodeRunner: runs `claude` as a streaming subprocess, injectable for tests.
+"""ClaudeCodeRunner: runs `claude` as a streaming subprocess.
 
 ADR-0010: the invocation is incremental `--output-format stream-json --verbose
 --include-partial-messages`, read line-by-line. Each line is normalized (see
 stream_normalizer) into turn-deltas that flow to an `on_delta` callback as they
 arrive; the terminal `result` event drives the success/failure mapping that produces
 session_completed/session_failed. `--resume`/`--session-id` semantics (ADR-0008) are
-unchanged. The injectable seam yields a SEQUENCE of stream-json lines so a fake can
-emit deltas, not just a final result.
+unchanged.
+
+The single test seam is `ClaudeProcess`: the runner builds the command and a
+`ProcessFactory` turns it into a process. Production uses the real subprocess; tests
+inject a factory returning a fake process (scripted stream-json lines, or controlled
+wait/terminate timing).
 """
 
 import asyncio
@@ -22,11 +26,11 @@ from vibing_devcontainer_runtime.stream_normalizer import StreamNormalizer, Term
 _STDERR_TAIL_CHARS = 4000
 _SIGTERM_GRACE_SECONDS = 5.0
 
-# Test seam: given the command, yield Claude's stdout stream-json lines in order.
-StreamRunner = Callable[[list[str]], AsyncIterator[str]]
-
 # Per-delta callback invoked as deltas are normalized off the stream.
 OnDelta = Callable[[TurnDelta], Awaitable[None]]
+
+# The one seam: build a ClaudeProcess from a fully-formed command line.
+ProcessFactory = Callable[[list[str]], "ClaudeProcess"]
 
 
 @dataclass(frozen=True)
@@ -94,22 +98,23 @@ class ClaudeProcess:
         raise NotImplementedError
 
 
-class _FakeRunnerProcess(ClaudeProcess):
-    """Wraps an injectable StreamRunner as a ClaudeProcess for testing."""
-
-    def __init__(self, command: list[str], runner: StreamRunner) -> None:
-        self._command = command
-        self._runner = runner
-
-    async def wait(self, on_delta: OnDelta) -> ClaudeResult:
-        try:
-            terminal = await _drain(self._runner(self._command), on_delta)
-        except FileNotFoundError:
-            return ClaudeFailure(exit_code=None, stderr_tail="", message="claude binary not found")
-        return _map_terminal(terminal, returncode=0, stderr="")
-
-    async def terminate(self) -> None:
-        pass  # fake; test override handles cancellation if needed
+def _build_command(binary: str, prompt: str, session_id: str | None, resume: bool) -> list[str]:
+    cmd = [
+        binary,
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--permission-mode",
+        "bypassPermissions",
+    ]
+    if session_id is not None:
+        # ADR-0008: resume continues the same on-disk thread via --resume; a fresh
+        # run names the session via --session-id. Never both (and no --fork-session).
+        cmd += ["--resume", session_id] if resume else ["--session-id", session_id]
+    return cmd
 
 
 class ClaudeCodeRunner:
@@ -124,40 +129,20 @@ class ClaudeCodeRunner:
         self,
         binary: str = "claude",
         cwd: str | None = None,
-        runner: StreamRunner | None = None,
+        process_factory: ProcessFactory | None = None,
     ) -> None:
         self._binary = binary
         self._cwd = cwd
-        self._runner = runner
+        self._new_process: ProcessFactory = process_factory or self._real_process
 
-    def _build_command(
-        self, prompt: str, session_id: str | None = None, resume: bool = False
-    ) -> list[str]:
-        cmd = [
-            self._binary,
-            "-p",
-            prompt,
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--include-partial-messages",
-            "--permission-mode",
-            "bypassPermissions",
-        ]
-        if session_id is not None:
-            # ADR-0008: resume continues the same on-disk thread via --resume; a fresh
-            # run names the session via --session-id. Never both (and no --fork-session).
-            cmd += ["--resume", session_id] if resume else ["--session-id", session_id]
-        return cmd
+    def _real_process(self, command: list[str]) -> ClaudeProcess:
+        return _LazyRealProcess(command, self._cwd)
 
     def start(
         self, prompt: str, session_id: str | None = None, resume: bool = False
     ) -> ClaudeProcess:
-        """Return a ClaudeProcess handle. For the injected-runner path, returns synchronously."""
-        command = self._build_command(prompt, session_id, resume)
-        if self._runner is not None:
-            return _FakeRunnerProcess(command, self._runner)
-        return _LazyRealProcess(command, self._cwd)
+        """Build the command and turn it into a ClaudeProcess via the factory."""
+        return self._new_process(_build_command(self._binary, prompt, session_id, resume))
 
 
 class _LazyRealProcess(ClaudeProcess):

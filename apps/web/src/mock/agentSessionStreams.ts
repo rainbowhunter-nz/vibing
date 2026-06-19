@@ -140,8 +140,11 @@ export function playSessionStream(sessionId: string, opts: PlayOptions = {}): ()
       delete _counters[sessionId]
       if (completeSession) {
         try {
+          // Canonical transcript turn id ≠ streamed turn_id, mirroring the real backend
+          // (stream uses Claude's message.id, transcript its per-line uuid). The live bubble
+          // reconciles to the canonical turn by content, not id.
           completeAgentSessionRun(sessionId, {
-            id: script.turnId,
+            id: `${script.turnId}-canonical`,
             blocks: stepsToBlocks(steps),
           })
           emitInvalidation('agent_sessions')

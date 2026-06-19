@@ -5,13 +5,30 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from logzero import logger
-from vibing_protocol import Command, CommandType, EventType, RuntimeEvent, RuntimeEventSource
+from pydantic import BaseModel
+from vibing_protocol import (
+    Command,
+    CommandType,
+    EventType,
+    RuntimeEvent,
+    RuntimeEventEnvelope,
+    RuntimeEventSource,
+)
 
 from vibing_host_runtime.devcontainer_cli import DevcontainerCliAdapter, DevcontainerFailure
 
 _SOURCE: RuntimeEventSource = RuntimeEventSource.HOST_RUNTIME_WORKER
 
+SendFn = Callable[[BaseModel], Awaitable[None]]
 EmitFn = Callable[[RuntimeEvent], Awaitable[None]]
+
+
+def _make_emit(send: SendFn) -> EmitFn:
+    async def emit(event: RuntimeEvent) -> None:
+        logger.info("Emitting event %s (devcontainer=%s)", event.event_type, event.devcontainer_id)
+        await send(RuntimeEventEnvelope(event=event))
+
+    return emit
 
 
 class _LauncherProtocol(Protocol):
@@ -25,8 +42,8 @@ class DevcontainerCommandHandler:
         self._adapter = adapter
         self._launcher = launcher
 
-    async def handle(self, command: Command, emit: EmitFn, emit_delta: Any = None) -> None:
-        # emit_delta is the live turn-delta channel (ADR-0010); host lifecycle has none.
+    async def handle(self, command: Command, send: SendFn) -> None:
+        emit = _make_emit(send)
         if command.type == CommandType.START_DEVCONTAINER:
             await self._dispatch(
                 command,

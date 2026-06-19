@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 from vibing_protocol import RunEndedDelta, RunStartedDelta, TextDelta, ToolUseDelta, TurnDelta
 
-from ._tool_summary import summarize_tool_input
+from .content_blocks import ContentItem, TextItem, ToolItem, item_from_block, parse_content
 
 
 @dataclass(frozen=True)
@@ -38,29 +38,15 @@ class NormalizedLine:
     terminal: TerminalResult | None = None
 
 
+def _to_delta(turn_id: str, item: ContentItem) -> TurnDelta:
+    if isinstance(item, TextItem):
+        return TextDelta(turn_id=turn_id, text=item.text)
+    return ToolUseDelta(turn_id=turn_id, name=item.name, summary=item.summary)
+
+
 def _deltas_from_content(turn_id: str, content: object) -> list[TurnDelta]:
-    """Walk content blocks in order, emitting TextDelta / ToolUseDelta per block."""
-    if isinstance(content, str):
-        return [TextDelta(turn_id=turn_id, text=content)] if content else []
-    if not isinstance(content, list):
-        return []
-    deltas: list[TurnDelta] = []
-    for raw in content:
-        if not isinstance(raw, dict):
-            continue
-        if raw.get("type") == "text":
-            text = raw.get("text")
-            if isinstance(text, str) and text:
-                deltas.append(TextDelta(turn_id=turn_id, text=text))
-        elif raw.get("type") == "tool_use":
-            name = raw.get("name")
-            if isinstance(name, str):
-                deltas.append(
-                    ToolUseDelta(
-                        turn_id=turn_id, name=name, summary=summarize_tool_input(raw.get("input"))
-                    )
-                )
-    return deltas
+    """Project content items onto turn-deltas, in arrival order."""
+    return [_to_delta(turn_id, item) for item in parse_content(content)]
 
 
 class StreamNormalizer:
@@ -122,20 +108,10 @@ class StreamNormalizer:
                     deltas=[TextDelta(turn_id=self._current_message_id, text=delta["text"])]
                 )
         if event_type == "content_block_start":
-            cb = event.get("content_block")
-            if isinstance(cb, dict) and cb.get("type") == "tool_use":
-                name = cb.get("name")
-                if isinstance(name, str):
-                    self._streamed_partials = True
-                    return NormalizedLine(
-                        deltas=[
-                            ToolUseDelta(
-                                turn_id=self._current_message_id,
-                                name=name,
-                                summary=summarize_tool_input(cb.get("input")),
-                            )
-                        ]
-                    )
+            item = item_from_block(event.get("content_block"))
+            if isinstance(item, ToolItem):
+                self._streamed_partials = True
+                return NormalizedLine(deltas=[_to_delta(self._current_message_id, item)])
         return NormalizedLine()
 
     def _from_complete_assistant(self, obj: dict) -> NormalizedLine:

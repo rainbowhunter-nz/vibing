@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 
 import pytest
-from vibing_protocol import Command, RuntimeEvent
+from vibing_protocol import Command, RuntimeEvent, RuntimeEventEnvelope
 
 from vibing_host_runtime.command_handler import DevcontainerCommandHandler
 from vibing_host_runtime.devcontainer_cli import (
@@ -53,10 +53,10 @@ def _run(
 ) -> list[RuntimeEvent]:
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    async def send(envelope: RuntimeEventEnvelope) -> None:
+        events.append(envelope.event)
 
-    asyncio.run(handler.handle(command, emit))
+    asyncio.run(handler.handle(command, send))
     return events
 
 
@@ -85,11 +85,11 @@ def test_start_success_launcher_called_after_devcontainer_started_emitted() -> N
     adapter = FakeAdapter(DevcontainerSuccess(operation="start", payload={"container_id": "c1"}))
     handler = DevcontainerCommandHandler(adapter, launcher=TrackingLauncher())  # type: ignore[arg-type]
 
-    async def emit(event: RuntimeEvent) -> None:
-        emitted.append(event)
+    async def send(envelope: RuntimeEventEnvelope) -> None:
+        emitted.append(envelope.event)
 
     asyncio.run(
-        handler.handle(_make_command("start_devcontainer", payload={"local_path": "/p"}), emit)
+        handler.handle(_make_command("start_devcontainer", payload={"local_path": "/p"}), send)
     )
 
     assert events_at_launch == [["devcontainer_starting", "devcontainer_started"]]

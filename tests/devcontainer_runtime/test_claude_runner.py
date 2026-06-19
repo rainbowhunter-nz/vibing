@@ -1,7 +1,8 @@
-"""Tests for ClaudeCodeRunner — streaming via the injectable StreamRunner seam.
+"""Tests for ClaudeCodeRunner — streaming via the ClaudeProcess seam.
 
-No real subprocess: the fake StreamRunner yields a SEQUENCE of stream-json lines
-(deltas), and the terminal `result` line drives the success/failure mapping (ADR-0010).
+No real subprocess: scripted_runner injects a ScriptedProcess that yields a SEQUENCE of
+stream-json lines (deltas); the terminal `result` line drives the success/failure
+mapping (ADR-0010).
 """
 
 import asyncio
@@ -15,6 +16,8 @@ from vibing_devcontainer_runtime.claude_runner import (
     ClaudeFailure,
     ClaudeSuccess,
 )
+
+from .fakes import scripted_runner
 
 
 def _lines_runner(lines: list[str]):
@@ -81,7 +84,7 @@ def test_invocation_uses_stream_json_flags():
         for line in [_result()]:
             yield line
 
-    rnr = ClaudeCodeRunner(runner=runner)
+    rnr = scripted_runner(runner)
     _collect(rnr, "hello world")
     assert captured[0] == [
         "claude",
@@ -104,7 +107,7 @@ def test_session_id_appended_when_provided():
         for line in [_result()]:
             yield line
 
-    rnr = ClaudeCodeRunner(runner=runner)
+    rnr = scripted_runner(runner)
     asyncio.run(rnr.start("hi", session_id="sid").wait(lambda d: asyncio.sleep(0)))
     assert captured[0][-2:] == ["--session-id", "sid"]
     assert "--resume" not in captured[0]
@@ -118,7 +121,7 @@ def test_resume_appends_resume_flag_not_session_id():
         for line in [_result()]:
             yield line
 
-    rnr = ClaudeCodeRunner(runner=runner)
+    rnr = scripted_runner(runner)
     asyncio.run(rnr.start("hi", session_id="sid", resume=True).wait(lambda d: asyncio.sleep(0)))
     assert captured[0][-2:] == ["--resume", "sid"]
     assert "--session-id" not in captured[0]
@@ -129,10 +132,8 @@ def test_resume_appends_resume_flag_not_session_id():
 
 
 def test_deltas_surface_in_order():
-    runner = ClaudeCodeRunner(
-        runner=_lines_runner(
-            [_INIT, _msg_start("msg_1"), _text("Hel"), _text("lo"), _result("Hello")]
-        )
+    runner = scripted_runner(
+        _lines_runner([_INIT, _msg_start("msg_1"), _text("Hel"), _text("lo"), _result("Hello")])
     )
     result, deltas = _collect(runner, "hi")
     assert deltas == [
@@ -149,30 +150,32 @@ def test_deltas_surface_in_order():
 
 
 def test_terminal_result_success_maps_to_claude_success():
-    runner = ClaudeCodeRunner(runner=_lines_runner([_INIT, _result("the answer")]))
+    runner = scripted_runner(_lines_runner([_INIT, _result("the answer")]))
     result, _ = _collect(runner, "hi")
     assert isinstance(result, ClaudeSuccess)
     assert result.result == "the answer"
 
 
 def test_terminal_result_error_maps_to_claude_failure():
-    runner = ClaudeCodeRunner(runner=_lines_runner([_INIT, _result(result="", is_error=True)]))
+    runner = scripted_runner(_lines_runner([_INIT, _result(result="", is_error=True)]))
     result, _ = _collect(runner, "hi")
     assert isinstance(result, ClaudeFailure)
+    assert result.message == "claude reported an error result"
 
 
 def test_no_terminal_result_is_failure():
     """Stream ended without a result event -> failure (the run did not complete)."""
-    runner = ClaudeCodeRunner(runner=_lines_runner([_INIT, _msg_start("m"), _text("partial")]))
+    runner = scripted_runner(_lines_runner([_INIT, _msg_start("m"), _text("partial")]))
     result, _ = _collect(runner, "hi")
     assert isinstance(result, ClaudeFailure)
+    assert result.message == "claude stream ended without a result event"
 
 
 # --- Missing binary -> failure, not a crash ---
 
 
 def test_missing_binary_returns_failure_not_crash():
-    runner = ClaudeCodeRunner(runner=_raising_runner(FileNotFoundError("no claude")))
+    runner = scripted_runner(_raising_runner(FileNotFoundError("no claude")))
     result, deltas = _collect(runner, "x")
     assert isinstance(result, ClaudeFailure)
     assert result.exit_code is None

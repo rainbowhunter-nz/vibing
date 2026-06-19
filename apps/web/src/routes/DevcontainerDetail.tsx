@@ -414,7 +414,7 @@ function ConversationBody({
     () => fetchAgentSession(devcontainerId, sessionId),
     [devcontainerId, sessionId],
   )
-  const { state: transcriptState, refetch: transcriptRefetch, isFetching: transcriptFetching } = useApiQuery(
+  const { state: transcriptState, refetch: transcriptRefetch } = useApiQuery(
     () => fetchAgentSessionTranscript(devcontainerId, sessionId),
     [devcontainerId, sessionId],
   )
@@ -442,31 +442,25 @@ function ConversationBody({
 
   // Open the per-session live stream ONLY while the session is active (ADR-0010).
   const isActive = state.kind === 'ready' && ACTIVE_STATUSES.has(state.data.status)
-  const transcriptTurns: TranscriptTurn[] = useMemo(
-    () =>
-      transcriptState.kind === 'ready' && transcriptState.data.state === 'has_turns'
-        ? transcriptState.data.turns
-        : [],
-    [transcriptState],
-  )
+  // The transcript is read live from the agent and can transiently degrade to
+  // error/empty/summary_fallback during the run-end refetch storm. A conversation only ever
+  // grows, so keep the last-good turns and never let a transient response shrink them — that
+  // transient blow-away is the disappear-reappear flash. Keyed by sessionId at the component
+  // level, so this resets on session switch.
+  const freshTurns =
+    transcriptState.kind === 'ready' && transcriptState.data.state === 'has_turns'
+      ? transcriptState.data.turns
+      : null
+  const [lastGoodTurns, setLastGoodTurns] = useState<TranscriptTurn[]>([])
+  // Prefer fresh turns synchronously; fall back to the last-good set when a refetch transiently
+  // degrades. Persist the choice for the next transient (render-phase update, no paint between).
+  const transcriptTurns =
+    freshTurns && freshTurns.length >= lastGoodTurns.length ? freshTurns : lastGoodTurns
+  if (transcriptTurns !== lastGoodTurns) setLastGoodTurns(transcriptTurns)
   const reconciledTurnIds = useMemo(() => new Set(transcriptTurns.map((t) => t.id)), [transcriptTurns])
   const live = useSessionStream(devcontainerId, sessionId, isActive, transcriptRefetch, reconciledTurnIds)
-  const runEndBaselineRef = useRef<Set<string> | null>(null)
-  const wasEndedRef = useRef(false)
-  if (live.ended && !wasEndedRef.current) {
-    runEndBaselineRef.current = new Set(transcriptTurns.map((t) => t.id))
-  }
-  if (!live.ended) runEndBaselineRef.current = null
-  wasEndedRef.current = live.ended
-  const runEndBaseline = runEndBaselineRef.current
-  const streamingTurns = useMemo(
-    () => liveOnlyTurns(transcriptTurns, live, transcriptFetching, runEndBaseline),
-    [transcriptTurns, live, transcriptFetching, runEndBaseline],
-  )
-  const mergedTurns = useMemo(
-    () => mergeTurns(transcriptTurns, live, transcriptFetching, runEndBaseline),
-    [transcriptTurns, live, transcriptFetching, runEndBaseline],
-  )
+  const streamingTurns = useMemo(() => liveOnlyTurns(transcriptTurns, live), [transcriptTurns, live])
+  const mergedTurns = useMemo(() => mergeTurns(transcriptTurns, live), [transcriptTurns, live])
 
   // Auto-scroll: stick to bottom, pause on user scroll-up, show jump button when unstuck.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -583,7 +577,42 @@ function ConversationBody({
       : null
 
   function renderTranscript() {
-    if (transcriptState.kind === 'loading' && !pendingUserText && transcriptTurns.length === 0) {
+    // Anything visible wins: as long as we have turns (kept sticky across transient refetches),
+    // a pending bubble, live stream, working indicator, or an intervention, render the
+    // conversation — never flash to a degraded state during the run-end refetch storm.
+    if (transcriptTurns.length > 0 || pendingUserText || streamingTurns.length > 0 || showWorking || pendingIntervention) {
+      return (
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          {transcriptTurns.map((turn) => (
+            <ConversationBubble key={turn.id} role={turn.role === 'user' ? 'user' : 'agent'}>
+              <BlockContent blocks={turn.blocks} />
+            </ConversationBubble>
+          ))}
+          {pendingUserText && (
+            <ConversationBubble role="user" sending>
+              <p>{pendingUserText}</p>
+            </ConversationBubble>
+          )}
+          {streamingTurns.map((turn) => (
+            <ConversationBubble key={turn.id} role="agent">
+              <BlockContent blocks={turn.blocks} />
+            </ConversationBubble>
+          ))}
+          {showWorking && <WorkingIndicator />}
+          {pendingIntervention && (
+            <InlineInterventionCard
+              key={pendingIntervention.id}
+              event={pendingIntervention}
+              devcontainerId={devcontainerId}
+              sessionId={sessionId}
+            />
+          )}
+        </div>
+      )
+    }
+
+    // Nothing to show yet — surface loading / error / summary / empty for the first load.
+    if (transcriptState.kind === 'loading') {
       return <p className="text-[13px] text-text-muted">Loading conversation…</p>
     }
 
@@ -592,44 +621,11 @@ function ConversationBody({
     }
 
     if (transcriptState.kind === 'ready') {
-      const transcript = transcriptState.data
-
-      if (transcriptTurns.length > 0 || pendingUserText || streamingTurns.length > 0 || showWorking || pendingIntervention) {
-        return (
-          <div className="mx-auto flex max-w-3xl flex-col gap-3">
-            {transcriptTurns.map((turn) => (
-              <ConversationBubble key={turn.id} role={turn.role === 'user' ? 'user' : 'agent'}>
-                <BlockContent blocks={turn.blocks} />
-              </ConversationBubble>
-            ))}
-            {pendingUserText && (
-              <ConversationBubble role="user" sending>
-                <p>{pendingUserText}</p>
-              </ConversationBubble>
-            )}
-            {streamingTurns.map((turn) => (
-              <ConversationBubble key={turn.id} role="agent">
-                <BlockContent blocks={turn.blocks} />
-              </ConversationBubble>
-            ))}
-            {showWorking && <WorkingIndicator />}
-            {pendingIntervention && (
-              <InlineInterventionCard
-                key={pendingIntervention.id}
-                event={pendingIntervention}
-                devcontainerId={devcontainerId}
-                sessionId={sessionId}
-              />
-            )}
-          </div>
-        )
-      }
-
-      if (transcript.state === 'summary_fallback') {
+      if (transcriptState.data.state === 'summary_fallback') {
         return (
           <div className="space-y-3">
-            {transcript.summary_text && (
-              <ConversationBubble role="agent">{transcript.summary_text}</ConversationBubble>
+            {transcriptState.data.summary_text && (
+              <ConversationBubble role="agent">{transcriptState.data.summary_text}</ConversationBubble>
             )}
             <p className="text-[13px] text-text-muted">Start the devcontainer to view or continue this conversation.</p>
           </div>

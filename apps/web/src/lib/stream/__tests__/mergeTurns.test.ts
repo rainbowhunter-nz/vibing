@@ -130,14 +130,26 @@ describe('mergeTurns', () => {
     expect(merged.filter((t) => t.id === 'a1')).toHaveLength(1)
   })
 
-  it('drops live bubbles once run ends even when transcript turn ids differ', () => {
+  it('drops live bubbles once run ends and the canonical turn lands under a different id (match by content)', () => {
     const transcript = [userTurn('u1', 'hi'), assistantTurn('canonical-id', 'Hello there')]
     let live = emptyLiveState()
     live = liveReducer(live, { kind: 'text', turn_id: 'stream-id', role: 'assistant', text: 'Hello there' })
     live = liveReducer(live, { kind: 'run_ended' })
-    const baseline = new Set(['u1', 'canonical-id'])
-    expect(liveOnlyTurns(transcript, live, false, baseline)).toEqual([])
-    expect(mergeTurns(transcript, live, false, baseline)).toEqual(transcript)
+    expect(liveOnlyTurns(transcript, live)).toEqual([])
+    expect(mergeTurns(transcript, live)).toEqual(transcript)
+  })
+
+  it('repro: keeps the live reply after run ends when a prior assistant turn exists but the new turn has not landed', () => {
+    // Multi-turn flicker repro: the streamed turn id (Claude message.id) never matches the
+    // canonical transcript id (Claude per-line uuid), so reconcile-by-id can't fire. After
+    // run_ended, the transcript refetch can momentarily return STALE data (the new assistant
+    // turn not yet persisted) while a prior assistant turn is present. The reply must stay
+    // visible until the canonical turn actually lands.
+    const transcript = [userTurn('u1', 'hi'), assistantTurn('a-prior', 'earlier'), userTurn('u2', 'again')]
+    let live = emptyLiveState()
+    live = liveReducer(live, { kind: 'text', turn_id: 'stream-new', role: 'assistant', text: 'fresh reply' })
+    live = liveReducer(live, { kind: 'run_ended' })
+    expect(liveOnlyTurns(transcript, live)).toEqual([assistantTurn('stream-new', 'fresh reply')])
   })
 
   it('keeps live bubbles after run ends when transcript refetch is still empty', () => {
@@ -145,17 +157,17 @@ describe('mergeTurns', () => {
     let live = emptyLiveState()
     live = liveReducer(live, { kind: 'text', turn_id: 'stream-id', role: 'assistant', text: 'Hello there' })
     live = liveReducer(live, { kind: 'run_ended' })
-    expect(liveOnlyTurns(transcript, live, false, new Set())).toEqual([
+    expect(liveOnlyTurns(transcript, live)).toEqual([
       assistantTurn('stream-id', 'Hello there'),
     ])
   })
 
-  it('keeps live bubbles visible while transcript refetch is in flight after run ends', () => {
+  it('keeps the live bubble after run ends while the transcript has no matching assistant turn yet', () => {
     const transcript = [userTurn('u1', 'hi')]
     let live = emptyLiveState()
     live = liveReducer(live, { kind: 'text', turn_id: 'stream-id', role: 'assistant', text: 'Hello there' })
     live = liveReducer(live, { kind: 'run_ended' })
-    expect(liveOnlyTurns(transcript, live, true)).toEqual([assistantTurn('stream-id', 'Hello there')])
+    expect(liveOnlyTurns(transcript, live)).toEqual([assistantTurn('stream-id', 'Hello there')])
   })
 
   it('preserves transcript order and does not reorder', () => {

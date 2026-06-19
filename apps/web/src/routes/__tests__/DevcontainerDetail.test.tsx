@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, act, cleanup, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { SseProvider } from '../../lib/events'
 import { DevcontainerDetail } from '../DevcontainerDetail'
@@ -164,8 +164,11 @@ describe('DevcontainerDetail', () => {
     mockFetchSessions.mockResolvedValue({ items: [sampleSession] })
     renderPage('dc1')
     await screen.findByText('Sessions')
-    expect(screen.getByText('running')).toBeTruthy()
-    expect(screen.getByText('sess-000')).toBeTruthy()
+    // Scope to the sessions pane: an active session is auto-opened, so its status badge also
+    // renders in the conversation header — both are correct.
+    const sessionsPane = screen.getByText('Sessions').closest('div') as HTMLElement
+    expect(within(sessionsPane).getByText('running')).toBeTruthy()
+    expect(within(sessionsPane).getByText('sess-000')).toBeTruthy()
     expect(screen.queryByTitle('Delete')).toBeNull()
   })
 
@@ -518,6 +521,41 @@ describe('SessionDetailPanel — transcript states', () => {
     expect(await screen.findByText(/Couldn't load transcript/i)).toBeTruthy()
   })
 
+  it.each([
+    ['error', { state: 'error' as const, turns: [], summary_text: null }],
+    ['empty', { state: 'empty' as const, turns: [], summary_text: null }],
+    ['summary_fallback', { state: 'summary_fallback' as const, turns: [], summary_text: 'gone' }],
+  ])('repro: a transient %s transcript refetch must NOT blow away the visible conversation', async (_label, transient) => {
+    // The transcript is read live from the agent and can transiently degrade during the
+    // run-end refetch storm. The conversation only grows, so a transient response must never
+    // replace the turns we already showed (the disappear-reappear flash).
+    const goodTranscript = {
+      state: 'has_turns' as const,
+      turns: [
+        { id: 't-u1', role: 'user' as const, blocks: [{ kind: 'text' as const, text: 'Fix the bug' }], at: '' },
+        { id: 't-a1', role: 'assistant' as const, blocks: [{ kind: 'text' as const, text: 'All done.' }], at: '' },
+      ],
+      summary_text: null,
+    }
+    mockFetchTranscript.mockResolvedValue(goodTranscript)
+    await openPanel()
+    expect(await screen.findByText('All done.')).toBeTruthy()
+
+    // A refetch (the run-end storm) momentarily returns a degraded response.
+    mockFetchTranscript.mockResolvedValueOnce(transient)
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+    })
+
+    // The conversation must stay put — no flash to error / empty / summary.
+    await waitFor(() => expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(1))
+    expect(screen.getByText('All done.')).toBeTruthy()
+    expect(screen.queryByText(/Couldn't load transcript/i)).toBeNull()
+    expect(screen.queryByText('No conversation yet.')).toBeNull()
+  })
+
   it('AC4: agent_sessions SSE invalidation re-fetches transcript', async () => {
     mockFetchTranscript
       .mockResolvedValueOnce({ state: 'empty', turns: [], summary_text: null })
@@ -650,6 +688,50 @@ describe('SessionDetailPanel — live stream (ADR-0010)', () => {
     // Expected after fix: reply stays visible (held from live state) until transcript catches up.
     expect(screen.getByText('Hello')).toBeTruthy()
     expect(screen.queryByText('No conversation yet.')).toBeNull()
+  })
+
+  it('repro: multi-turn — reply stays visible through run_ended when canonical id differs and refetch lags', async () => {
+    const stream = await openRunningPanel()
+    // Streamed turn id (Claude message.id) differs from the canonical transcript id (uuid).
+    act(() => {
+      stream.emit({ kind: 'run_started' })
+      stream.emit({ kind: 'text', turn_id: 'msg-stream', role: 'assistant', text: 'fresh reply' })
+    })
+    await waitFor(() => expect(screen.getByText('fresh reply')).toBeTruthy())
+
+    // run_ended fires; the transcript refetch returns STALE data — a prior assistant turn is
+    // present but the new reply has NOT been persisted yet (the race the real backend shows).
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns',
+      turns: [
+        { id: 'u-prior', role: 'user', blocks: [{ kind: 'text', text: 'earlier q' }], at: '' },
+        { id: 'a-prior', role: 'assistant', blocks: [{ kind: 'text', text: 'earlier reply' }], at: '' },
+      ],
+      summary_text: null,
+    })
+    act(() => { stream.emit({ kind: 'run_ended' }) })
+    await waitFor(() => expect(mockFetchTranscript.mock.calls.length).toBeGreaterThan(1))
+
+    // The reply must NOT vanish during the stale-refetch window (the flicker).
+    expect(screen.getByText('fresh reply')).toBeTruthy()
+
+    // Canonical transcript finally lands the new assistant turn under a DIFFERENT id.
+    mockFetchTranscript.mockResolvedValue({
+      state: 'has_turns',
+      turns: [
+        { id: 'u-prior', role: 'user', blocks: [{ kind: 'text', text: 'earlier q' }], at: '' },
+        { id: 'a-prior', role: 'assistant', blocks: [{ kind: 'text', text: 'earlier reply' }], at: '' },
+        { id: 'uuid-new', role: 'assistant', blocks: [{ kind: 'text', text: 'fresh reply' }], at: '' },
+      ],
+      summary_text: null,
+    })
+    act(() => {
+      const [es] = MockEventSource.instances
+      es.simulateOpen()
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+    })
+    // Reconciled to the canonical turn — exactly one bubble, no duplicate.
+    await waitFor(() => expect(screen.getAllByText('fresh reply')).toHaveLength(1))
   })
 
   it('AC4: resting session opens NO stream (transcript-only)', async () => {

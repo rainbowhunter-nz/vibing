@@ -4,12 +4,33 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
+from collections.abc import Awaitable, Callable
+
+from pydantic import BaseModel
+
 from vibing_devcontainer_runtime.claude_runner import (
     ClaudeCodeRunner,
+    ClaudeProcess,
     ClaudeSuccess,
 )
 from vibing_devcontainer_runtime.command_handler import AgentCommandHandler
-from vibing_protocol import Command, RuntimeEvent, TurnDeltaEnvelope
+from vibing_protocol import Command, RuntimeEvent, RuntimeEventEnvelope, TurnDeltaEnvelope
+
+from .fakes import scripted_runner
+
+
+def _sender(
+    events: list[RuntimeEvent], deltas: list[TurnDeltaEnvelope] | None = None
+) -> Callable[[BaseModel], Awaitable[None]]:
+    """Collect sent envelopes: RuntimeEvents unwrapped into `events`, deltas into `deltas`."""
+
+    async def send(envelope: BaseModel) -> None:
+        if isinstance(envelope, RuntimeEventEnvelope):
+            events.append(envelope.event)
+        elif deltas is not None and isinstance(envelope, TurnDeltaEnvelope):
+            deltas.append(envelope)
+
+    return send
 
 
 def _make_command(
@@ -36,25 +57,29 @@ def _success_runner(result_text: str) -> ClaudeCodeRunner:
     async def fake(command: list[str]) -> AsyncIterator[str]:
         yield _result_line(result_text)
 
-    return ClaudeCodeRunner(runner=fake)
+    return scripted_runner(fake)
 
 
-def _failure_runner(stderr: str) -> ClaudeCodeRunner:
+def _failure_runner() -> ClaudeCodeRunner:
     async def fake(command: list[str]) -> AsyncIterator[str]:
         yield _result_line(is_error=True)
 
-    return ClaudeCodeRunner(runner=fake)
+    return scripted_runner(fake)
+
+
+def _process_runner(process: ClaudeProcess) -> ClaudeCodeRunner:
+    """Inject a fake ClaudeProcess at the one seam, regardless of the command."""
+    return ClaudeCodeRunner(process_factory=lambda command: process)
 
 
 async def _collect_events(handler: AgentCommandHandler, command: Command) -> list[RuntimeEvent]:
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
-    await handler.handle(command, emit)
+    await handler.handle(command, send)
     # Allow background tasks to complete
-    await asyncio.gather(*handler._tasks)
+    await handler.wait_for_idle()
     return events
 
 
@@ -90,15 +115,14 @@ def test_start_success_emits_session_completed():
 
 
 def test_start_failure_emits_session_failed():
-    runner = _failure_runner("boom")
+    runner = _failure_runner()
     handler = AgentCommandHandler(runner)
     events = asyncio.run(_collect_events(handler, _make_command()))
     types = [e.event_type for e in events]
     assert "session_failed" in types
     failed = next(e for e in events if e.event_type == "session_failed")
-    assert failed.payload is not None
-    assert "exit_code" in failed.payload
-    assert "stderr_tail" in failed.payload
+    # is_error result with a clean exit -> exit_code 0, no stderr captured.
+    assert failed.payload == {"exit_code": 0, "stderr_tail": ""}
     assert failed.agent_session_id == "sess-1"
     assert failed.devcontainer_id == "dc-1"
 
@@ -111,7 +135,7 @@ def test_start_missing_binary_emits_session_failed_not_crash():
         raise FileNotFoundError("no claude")
         yield ""  # pragma: no cover
 
-    runner = ClaudeCodeRunner(runner=raising_runner)
+    runner = scripted_runner(raising_runner)
     handler = AgentCommandHandler(runner)
     events = asyncio.run(_collect_events(handler, _make_command()))
     failed = next((e for e in events if e.event_type == "session_failed"), None)
@@ -134,24 +158,22 @@ def test_handle_returns_before_run_completes():
         await run_can_proceed.wait()
         yield _result_line("result")
 
-    runner = ClaudeCodeRunner(runner=blocking_runner)
+    runner = scripted_runner(blocking_runner)
     handler = AgentCommandHandler(runner)
 
     async def run_test() -> None:
         events: list[RuntimeEvent] = []
-
-        async def emit(event: RuntimeEvent) -> None:
-            events.append(event)
+        send = _sender(events)
 
         # handle() should return before run completes
-        await handler.handle(_make_command(), emit)
+        await handler.handle(_make_command(), send)
 
         # At this point handle() has returned; the bg task has not finished
         events_at_return.extend(e.event_type for e in events)
 
         # Now let the run complete
         run_can_proceed.set()
-        await asyncio.gather(*handler._tasks)
+        await handler.wait_for_idle()
 
     asyncio.run(run_test())
 
@@ -161,10 +183,10 @@ def test_handle_returns_before_run_completes():
     assert "session_completed" not in events_at_return
 
 
-# --- turn-deltas flow out via emit_delta while the run streams (ADR-0010) ---
+# --- turn-deltas flow out over send while the run streams (ADR-0010) ---
 
 
-def test_start_streams_turn_deltas_via_emit_delta():
+def test_start_streams_turn_deltas_over_send():
     def _msg_start(mid: str) -> str:
         return json.dumps(
             {"type": "stream_event", "event": {"type": "message_start", "message": {"id": mid}}}
@@ -188,19 +210,15 @@ def test_start_streams_turn_deltas_via_emit_delta():
         yield _text("lo")
         yield _result_line("Hello")
 
-    handler = AgentCommandHandler(ClaudeCodeRunner(runner=streaming))
+    handler = AgentCommandHandler(scripted_runner(streaming))
     events: list[RuntimeEvent] = []
     deltas: list[TurnDeltaEnvelope] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
-
-    async def emit_delta(env: TurnDeltaEnvelope) -> None:
-        deltas.append(env)
+    send = _sender(events, deltas)
 
     async def run_test() -> None:
-        await handler.handle(_make_command(), emit, emit_delta)
-        await asyncio.gather(*handler._tasks)
+        await handler.handle(_make_command(), send)
+        await handler.wait_for_idle()
 
     asyncio.run(run_test())
 
@@ -221,13 +239,12 @@ def test_unsupported_command_emits_nothing():
     handler = AgentCommandHandler(runner)
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
     asyncio.run(
         handler.handle(
             Command(type="start_devcontainer", devcontainer_id="dc-1"),  # type: ignore[arg-type]
-            emit,
+            send,
         )
     )
     assert events == []
@@ -241,8 +258,7 @@ def test_resolve_approval_emits_approval_resolved():
     handler = AgentCommandHandler(runner)
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
     asyncio.run(
         handler.handle(
@@ -252,7 +268,7 @@ def test_resolve_approval_emits_approval_resolved():
                 agent_session_id="sess-1",
                 payload={"approval_request_id": "ar-abc", "resolution": "approved"},
             ),
-            emit,
+            send,
         )
     )
     assert len(events) == 1
@@ -269,8 +285,7 @@ def test_resolve_approval_rejected_emits_approval_resolved():
     handler = AgentCommandHandler(runner)
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
     asyncio.run(
         handler.handle(
@@ -280,7 +295,7 @@ def test_resolve_approval_rejected_emits_approval_resolved():
                 agent_session_id="sess-1",
                 payload={"approval_request_id": "ar-xyz", "resolution": "rejected"},
             ),
-            emit,
+            send,
         )
     )
     assert len(events) == 1
@@ -295,8 +310,7 @@ def test_send_user_input_emits_user_input_sent():
     handler = AgentCommandHandler(runner)
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
     asyncio.run(
         handler.handle(
@@ -306,7 +320,7 @@ def test_send_user_input_emits_user_input_sent():
                 agent_session_id="sess-1",
                 payload={"inbox_event_id": "inbox-abc", "text": "my answer"},
             ),
-            emit,
+            send,
         )
     )
     assert len(events) == 1
@@ -343,7 +357,7 @@ def test_stop_terminates_process_and_emits_session_stopped():
     run_started = asyncio.Event()
     run_blocked = asyncio.Event()
 
-    class FakeProcess:
+    class FakeProcess(ClaudeProcess):
         async def wait(self, on_delta) -> ClaudeSuccess:  # type: ignore[return]
             run_started.set()
             await run_blocked.wait()
@@ -354,27 +368,18 @@ def test_stop_terminates_process_and_emits_session_stopped():
             terminate_called = True
             run_blocked.set()
 
-    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
-
-    class FakeRunner(ClaudeCodeRunner):
-        def start(
-            self, prompt: str, session_id: str | None = None, resume: bool = False
-        ) -> ClaudeProcess:  # type: ignore[override]
-            return FakeProcess()  # type: ignore[return-value]
-
-    handler = AgentCommandHandler(FakeRunner())
+    handler = AgentCommandHandler(_process_runner(FakeProcess()))
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
     async def run_test() -> None:
         start_cmd = _make_command()
-        await handler.handle(start_cmd, emit)
+        await handler.handle(start_cmd, send)
         await run_started.wait()  # ensure run is in-flight
 
         stop_cmd = _make_stop_command()
-        await handler.handle(stop_cmd, emit)
+        await handler.handle(stop_cmd, send)
 
     asyncio.run(run_test())
 
@@ -395,7 +400,7 @@ def test_stop_handle_returns_promptly_while_run_in_flight():
     run_blocked = asyncio.Event()
     stop_returned_before_run_finished = False
 
-    class BlockingProcess:
+    class BlockingProcess(ClaudeProcess):
         async def wait(self, on_delta) -> ClaudeSuccess:  # type: ignore[return]
             run_started.set()
             await run_blocked.wait()
@@ -403,33 +408,24 @@ def test_stop_handle_returns_promptly_while_run_in_flight():
         async def terminate(self) -> None:
             run_blocked.set()
 
-    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
-
-    class BlockingRunner(ClaudeCodeRunner):
-        def start(
-            self, prompt: str, session_id: str | None = None, resume: bool = False
-        ) -> ClaudeProcess:  # type: ignore[override]
-            return BlockingProcess()  # type: ignore[return-value]
-
-    handler = AgentCommandHandler(BlockingRunner())
+    handler = AgentCommandHandler(_process_runner(BlockingProcess()))
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
     async def run_test() -> None:
         nonlocal stop_returned_before_run_finished
-        await handler.handle(_make_command(), emit)
+        await handler.handle(_make_command(), send)
         await run_started.wait()
 
         # handle(stop) should return before the run finishes
-        await handler.handle(_make_stop_command(), emit)
+        await handler.handle(_make_stop_command(), send)
         # If we reach here, handle returned; run is still blocked by run_blocked
         # (terminate sets run_blocked, but the bg task may already be cancelled)
         stop_returned_before_run_finished = True
 
         # Let any remaining tasks finish
-        await asyncio.gather(*handler._tasks, return_exceptions=True)
+        await handler.wait_for_idle()
 
     asyncio.run(run_test())
 
@@ -441,73 +437,61 @@ def test_stop_handle_returns_promptly_while_run_in_flight():
 # AC4: race — at least one terminal event (not suppression)
 
 
-def test_stop_race_yields_at_least_one_terminal_event():
-    """When stop races natural completion, at least one terminal event is emitted."""
-    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
+def test_stop_after_natural_completion_emits_both_terminals_not_suppressed():
+    """A run that completes before stop arrives still emits session_completed; the
+    later stop is a no-op on the finished run but still emits session_stopped."""
+    terminate_calls = 0
 
-    class InstantProcess:
-        """Completes immediately (before stop can cancel it — simulates race)."""
+    class InstantProcess(ClaudeProcess):
+        """Completes immediately — the run finishes before stop is handled."""
 
         async def wait(self, on_delta) -> ClaudeSuccess:
             return ClaudeSuccess(result="done")
 
         async def terminate(self) -> None:
-            pass  # no-op; run already done
+            nonlocal terminate_calls
+            terminate_calls += 1
 
-    class InstantRunner(ClaudeCodeRunner):
-        def start(
-            self, prompt: str, session_id: str | None = None, resume: bool = False
-        ) -> ClaudeProcess:  # type: ignore[override]
-            return InstantProcess()  # type: ignore[return-value]
-
-    handler = AgentCommandHandler(InstantRunner())
+    handler = AgentCommandHandler(_process_runner(InstantProcess()))
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
     async def run_test() -> None:
-        await handler.handle(_make_command(), emit)
+        await handler.handle(_make_command(), send)
         # Let bg task complete naturally first
-        await asyncio.gather(*handler._tasks, return_exceptions=True)
+        await handler.wait_for_idle()
         # Now send stop — session already done
-        await handler.handle(_make_stop_command(), emit)
+        await handler.handle(_make_stop_command(), send)
 
     asyncio.run(run_test())
 
-    terminal_types = {"session_completed", "session_failed", "session_stopped"}
-    emitted_terminals = [e.event_type for e in events if e.event_type in terminal_types]
-    assert len(emitted_terminals) >= 1
+    assert [e.event_type for e in events] == [
+        "agent_session_started",
+        "session_completed",
+        "session_stopped",
+    ]
+    # A finished run is never terminated again.
+    assert terminate_calls == 0
 
 
 # --- session_id passed to runner ---
 
 
 def test_start_agent_session_passes_session_id_to_runner():
-    """Runner must be invoked with the session id from the command."""
-    captured_sessions: list[str | None] = []
+    """The command's session id reaches the runner (built into --session-id)."""
+    captured: list[list[str]] = []
 
-    from vibing_devcontainer_runtime.claude_runner import ClaudeProcess
+    async def capturing(command: list[str]) -> AsyncIterator[str]:
+        captured.append(command)
+        yield _result_line("done")
 
-    class CapturingProcess(ClaudeProcess):
-        async def wait(self, on_delta) -> ClaudeSuccess:
-            return ClaudeSuccess(result="done")
-
-        async def terminate(self) -> None:
-            pass
-
-    class CapturingRunner(ClaudeCodeRunner):
-        def start(
-            self, prompt: str, session_id: str | None = None, resume: bool = False
-        ) -> ClaudeProcess:  # type: ignore[override]
-            captured_sessions.append(session_id)
-            return CapturingProcess()
-
-    handler = AgentCommandHandler(CapturingRunner())
+    handler = AgentCommandHandler(scripted_runner(capturing))
     cmd = _make_command(agent_session_id="abc-123")
     asyncio.run(_collect_events(handler, cmd))
 
-    assert captured_sessions == ["abc-123"]
+    assert "--session-id" in captured[0]
+    assert captured[0][captured[0].index("--session-id") + 1] == "abc-123"
 
 
 # ============================================================
@@ -524,7 +508,7 @@ def test_resume_builds_resume_flag_and_emits_lifecycle():
         captured.append(command)
         yield _result_line("resumed output")
 
-    runner = ClaudeCodeRunner(runner=capturing)
+    runner = scripted_runner(capturing)
     handler = AgentCommandHandler(runner)
     cmd = _make_command(type_="resume_agent_session", agent_session_id="abc-123")
     events = asyncio.run(_collect_events(handler, cmd))
@@ -539,7 +523,7 @@ def test_resume_builds_resume_flag_and_emits_lifecycle():
 
 
 def test_resume_failure_emits_session_failed():
-    runner = _failure_runner("boom")
+    runner = _failure_runner()
     handler = AgentCommandHandler(runner)
     cmd = _make_command(type_="resume_agent_session", agent_session_id="abc-123")
     events = asyncio.run(_collect_events(handler, cmd))
@@ -554,10 +538,9 @@ def test_stop_with_no_running_process_emits_session_stopped():
     handler = AgentCommandHandler(runner)
     events: list[RuntimeEvent] = []
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    send = _sender(events)
 
-    asyncio.run(handler.handle(_make_stop_command(), emit))
+    asyncio.run(handler.handle(_make_stop_command(), send))
 
     event_types = [e.event_type for e in events]
     assert "session_stopped" in event_types

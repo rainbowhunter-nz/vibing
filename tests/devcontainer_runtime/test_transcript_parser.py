@@ -26,10 +26,8 @@ def test_parses_text_and_collapsed_tool_markers(reader: TranscriptReader) -> Non
     assert turns[0].at == "2026-06-06T00:00:01Z"
 
     assert turns[1].blocks[0] == TextBlock(text="Sure, let me look.")
-    tool = turns[1].blocks[1]
-    assert isinstance(tool, ToolUseBlock)
-    assert tool.name == "Read"
-    assert "/work/main.py" in tool.summary  # short rendering of input, not the result
+    # Tool block: input rendered as a short key=value summary, never the result.
+    assert turns[1].blocks[1] == ToolUseBlock(name="Read", summary="file_path=/work/main.py")
 
     assert turns[2].blocks == [TextBlock(text="Done.")]
 
@@ -47,3 +45,26 @@ def test_missing_file_returns_empty(reader: TranscriptReader) -> None:
 def test_encodes_cwd_to_claude_convention() -> None:
     reader = TranscriptReader(projects_base=Path("/base"), cwd="/workspaces/vibing")
     assert reader._session_path("abc") == Path("/base/-workspaces-vibing/abc.jsonl")
+
+
+def test_respond_answers_transcript_request_with_correlated_turns(
+    reader: TranscriptReader,
+) -> None:
+    reply = asyncio.run(
+        reader.respond(
+            {"type": "transcript_request", "request_id": "req-9", "agent_session_id": "sess-1"}
+        )
+    )
+    assert reply.type == "transcript_response"
+    assert reply.request_id == "req-9"
+    assert reply.turns[0].blocks == [TextBlock(text="hello agent")]
+
+
+def test_respond_missing_file_replies_empty_turns(reader: TranscriptReader) -> None:
+    reply = asyncio.run(
+        reader.respond(
+            {"type": "transcript_request", "request_id": "req-1", "agent_session_id": "nope"}
+        )
+    )
+    assert reply.request_id == "req-1"
+    assert reply.turns == []

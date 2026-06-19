@@ -3,7 +3,7 @@
 import asyncio
 from typing import Any
 
-from vibing_protocol import Command, RuntimeEvent
+from vibing_protocol import Command, RuntimeEvent, RuntimeEventEnvelope
 
 from vibing_host_runtime.command_handler import DevcontainerCommandHandler
 from vibing_host_runtime.devcontainer_cli import (
@@ -49,10 +49,10 @@ def _run(
 ) -> None:
     adapter._events = events  # share the list so ordering is observable
 
-    async def emit(event: RuntimeEvent) -> None:
-        events.append(event)
+    async def send(envelope: RuntimeEventEnvelope) -> None:
+        events.append(envelope.event)
 
-    asyncio.run(handler.handle(command, emit))
+    asyncio.run(handler.handle(command, send))
 
 
 # --- AC1: pre-event before adapter on start ---

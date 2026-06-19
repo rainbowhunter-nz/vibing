@@ -78,41 +78,39 @@ function pendingLiveTurns(
     }))
 }
 
-// Live assistant turns not yet present in the canonical transcript (in arrival order).
-// After run_ended, hold live bubbles until the refetched transcript reconciles them by id.
-// `runEndBaseline` is the transcript turn-id set captured when run_ended arrived — used to
-// detect canonical turns landing under different ids vs still waiting for the streamed turn.
-export function liveOnlyTurns(
-  transcript: TranscriptTurn[],
-  live: LiveState,
-  holdWhileRefetching = false,
-  runEndBaseline: ReadonlySet<string> | null = null,
-): TranscriptTurn[] {
+function sameBlocks(a: TranscriptBlock[], b: TranscriptBlock[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((blk, i) => {
+    const other = b[i]
+    if (blk.kind === 'text' && other.kind === 'text') return blk.text === other.text
+    if (blk.kind === 'tool_use' && other.kind === 'tool_use')
+      return blk.name === other.name && blk.summary === other.summary
+    return false
+  })
+}
+
+// A streamed turn is reconciled once the canonical transcript carries an assistant turn with
+// the same blocks. The canonical turn lands under a DIFFERENT id than the streamed one (the
+// stream uses Claude's message.id, the transcript its per-line uuid), so we match by content,
+// not id. This is the single source of truth for dropping a live bubble — holding it until the
+// canonical turn actually lands avoids the flicker where the reply vanishes during the
+// transcript-refetch window, and content-matching avoids a duplicate once it does.
+function isReconciled(liveTurn: TranscriptTurn, transcript: TranscriptTurn[]): boolean {
+  return transcript.some((t) => t.role === 'assistant' && sameBlocks(t.blocks, liveTurn.blocks))
+}
+
+// Live assistant turns not yet reconciled into the canonical transcript (in arrival order).
+// While streaming, every pending turn shows. After run_ended, a turn is held until its content
+// lands in the transcript, then dropped in favour of the canonical turn.
+export function liveOnlyTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
   const pending = pendingLiveTurns(transcript, live)
-  if (!live.ended || holdWhileRefetching) return pending
-  if (pending.length === 0) return []
-  if (transcript.length === 0) return pending
-
-  const baseline = runEndBaseline ?? new Set(transcript.map((t) => t.id))
-  const hasNewTurns = transcript.some((t) => !baseline.has(t.id))
-  if (hasNewTurns) return []
-
-  const baselineHadAssistant = transcript.some(
-    (t) => t.role === 'assistant' && baseline.has(t.id),
-  )
-  if (baselineHadAssistant) return []
-
-  return pending
+  if (!live.ended) return pending
+  return pending.filter((t) => !isReconciled(t, transcript))
 }
 
 // Merge canonical transcript turns with accumulated live blocks. Transcript turns render
-// as-is and are authoritative; live blocks for ids NOT yet in the transcript append as
-// in-progress assistant bubbles (in arrival order, after the transcript).
-export function mergeTurns(
-  transcript: TranscriptTurn[],
-  live: LiveState,
-  holdWhileRefetching = false,
-  runEndBaseline: ReadonlySet<string> | null = null,
-): TranscriptTurn[] {
-  return [...transcript, ...liveOnlyTurns(transcript, live, holdWhileRefetching, runEndBaseline)]
+// as-is and are authoritative; live blocks not yet reconciled append as in-progress assistant
+// bubbles (in arrival order, after the transcript).
+export function mergeTurns(transcript: TranscriptTurn[], live: LiveState): TranscriptTurn[] {
+  return [...transcript, ...liveOnlyTurns(transcript, live)]
 }

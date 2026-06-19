@@ -7,11 +7,19 @@ lines are skipped defensively.
 
 import json
 from pathlib import Path
+from typing import Any
 
 from logzero import logger
-from vibing_protocol import TextBlock, ToolUseBlock, TranscriptBlock, TranscriptTurn
+from vibing_protocol import (
+    TextBlock,
+    ToolUseBlock,
+    TranscriptBlock,
+    TranscriptRequestEnvelope,
+    TranscriptResponseEnvelope,
+    TranscriptTurn,
+)
 
-from ._tool_summary import summarize_tool_input
+from .content_blocks import ContentItem, TextItem, parse_content
 
 _TURN_ROLES = {"user", "assistant"}
 
@@ -21,26 +29,14 @@ def _encode_cwd(cwd: str) -> str:
     return cwd.replace("/", "-")
 
 
+def _to_block(item: ContentItem) -> TranscriptBlock:
+    if isinstance(item, TextItem):
+        return TextBlock(text=item.text)
+    return ToolUseBlock(name=item.name, summary=item.summary)
+
+
 def _blocks_from_content(content: object) -> list[TranscriptBlock]:
-    if isinstance(content, str):
-        return [TextBlock(text=content)] if content else []
-    if not isinstance(content, list):
-        return []
-    blocks: list[TranscriptBlock] = []
-    for raw in content:
-        if not isinstance(raw, dict):
-            continue
-        if raw.get("type") == "text":
-            text = raw.get("text")
-            if isinstance(text, str) and text:
-                blocks.append(TextBlock(text=text))
-        elif raw.get("type") == "tool_use":
-            name = raw.get("name")
-            if isinstance(name, str):
-                blocks.append(
-                    ToolUseBlock(name=name, summary=summarize_tool_input(raw.get("input")))
-                )
-    return blocks
+    return [_to_block(item) for item in parse_content(content)]
 
 
 def _turn_id(obj: dict, message: dict) -> str:
@@ -82,6 +78,12 @@ class TranscriptReader:
 
     def _session_path(self, agent_session_id: str) -> Path:
         return self._projects_base / _encode_cwd(self._cwd) / f"{agent_session_id}.jsonl"
+
+    async def respond(self, message: dict[str, Any]) -> TranscriptResponseEnvelope:
+        """Answer a transcript_request from the runtime channel (ADR-0009)."""
+        request = TranscriptRequestEnvelope.model_validate(message)
+        turns = await self.read(request.agent_session_id)
+        return TranscriptResponseEnvelope(request_id=request.request_id, turns=turns)
 
     async def read(self, agent_session_id: str) -> list[TranscriptTurn]:
         path = self._session_path(agent_session_id)
