@@ -3,8 +3,6 @@ import { cn } from '../lib/cn'
 
 const ITEMS = [
   { to: '/devcontainers', label: 'Devcontainers' },
-  { to: '/inbox', label: 'Inbox' },
-  { to: '/approvals', label: 'Approvals' },
   { to: '/settings', label: 'Settings' },
 ] as const
 

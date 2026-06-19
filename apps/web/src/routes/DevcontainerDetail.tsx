@@ -3,7 +3,7 @@ import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
-import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession, listInboxEvents, useApiQuery, ApiError } from '../lib/api'
+import { fetchDevcontainer, fetchAgentSessions, fetchAgentSession, fetchAgentSessionTranscript, startAgentSession, stopAgentSession, resumeAgentSession, deleteAgentSession, useApiQuery, ApiError } from '../lib/api'
 import type { AgentSession, DevcontainerView, TranscriptBlock, TranscriptTurn } from '../lib/api/types'
 import { formatRelativeTime } from '../lib/time'
 import { useSseInvalidation } from '../lib/events'
@@ -11,10 +11,7 @@ import { liveOnlyTurns, mergeTurns, useSessionStream } from '../lib/stream'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 import { shouldStick, isWorkingIndicatorVisible } from '../lib/chat/chatHelpers'
-import { InlineInterventionCard } from '../lib/intervention'
-import { isBlocking } from './inboxViews'
-
-const ACTIVE_STATUSES = new Set<string>(['starting', 'running', 'waiting_for_approval'])
+const ACTIVE_STATUSES = new Set<string>(['starting', 'running'])
 const RESTING_STATUSES = new Set<string>(['completed', 'failed', 'stopped'])
 
 const trashIcon = (
@@ -58,7 +55,6 @@ function agentSessionBadgeClass(status: string): string {
     case 'running':
       return 'bg-emerald-100 text-emerald-800'
     case 'starting':
-    case 'waiting_for_approval':
       return 'bg-accent-bg text-accent'
     case 'failed':
       return 'bg-red-100 text-bad'
@@ -418,18 +414,10 @@ function ConversationBody({
     () => fetchAgentSessionTranscript(devcontainerId, sessionId),
     [devcontainerId, sessionId],
   )
-  // Per-session pending interventions: fetch inbox events for this session, filtered to
-  // blocking + unresolved. Drives the inline card when the session is waiting_for_approval.
-  const { state: inboxState, refetch: inboxRefetch } = useApiQuery(
-    () => listInboxEvents({ agentSessionId: sessionId }),
-    [sessionId],
-  )
   const { register } = useSseInvalidation()
 
   useEffect(() => register('agent_sessions', refetch), [register, refetch])
   useEffect(() => register('agent_sessions', transcriptRefetch), [register, transcriptRefetch])
-  useEffect(() => register('inbox', inboxRefetch), [register, inboxRefetch])
-  useEffect(() => register('approvals', inboxRefetch), [register, inboxRefetch])
 
   // Register transcript refetch with parent so ChatComposer can call it post-resume.
   useEffect(() => {
@@ -569,18 +557,11 @@ function ConversationBody({
   const session = state.data
   const showWorking = isWorkingIndicatorVisible(isActive, live)
 
-  // Pending intervention for this session: first blocking + unresolved inbox event.
-  // Keyed by event id so the card remounts on intervention change and clears when resolved.
-  const pendingIntervention =
-    inboxState.kind === 'ready'
-      ? (inboxState.data.items.find((e) => isBlocking(e) && e.status !== 'resolved') ?? null)
-      : null
-
   function renderTranscript() {
     // Anything visible wins: as long as we have turns (kept sticky across transient refetches),
-    // a pending bubble, live stream, working indicator, or an intervention, render the
+    // a pending bubble, live stream, or working indicator, render the
     // conversation — never flash to a degraded state during the run-end refetch storm.
-    if (transcriptTurns.length > 0 || pendingUserText || streamingTurns.length > 0 || showWorking || pendingIntervention) {
+    if (transcriptTurns.length > 0 || pendingUserText || streamingTurns.length > 0 || showWorking) {
       return (
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {transcriptTurns.map((turn) => (
@@ -599,14 +580,6 @@ function ConversationBody({
             </ConversationBubble>
           ))}
           {showWorking && <WorkingIndicator />}
-          {pendingIntervention && (
-            <InlineInterventionCard
-              key={pendingIntervention.id}
-              event={pendingIntervention}
-              devcontainerId={devcontainerId}
-              sessionId={sessionId}
-            />
-          )}
         </div>
       )
     }

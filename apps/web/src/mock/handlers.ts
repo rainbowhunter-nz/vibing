@@ -2,11 +2,9 @@ import { http, HttpResponse } from 'msw'
 import type { JsonBodyType, DefaultBodyType } from 'msw'
 import * as f from './fixtures'
 import { getScenario } from './scenario'
-import type { ApiErrorEnvelope, AgentSession, AgentSessionApprovalBody, AgentSessionResumeBody, AgentSessionStartBody, DevcontainerUpdateBody } from '../lib/api/types'
+import type { ApiErrorEnvelope, AgentSessionResumeBody, AgentSessionStartBody, DevcontainerUpdateBody } from '../lib/api/types'
 import * as dc from './state/devcontainers'
 import * as as from './state/agentSessions'
-import * as inbox from './state/inbox'
-import * as approvals from './state/approvals'
 import { emitInvalidation } from './events'
 
 // Wildcard origin so handlers work in both browser (service worker) and Node (vitest/msw node).
@@ -281,103 +279,6 @@ const devcontainerHandlers = [
   }),
 ]
 
-// Minimal plausible AgentSession used by agent-session action stubs
-function stubSession(devcontainerId: string, sessionId: string): AgentSession {
-  return {
-    id: sessionId,
-    devcontainer_id: devcontainerId,
-    status: 'running',
-    prompt: null,
-    started_at: new Date().toISOString(),
-    ended_at: null,
-    last_event_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-}
-
-const inboxHandlers = [
-  http.get('*/api/v1/inbox-events', ({ request }) => {
-    const failure = scenarioFailure()
-    if (failure) return failure
-    const scenario = getScenario()
-    if (scenario === 'empty') return HttpResponse.json({ items: [] })
-    const params = new URL(request.url).searchParams
-    return HttpResponse.json(inbox.listInboxEvents({
-      agentSessionId: params.get('agent_session_id') ?? undefined,
-      devcontainerId: params.get('devcontainer_id') ?? undefined,
-      status: params.get('status') ?? undefined,
-    }))
-  }),
-
-  http.get('*/api/v1/inbox-events/:id', ({ params }) => {
-    const failure = scenarioFailure('INBOX_EVENT_NOT_FOUND')
-    if (failure) return failure
-    try {
-      return HttpResponse.json(inbox.getInboxEvent(params.id as string))
-    } catch (e) {
-      if (e instanceof inbox.NotFoundError) return notFoundResponse(e.code, e.message)
-      throw e
-    }
-  }),
-
-  http.post('*/api/v1/inbox-events/:id/read', ({ params }) => {
-    const failure = scenarioFailure('INBOX_EVENT_NOT_FOUND')
-    if (failure) return failure
-    try {
-      return HttpResponse.json(inbox.markInboxEventRead(params.id as string))
-    } catch (e) {
-      if (e instanceof inbox.NotFoundError) return notFoundResponse(e.code, e.message)
-      throw e
-    }
-  }),
-
-  http.post('*/api/v1/inbox-events/:id/resolve', ({ params }) => {
-    const failure = scenarioFailure('INBOX_EVENT_NOT_FOUND')
-    if (failure) return failure
-    try {
-      return HttpResponse.json(inbox.resolveInboxEvent(params.id as string))
-    } catch (e) {
-      if (e instanceof inbox.NotFoundError) return notFoundResponse(e.code, e.message)
-      throw e
-    }
-  }),
-]
-
-const agentSessionActionHandlers = [
-  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/user-input', ({ params }) => {
-    const failure = scenarioFailure()
-    if (failure) return failure
-    return HttpResponse.json(stubSession(params.dc as string, params.sid as string))
-  }),
-
-  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/approval-resolution', async ({ params, request }) => {
-    const failure = scenarioFailure(undefined, 'APPROVAL_REQUEST_NOT_PENDING')
-    if (failure) return failure
-    const body = await request.json() as AgentSessionApprovalBody
-    try {
-      approvals.resolveApproval(body.approval_request_id, body.resolution)
-    } catch (e) {
-      if (e instanceof approvals.StaleError) {
-        return HttpResponse.json(errorEnvelope('APPROVAL_REQUEST_NOT_PENDING', e.message), { status: 409 })
-      }
-      throw e
-    }
-    return HttpResponse.json(stubSession(params.dc as string, params.sid as string))
-  }),
-]
-
-const approvalHandlers = [
-  http.get('*/api/v1/approval-requests', ({ request }) => {
-    const failure = scenarioFailure()
-    if (failure) return failure
-    const scenario = getScenario()
-    if (scenario === 'empty') return HttpResponse.json({ items: [] })
-    const status = new URL(request.url).searchParams.get('status') ?? undefined
-    return HttpResponse.json(approvals.listApprovalRequests(status as Parameters<typeof approvals.listApprovalRequests>[0]))
-  }),
-]
-
 export const handlers = [
   http.get('*/api/v1/health', () => scenarioResponse(f.health)),
   http.get('*/api/v1/status', () => scenarioResponse(f.status)),
@@ -385,8 +286,5 @@ export const handlers = [
   http.get('*/api/v1/runtime/status', () => scenarioResponse(f.runtimeStatus)),
   http.get('*/api/v1/settings', () => scenarioResponse(f.settings)),
   http.get('*/api/v1/diagnostics', () => scenarioResponse(f.diagnostics)),
-  ...approvalHandlers,
-  ...inboxHandlers,
-  ...agentSessionActionHandlers,
   ...devcontainerHandlers,
 ]

@@ -10,7 +10,7 @@ import type { StreamState } from './events'
 // A seeded active session (running, on a running devcontainer) for live-chat inspection.
 const LIVE_DEMO_SESSION = 'as-seed-0005'
 
-const SCOPES: Scope[] = ['devcontainers', 'agent_sessions', 'inbox', 'approvals', 'runtime']
+const SCOPES: Scope[] = ['devcontainers', 'agent_sessions', 'runtime']
 const STREAM_STATES: StreamState[] = ['connected', 'reconnecting', 'disconnected']
 
 const STATE_DOT: Record<StreamState, string> = {

@@ -1,11 +1,9 @@
 // Healthy baseline fixtures — field coverage matches what the UI reads from each DTO.
 import type {
   AgentSessionList,
-  ApprovalRequestList,
   ConfigResponse,
   DiagnosticsResponse,
   HealthResponse,
-  InboxEventList,
   RuntimeStatus,
   SettingsResponse,
   StatusResponse,
@@ -38,6 +36,3 @@ export const diagnostics: DiagnosticsResponse = {
 // Identities come from the shared seed so an id means the same session everywhere.
 export const agentSessions: AgentSessionList = { items: seedAgentSessions }
 
-export const inboxEvents: InboxEventList = { items: [] }
-
-export const approvalRequests: ApprovalRequestList = { items: [] }

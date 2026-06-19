@@ -2,15 +2,10 @@ import { API_BASE, getJson, sendJson } from './client'
 import type {
   AgentSession,
   AgentSessionDetail,
-  AgentSessionApprovalBody,
   AgentSessionList,
   AgentSessionResumeBody,
   AgentSessionStartBody,
   AgentSessionTranscript,
-  AgentSessionUserInputBody,
-  ApprovalRequest,
-  ApprovalRequestList,
-  ApprovalStatus,
   ConfigResponse,
   Devcontainer,
   DevcontainerCreateBody,
@@ -20,20 +15,10 @@ import type {
   DevcontainerViewList,
   DiagnosticsResponse,
   HealthResponse,
-  InboxEvent,
-  InboxEventDetail,
-  InboxEventList,
   RuntimeStatus,
   SettingsResponse,
   StatusResponse,
 } from './types'
-
-const buildQuery = (params: Record<string, string | undefined>): string => {
-  const q = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) if (v !== undefined) q.set(k, v)
-  const s = q.toString()
-  return s ? `?${s}` : ''
-}
 
 export const fetchHealth = (): Promise<HealthResponse> => getJson('/health')
 export const fetchStatus = (): Promise<StatusResponse> => getJson('/status')
@@ -87,34 +72,3 @@ export const fetchAgentSessionTranscript = (devcontainerId: string, sessionId: s
 // invalidation coordinator; open only while a session is active, close when it rests.
 export const openAgentSessionStream = (devcontainerId: string, sessionId: string): EventSource =>
   new EventSource(`${API_BASE}/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/stream`)
-
-export const sendAgentSessionUserInput = (devcontainerId: string, sessionId: string, body: AgentSessionUserInputBody): Promise<AgentSession> =>
-  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/user-input`, 'POST', body) as Promise<AgentSession>
-
-export const resolveAgentSessionApproval = (devcontainerId: string, sessionId: string, body: AgentSessionApprovalBody): Promise<AgentSession> =>
-  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/approval-resolution`, 'POST', body) as Promise<AgentSession>
-
-export const listInboxEvents = (filters?: {
-  status?: string
-  devcontainerId?: string
-  agentSessionId?: string
-}): Promise<InboxEventList> =>
-  getJson(`/inbox-events${buildQuery({ status: filters?.status, devcontainer_id: filters?.devcontainerId, agent_session_id: filters?.agentSessionId })}`)
-
-export const fetchInboxEvent = (id: string): Promise<InboxEventDetail> =>
-  getJson(`/inbox-events/${encodeURIComponent(id)}`)
-
-export const markInboxEventRead = (id: string): Promise<InboxEvent> =>
-  sendJson<InboxEvent>(`/inbox-events/${encodeURIComponent(id)}/read`, 'POST') as Promise<InboxEvent>
-
-export const resolveInboxEvent = (id: string): Promise<InboxEvent> =>
-  sendJson<InboxEvent>(`/inbox-events/${encodeURIComponent(id)}/resolve`, 'POST') as Promise<InboxEvent>
-
-export const listApprovalRequests = (filters?: {
-  status?: ApprovalStatus
-  devcontainerId?: string
-}): Promise<ApprovalRequestList> =>
-  getJson(`/approval-requests${buildQuery({ status: filters?.status, devcontainer_id: filters?.devcontainerId })}`)
-
-export const fetchApprovalRequest = (id: string): Promise<ApprovalRequest> =>
-  getJson(`/approval-requests/${encodeURIComponent(id)}`)

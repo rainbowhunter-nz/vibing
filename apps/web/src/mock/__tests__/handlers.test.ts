@@ -3,14 +3,12 @@ import { setupServer } from 'msw/node'
 import { handlers } from '../handlers'
 import { resetScenario } from '../scenario'
 import { resetDevcontainers } from '../state/devcontainers'
-import { resetInbox } from '../state/inbox'
-import { resetApprovals } from '../state/approvals'
 import * as f from '../fixtures'
 
 const server = setupServer(...handlers)
 
 beforeAll(() => server.listen())
-beforeEach(() => { resetScenario(); resetDevcontainers(); resetInbox(); resetApprovals() })
+beforeEach(() => { resetScenario(); resetDevcontainers() })
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -51,23 +49,4 @@ describe('mock handlers — healthy baseline', () => {
     expect(body.items[0]).toMatchObject({ id: 'dc-seed-0001', name: 'my-webapp', status: 'running' })
   })
 
-  // inbox now returns the seeded store under happy (populated, not empty).
-  it('GET /api/v1/inbox-events — happy returns seeded items', async () => {
-    const body = await get('/api/v1/inbox-events')
-    expect(body.items.length).toBe(4)
-    const types = body.items.map((e: { event_type: string }) => e.event_type)
-    expect(types).toContain('question')
-    expect(types).toContain('approval_request')
-    expect(types).toContain('failure')
-    expect(types).toContain('completion')
-  })
-
-  it('GET /api/v1/approval-requests — happy returns seeded items', async () => {
-    const body = await get('/api/v1/approval-requests')
-    expect(body.items.length).toBeGreaterThanOrEqual(3)
-    const statuses = body.items.map((r: { status: string }) => r.status)
-    expect(statuses).toContain('pending')
-    expect(statuses).toContain('approved')
-    expect(statuses).toContain('rejected')
-  })
 })

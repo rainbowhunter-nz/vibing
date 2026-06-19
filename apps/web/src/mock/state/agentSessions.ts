@@ -68,7 +68,7 @@ export class OtherSessionActiveError extends Error {
   }
 }
 
-const ACTIVE_STATUSES = new Set(['starting', 'running', 'waiting_for_approval'])
+const ACTIVE_STATUSES = new Set(['starting', 'running'])
 const RESTING_STATUSES = new Set(['completed', 'failed', 'stopped'])
 
 function findIdx(id: string): number {

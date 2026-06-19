@@ -16,12 +16,10 @@ const DESCRIPTIONS: Record<Scenario, string> = {
   'not-found': '404 not-found envelope on all endpoints.',
 }
 
-const SCOPES: Scope[] = ['devcontainers', 'agent_sessions', 'inbox', 'approvals', 'runtime']
+const SCOPES: Scope[] = ['devcontainers', 'agent_sessions', 'runtime']
 const SCOPE_DESC: Record<Scope, string> = {
   devcontainers: 'Triggers devcontainer list/detail refetch.',
   agent_sessions: 'Triggers agent session list refetch.',
-  inbox: 'Triggers inbox list refetch.',
-  approvals: 'Triggers approvals list refetch.',
   runtime: 'Triggers runtime status refetch.',
 }
 

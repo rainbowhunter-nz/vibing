@@ -3,7 +3,6 @@ import { setupServer } from 'msw/node'
 import { handlers } from '../handlers'
 import { setScenario, resetScenario } from '../scenario'
 import { resetDevcontainers } from '../state/devcontainers'
-import { resetInbox } from '../state/inbox'
 
 const server = setupServer(...handlers)
 
@@ -12,7 +11,6 @@ beforeEach(() => {
   server.resetHandlers()
   resetScenario()
   resetDevcontainers()
-  resetInbox()
 })
 afterAll(() => server.close())
 
@@ -32,10 +30,6 @@ describe('scenario switching — handler responses', () => {
     setScenario('empty')
     const devcontainers = await (await get('/api/v1/devcontainers')).json()
     expect(devcontainers.items).toEqual([])
-    const inbox = await (await get('/api/v1/inbox-events')).json()
-    expect(inbox.items).toEqual([])
-    const approvals = await (await get('/api/v1/approval-requests')).json()
-    expect(approvals.items).toEqual([])
   })
 
   it('api-error — all endpoints return 500 with error envelope', async () => {

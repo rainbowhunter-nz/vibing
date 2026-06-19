@@ -1,4 +1,4 @@
-export type Scope = 'devcontainers' | 'agent_sessions' | 'inbox' | 'approvals' | 'runtime'
+export type Scope = 'devcontainers' | 'agent_sessions' | 'runtime'
 
 export interface InvalidationEvent {
   event_type: string

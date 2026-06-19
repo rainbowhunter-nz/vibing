@@ -130,10 +130,10 @@ describe('coordinator — scope-based callbacks', () => {
     coord.disconnect()
   })
 
-  it('AC4: all 5 scopes are routable', () => {
+  it('AC4: all 3 scopes are routable', () => {
     const coord = createCoordinator()
     coord.connect()
-    const scopes: Scope[] = ['devcontainers', 'agent_sessions', 'inbox', 'approvals', 'runtime']
+    const scopes: Scope[] = ['devcontainers', 'agent_sessions', 'runtime']
     const cbs = scopes.map((s) => {
       const cb = vi.fn()
       coord.register(s, cb)
@@ -155,11 +155,11 @@ describe('coordinator — scope-based callbacks', () => {
     const coord = createCoordinator()
     coord.connect()
     const cb = vi.fn()
-    coord.register('inbox', cb)
+    coord.register('runtime', cb)
 
     const [es] = MockEventSource.instances
     es.simulateOpen()
-    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: ['i1'] })
+    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'runtime', ids: ['i1'] })
 
     // callback was called in-process — no reload occurred
     expect(cb).toHaveBeenCalledOnce()
@@ -170,15 +170,15 @@ describe('coordinator — scope-based callbacks', () => {
     const coord = createCoordinator()
     coord.connect()
     const cb = vi.fn()
-    const unsub = coord.register('approvals', cb)
+    const unsub = coord.register('agent_sessions', cb)
 
     const [es] = MockEventSource.instances
     es.simulateOpen()
-    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: [] })
+    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
     expect(cb).toHaveBeenCalledOnce()
 
     unsub()
-    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: [] })
+    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
     expect(cb).toHaveBeenCalledOnce() // still just once
     coord.disconnect()
   })
@@ -259,7 +259,7 @@ describe('coordinator — reconnect catch-up', () => {
 
   it('AC4: reconnect catch-up covers all registered scopes', () => {
     const coord = createCoordinator()
-    const scopes: Scope[] = ['devcontainers', 'agent_sessions', 'inbox', 'approvals', 'runtime']
+    const scopes: Scope[] = ['devcontainers', 'agent_sessions', 'runtime']
     const cbs = scopes.map((s) => {
       const cb = vi.fn()
       coord.register(s, cb)

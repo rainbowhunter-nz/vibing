@@ -16,8 +16,6 @@ pnpm dev:mock   # VITE_API_MOCKING=true vite
 | `fixtures.ts` | Healthy baseline DTO values for static read endpoints |
 | `state/seeds.ts` | Shared seed identities (devcontainers, agent sessions) — one id means the same object across every mock module |
 | `state/devcontainers.ts` | Mutable in-browser store for devcontainer CRUD/lifecycle |
-| `state/inbox.ts` | Mutable in-browser store for inbox events |
-| `state/approvals.ts` | Mutable in-browser store for approval requests |
 | `scenario.ts` + `useScenario.ts` | Global scenario store (6 scenarios); persisted to `localStorage` |
 | `events.ts` + `useMockSse.ts` | `MockEventSource` adapter (replaces browser `EventSource` for BOTH `/api/v1/events` and the per-session `/stream`), stream-state store, `emitInvalidation`, `liveInstancesMatching`. `MockEventSource.lastEventId` tracks the last delivered event's `id`, mirroring native EventSource behaviour (VIB-111) |
 | `agentSessionStreams.ts` | Scripted per-session SSE delta playback with replay support (ADR-0010, VIB-111): plays assistant text token-by-token through the MockEventSource opened at a session's `/stream` URL. Each event carries a monotonic `id`. `playSessionStream(sessionId, opts)` with injectable `schedule` for deterministic tests. `deliverBuffered(sessionId, es, lastEventId?)` replays buffered events to a fresh EventSource for AC1/AC2 testing. Wired into RailMock as a "play live deltas" button |
@@ -57,10 +55,10 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 
 **How**:
 
-- Add an `http.<method>('*/api/v1/path', handler)` entry in `handlers.ts` and include it in the appropriate composed array (`devcontainerHandlers`, `inboxHandlers`, etc.) or directly in the `handlers` export.
+- Add an `http.<method>('*/api/v1/path', handler)` entry in `handlers.ts` and include it in the appropriate composed array or directly in the `handlers` export.
 - Wildcard prefix (`*/api/v1/…`) keeps the same handler valid in the browser service worker and in Node-based vitest tests.
 - **Static read endpoint** (no user action mutates it): use `scenarioResponse(fixture, emptyValue?)`. Pass an empty value (e.g. `{ items: [] }`) as the second argument for list endpoints.
-- **Mutable-state route** (user action should persist into later refetches): call `scenarioFailure(notFoundCode?, staleCode?)` first; if it returns non-null, return that response. Otherwise do real store logic. Use domain-specific error codes (`DEVCONTAINER_NOT_FOUND`, `INBOX_EVENT_NOT_FOUND`, `APPROVAL_REQUEST_NOT_PENDING`) for per-item routes; use the generic fallback for collection routes.
+- **Mutable-state route** (user action should persist into later refetches): call `scenarioFailure(notFoundCode?, staleCode?)` first; if it returns non-null, return that response. Otherwise do real store logic. Use domain-specific error codes (e.g. `DEVCONTAINER_NOT_FOUND`) for per-item routes; use the generic fallback for collection routes.
 - Add a test covering at least the happy-path and one error scenario.
 
 ### 2. Fixtures — new DTO fields the UI reads
@@ -75,7 +73,7 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 
 ### 3. Mutable state — user actions that should survive later refetches
 
-**When**: a user action (create, edit, delete, start/stop, mark-read, resolve, approve/reject) should be reflected in subsequent GET responses within the same dev session.
+**When**: a user action (create, edit, delete, start/stop) should be reflected in subsequent GET responses within the same dev session.
 
 **How**:
 
@@ -114,10 +112,10 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 Run once after any significant change to the mock subsystem. Automated checks (`pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`) are the machine-checked baseline; this procedure adds human confirmation.
 
 1. **Boot** — `pnpm dev:mock` in `apps/web`. Confirm the browser console shows `[MSW] Mocking enabled.` and no console errors on load.
-2. **Scenario route** — navigate to `/mock`. Confirm 6 scenario buttons (happy/empty/api-error/network-down/stale-action/not-found) and the Event Stream section (3 connection-state buttons + 5 scope-emit buttons) render.
+2. **Scenario route** — navigate to `/mock`. Confirm 6 scenario buttons (happy/empty/api-error/network-down/stale-action/not-found) and the Event Stream section (3 connection-state buttons + 3 scope-emit buttons) render.
 3. **Right-rail controls** — load `/devcontainers`. Confirm the right rail shows the Mock section: current scenario name, "switch scenario" link, stream-state dot + label, stream-state buttons, and scope-emit buttons.
-4. **Happy scenario** — select `happy` on `/mock`. Load `/devcontainers` — seeded items render (my-webapp, api-service, data-pipeline, legacy-app). Load `/inbox` — 4 seeded events render.
-5. **Empty scenario** — select `empty`. Reload `/devcontainers` and `/inbox` — both show empty-state UI (no items).
+4. **Happy scenario** — select `happy` on `/mock`. Load `/devcontainers` — seeded items render (my-webapp, api-service, data-pipeline, legacy-app).
+5. **Empty scenario** — select `empty`. Reload `/devcontainers` — shows empty-state UI (no items).
 6. **Error scenario** — select `api-error`. Reload `/devcontainers` — the page shows an error state (not a list).
 7. **Manual invalidation** — switch back to `happy`. On `/devcontainers`, click the `devcontainers` scope-emit button in the right rail; confirm the list refetches (a brief loading state or unchanged seeded data confirms the path ran without error). No store mutation is expected — emits nudge SWR only.
 8. **Stream state** — click `disconnected` in the right rail. Confirm the stream-health indicator updates. Click `connected` to restore.
@@ -130,7 +128,6 @@ Control Plane API Mocking **must not model backend behavior the UI does not expo
 - No Control Plane projection logic — mock stores are flat CRUD; they do not replicate event-sourcing, cascades, or derived state the backend computes.
 - No automatic playback — scenarios and invalidation events are always manually triggered.
 - No Storybook integration or toast system.
-- **No cross-store cascades.** Resolving an approval mutates only the approvals store; the inbox event that references it keeps its embedded snapshot and unread status until refetched against the real backend. The UI's post-action "awaiting runtime…" state stands in for the cascade the real Control Plane would project.
 - **`empty` scenario only empties list endpoints.** Per-item routes (`/devcontainers/:id`, `/agent-sessions`) still return seeded data in `empty` — there is no UI path to them when the list is empty, so this is intentional.
 
 If a screen does not read a field, do not add it to fixtures. If the UI does not surface a state transition, do not add it to the mock stores.

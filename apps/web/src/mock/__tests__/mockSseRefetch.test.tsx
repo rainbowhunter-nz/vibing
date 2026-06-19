@@ -51,12 +51,10 @@ describe('AC5: manual emitInvalidation triggers refetch callback via coordinator
     expect(cb).toHaveBeenCalledWith({ event_type: 'invalidate', scope: 'devcontainers', ids: [] })
   })
 
-  it('all 5 scopes route to the correct callbacks', async () => {
+  it('all 3 scopes route to the correct callbacks', async () => {
     const cbs = {
       devcontainers: vi.fn(),
       agent_sessions: vi.fn(),
-      inbox: vi.fn(),
-      approvals: vi.fn(),
       runtime: vi.fn(),
     } as const
 

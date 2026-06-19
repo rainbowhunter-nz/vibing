@@ -96,12 +96,12 @@ describe('useSseInvalidation via SseProvider', () => {
     const { result } = renderHook(() => useSseInvalidation(), { wrapper })
 
     act(() => {
-      result.current.register('inbox', cb)
+      result.current.register('runtime', cb)
     })
     act(() => {
       const [es] = MockEventSource.instances
       es.simulateOpen()
-      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'inbox', ids: [] })
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'runtime', ids: [] })
     })
 
     // If page had reloaded, module state would be reset and cb would not appear called
@@ -114,13 +114,13 @@ describe('useSseInvalidation via SseProvider', () => {
 
     let unsub!: () => void
     act(() => {
-      unsub = result.current.register('approvals', cb)
+      unsub = result.current.register('agent_sessions', cb)
     })
 
     act(() => {
       const [es] = MockEventSource.instances
       es.simulateOpen()
-      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: [] })
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
     })
     expect(cb).toHaveBeenCalledOnce()
 
@@ -128,7 +128,7 @@ describe('useSseInvalidation via SseProvider', () => {
 
     act(() => {
       const [es] = MockEventSource.instances
-      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'approvals', ids: [] })
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
     })
     expect(cb).toHaveBeenCalledOnce()
   })
