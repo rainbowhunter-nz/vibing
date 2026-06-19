@@ -1,0 +1,15 @@
+# Delegated Runs are unattended, autonomous, concurrent in-container runs — observable but not Agent Sessions
+
+When the main harness calls the MCP server's `spawn` (ADR-0011), it creates a **Delegated Run**: one one-shot execution of a managed harness with a harness, model, and prompt, producing a result. We must decide what kind of entity this is, since the codebase already has a rich Agent Session abstraction (durable, resumable conversation; inbox; approvals; one-active-per-Devcontainer).
+
+A Delegated Run is **deliberately not an Agent Session**. It is a one-shot delegated task keyed by its own run id, owned by the Devcontainer, independent of any Agent Session (the in-container workflow often has none). Reusing the Agent Session machinery was rejected: it would break the one-active-per-Devcontainer invariant, impose durable-resumable-conversation semantics on something that is done when it ends, and entangle two unrelated lifecycles. The two share nothing but the host process.
+
+Delegated Runs are **observable via Runtime Events** (started / completed / failed, carrying a `delegated_run_id`), so the Control Plane and UI can show delegation activity, consistent with ADR-0002's "all read-model state is a projection of the event stream." Making them invisible/in-container-only was the simpler MVP option but was rejected — visibility into delegated work is worth the lightweight event + projection. They are events, not Agent Sessions: no resumability, no approval workflow.
+
+Because a Delegated Run is **unattended** — no human is watching to answer a permission prompt — the managed harness runs **fully autonomous** (each harness's non-interactive bypass/yolo mode), the only mode that completes without hanging, mirroring today's `claude --permission-mode bypassPermissions`. Routing approvals back up to the main harness or inbox was rejected as reintroducing the very friction this work removes; the isolation of the Devcontainer is what makes autonomous execution acceptable.
+
+Runs are **concurrent up to a cap** (default ~4): true fan-out delegation is the main motivation, so serializing them was rejected, but an unbounded count risks resource and rate-limit thrash. They execute in the **workspace root by default** (optional `cwd` subdir) and share the working tree — the point of delegation is that the sub-harness edits the same code the main harness sees; per-run git-worktree isolation was rejected as more than the MVP needs. `spawn` blocks and returns the final result by default, or returns a run id when `detached=true` for fan-out with later `get_status`/`get_result`.
+
+Consequences: concurrent runs share one working tree with no isolation, so parallel writers can clobber each other — the caller is responsible for partitioning work (e.g. via `cwd`). Autonomous bypass means a Delegated Run can take any action the harness can; this is bounded only by the container. Detached run results are held in the runtime for the container's lifetime and are lost if the container or runtime restarts; Delegated Runs are not durable.
+
+Status: accepted

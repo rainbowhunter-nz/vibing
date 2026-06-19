@@ -3,31 +3,31 @@
 import pytest
 from typer.testing import CliRunner
 
+from vibing_devcontainer_runtime import cli as cli_module
 from vibing_devcontainer_runtime.cli import DEFAULT_CONTROL_PLANE_URL, cli
 from vibing_protocol import RegisterEnvelope
-from vibing_runtime_client import RuntimeChannelClient
 
 
-@pytest.fixture
-def captured(monkeypatch: pytest.MonkeyPatch) -> list[RuntimeChannelClient]:
-    """Capture the RuntimeChannelClient the CLI builds without running it."""
-    clients: list[RuntimeChannelClient] = []
-    monkeypatch.setattr(RuntimeChannelClient, "run_blocking", lambda client: clients.append(client))
-    return clients  # type: ignore[return-value]
+def test_cli_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
 
+    def fake_serve(url: str, dc_id: str, mcp_host: str, mcp_port: int, workspace: str) -> None:
+        calls.append((url, dc_id, mcp_host, str(mcp_port), workspace))
 
-def test_cli_defaults(captured: list[RuntimeChannelClient]) -> None:
+    monkeypatch.setattr(cli_module, "_serve_blocking", fake_serve)
     result = CliRunner().invoke(cli, ["--devcontainer-id", "dc-test"])
     assert result.exit_code == 0, result.output
-    [client] = captured
-    assert client._url == DEFAULT_CONTROL_PLANE_URL
+    assert calls == [(DEFAULT_CONTROL_PLANE_URL, "dc-test", "127.0.0.1", "8848", ".")]
     assert DEFAULT_CONTROL_PLANE_URL == "ws://host.docker.internal:8000/api/v1/runtime/agent/ws"
-    assert client._register.source == "devcontainer_runtime_agent"
-    assert client._register.devcontainer_id == "dc-test"
-    assert "transcript_request" in client._request_handlers  # transcript responder wired
 
 
-def test_cli_overrides(captured: list[RuntimeChannelClient]) -> None:
+def test_cli_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_serve(url: str, dc_id: str, mcp_host: str, mcp_port: int, workspace: str) -> None:
+        calls.append((url, dc_id, mcp_host, str(mcp_port), workspace))
+
+    monkeypatch.setattr(cli_module, "_serve_blocking", fake_serve)
     result = CliRunner().invoke(
         cli,
         [
@@ -35,12 +35,18 @@ def test_cli_overrides(captured: list[RuntimeChannelClient]) -> None:
             "ws://host:9/api/v1/runtime/agent/ws",
             "--devcontainer-id",
             "my-container",
+            "--mcp-host",
+            "0.0.0.0",
+            "--mcp-port",
+            "9999",
+            "--workspace",
+            "/custom/ws",
         ],
     )
     assert result.exit_code == 0, result.output
-    [client] = captured
-    assert client._url == "ws://host:9/api/v1/runtime/agent/ws"
-    assert client._register.devcontainer_id == "my-container"
+    assert calls == [
+        ("ws://host:9/api/v1/runtime/agent/ws", "my-container", "0.0.0.0", "9999", "/custom/ws")
+    ]
 
 
 def test_cli_missing_devcontainer_id_fails() -> None:
@@ -64,3 +70,38 @@ def test_host_register_envelope_unaffected() -> None:
     d = env.model_dump()
     assert d["devcontainer_id"] is None
     assert d["source"] == "host_runtime_worker"
+
+
+def test_serve_builds_managers_and_runs_both(monkeypatch: pytest.MonkeyPatch) -> None:
+    built: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, url: str, register: object, handler: object) -> None:
+            built["handler_owner"] = (
+                handler.__self__
+            )  # AgentCommandHandler instance  # type: ignore[union-attr]
+            self._requests: dict[str, object] = {}
+
+        def on_request(self, message_type: str, respond: object) -> None:
+            self._requests[message_type] = respond
+
+        async def run(self) -> None:
+            built["client_ran"] = True
+
+        async def send_envelope(self, envelope: object) -> None:
+            pass
+
+    async def fake_serve_http(self: object) -> None:  # FastMCP.run_streamable_http_async stand-in
+        built["mcp_ran"] = True
+
+    monkeypatch.setattr(cli_module, "RuntimeChannelClient", FakeClient)
+    monkeypatch.setattr(
+        cli_module.FastMCP, "run_streamable_http_async", fake_serve_http, raising=True
+    )
+
+    cli_module._serve_blocking("ws://x", "dc-1", "127.0.0.1", 8848, ".")
+
+    assert built["client_ran"] is True
+    assert built["mcp_ran"] is True
+    # the command handler got a harness manager wired
+    assert built["handler_owner"]._harness_manager is not None  # type: ignore[union-attr]

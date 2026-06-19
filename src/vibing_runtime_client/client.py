@@ -166,6 +166,14 @@ class RuntimeChannelClient:
             finally:
                 queue.task_done()
 
+    async def send_envelope(self, envelope: BaseModel) -> None:
+        """Send an envelope outside the command-handler path (e.g. Delegated Run events)."""
+        ws = self._ws
+        if ws is None:
+            logger.warning("Dropping %s: runtime channel not connected", type(envelope).__name__)
+            return
+        await ws.send(json.dumps(envelope.model_dump()))
+
     def _make_send(self, ws: Any) -> SendFn:
         async def send(envelope: BaseModel) -> None:
             await ws.send(json.dumps(envelope.model_dump()))

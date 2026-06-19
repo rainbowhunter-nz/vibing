@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.136.3",
     "httpx>=0.28.1",
     "logzero>=1.7.0",
+    "mcp>=1.28.0",
     "pydantic>=2.0",
     "pydantic-settings>=2.14.1",
     "rich>=15.0.0",

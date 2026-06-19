@@ -114,7 +114,9 @@ def _make_client(
     return client, connect, backoff
 
 
-def _command_json(devcontainer_id: str, command_type: CommandType = CommandType.START_DEVCONTAINER) -> str:
+def _command_json(
+    devcontainer_id: str, command_type: CommandType = CommandType.START_DEVCONTAINER
+) -> str:
     envelope = CommandEnvelope(command=Command(type=command_type, devcontainer_id=devcontainer_id))
     return json.dumps(envelope.model_dump())
 
@@ -279,6 +281,14 @@ def test_stop_closes_active_websocket_and_exits(monkeypatch: pytest.MonkeyPatch)
 
     asyncio.run(scenario())
     assert closed.is_set()
+
+
+def test_send_envelope_warns_and_noops_when_disconnected() -> None:
+    async def handler(cmd: Command, send: SendFn) -> None:
+        return None
+
+    client = RuntimeChannelClient("ws://x", RegisterEnvelope(), handler)
+    asyncio.run(client.send_envelope(RegisterEnvelope()))  # no ws -> no raise
 
 
 def test_in_flight_command_not_replayed_after_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:

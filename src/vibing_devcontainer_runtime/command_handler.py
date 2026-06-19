@@ -23,6 +23,7 @@ from vibing_protocol import (
 )
 
 from vibing_devcontainer_runtime.claude_runner import ClaudeCodeRunner, ClaudeFailure, ClaudeProcess
+from vibing_devcontainer_runtime.harness_manager import HarnessManager
 from vibing_devcontainer_runtime.running_sessions import RunningSessions
 
 _SOURCE: RuntimeEventSource = RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT
@@ -45,9 +46,12 @@ def _make_emit(send: SendFn) -> EmitFn:
 
 
 class AgentCommandHandler:
-    def __init__(self, runner: ClaudeCodeRunner) -> None:
+    def __init__(
+        self, runner: ClaudeCodeRunner, harness_manager: HarnessManager | None = None
+    ) -> None:
         self._runner = runner
         self._sessions = RunningSessions()
+        self._harness_manager = harness_manager
 
     async def wait_for_idle(self) -> None:
         """Await every in-flight run to settle (shutdown / tests)."""
@@ -65,6 +69,8 @@ class AgentCommandHandler:
             await self._send_user_input(command, emit)
         elif command.type == CommandType.RESOLVE_APPROVAL:
             await self._resolve_approval(command, emit)
+        elif command.type == CommandType.AUTHENTICATE_HARNESS:
+            await self._authenticate_harness(command, emit)
         else:
             logger.info("Ignoring unsupported command type: %s", command.type)
 
@@ -178,6 +184,26 @@ class AgentCommandHandler:
                 payload={
                     "approval_request_id": payload.get("approval_request_id"),
                     "resolution": payload.get("resolution"),
+                },
+            )
+        )
+
+    async def _authenticate_harness(self, command: Command, emit: EmitFn) -> None:
+        if self._harness_manager is None:
+            logger.info("authenticate_harness received but no harness manager wired")
+            return
+        payload = command.payload or {}
+        harness = payload.get("harness", "")
+        status = await self._harness_manager.authenticate(harness, payload.get("credentials") or {})
+        await emit(
+            RuntimeEvent(
+                event_type=EventType.HARNESS_STATUS,
+                source=_SOURCE,
+                devcontainer_id=command.devcontainer_id,
+                payload={
+                    "harness": status.name,
+                    "installed": status.installed,
+                    "authenticated": status.authenticated,
                 },
             )
         )

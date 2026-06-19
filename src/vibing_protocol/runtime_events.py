@@ -29,6 +29,10 @@ class EventType(StrEnum):
     SESSION_COMPLETED = auto()
     SESSION_FAILED = auto()
     SESSION_STOPPED = auto()
+    HARNESS_STATUS = auto()
+    DELEGATED_RUN_STARTED = auto()
+    DELEGATED_RUN_COMPLETED = auto()
+    DELEGATED_RUN_FAILED = auto()
 
 
 class RuntimeEventSource(StrEnum):

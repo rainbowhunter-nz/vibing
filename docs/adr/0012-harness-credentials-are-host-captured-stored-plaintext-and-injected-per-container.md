@@ -1,0 +1,15 @@
+# Harness credentials are host-captured, stored plaintext in the Control Plane, and adapter-injected per container
+
+The frustration driving this work is authentication: every ephemeral Devcontainer would otherwise require re-authenticating each coding harness, and for subscription-based harnesses (ChatGPT-for-Codex, Cursor account) that means an interactive OAuth/device-code browser flow per container. We want the human to authenticate **once** and have every container inherit it with no further interaction.
+
+We model authentication as **delivery of a generic credential blob that the runtime injects**, identical in shape whether the secret is an API key or a captured subscription auth file. A per-harness adapter (ADR-0011) knows that harness's credential location and format; given the blob, it installs the harness if missing and drops the credential into place. Treating both secret kinds uniformly was chosen over an api-keys-only MVP (which would not solve the subscription-login pain that motivated the work) and over orchestrating an interactive login inside each container (which keeps a manual step per container).
+
+The blob originates from a **host login**. The user logs into a harness once on their host machine using its normal CLI flow; a `vibing` command reads the resulting on-disk auth file and stores it in the Control Plane, where it is reused across all containers. We rejected **capturing from a seed container** (runtime surfaces an OAuth URL, captures the file back) — the most automated option but the most to build — and accepted that the one-time host login is a small, familiar step. The api-key case is the trivial subset: paste a key instead of capturing a file.
+
+Delivery is **command-triggered**: a new `authenticate_harness` Command carries the blob to the runtime on demand (from the web UI or a `vibing` command). Eager push on registration was considered (zero friction — container comes up fully authenticated) and lazy pull at spawn was considered (minimal secret exposure); command-triggered was chosen as the explicit middle that reuses the existing Command channel and sends secrets only when asked.
+
+Credentials are stored **plaintext in the Control Plane's SQLite database**, protected by filesystem permissions. This is a deliberate trade-off for a local-first, single-user tool running on the user's own machine, where the same auth files already sit in plaintext under the home directory. Encryption at rest was rejected for MVP as adding key-management (that must not be lost) for marginal gain; storing only a pointer to the host file was rejected as coupling delivery to host filesystem layout. This decision should be revisited before any multi-user or hosted deployment.
+
+Consequences: the Control Plane becomes a store of long-lived secrets, so its database file and host are now sensitive. Captured subscription tokens expire and must be re-captured on the host when they do; nothing auto-refreshes them. The host-capture command must know each harness's auth-file location — another fact owned by the per-harness adapter, shared between host (capture) and container (inject).
+
+Status: accepted

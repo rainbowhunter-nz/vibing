@@ -25,8 +25,16 @@ Agent worker. Runs inside one devcontainer, controls Claude Code.
   file-level shapes (roles, turn `id` from the per-message uuid per ADR-0010), content blocks via
   `content_blocks`. Missing file -> []. Projects-base injectable. `respond` answers
   `transcript_request` messages; cli registers it via `client.on_request`.
+- `harness/`: per-harness adapters (`base` contract, `codex`, `cursor`), the `process` subprocess
+  seam, and `registry.build_adapters`. The only place pinned to each harness's CLI flags + cred path.
+- `harness_manager.py`: drives adapters for `authenticate_harness` + status (ADR-0012).
+- `delegated_runs.py`: `DelegatedRunManager` — concurrent capped unattended runs; emits
+  delegated_run_started/completed/failed (ADR-0013).
+- `mcp_server.py`: `build_mcp_server` — streamable-HTTP MCP server (`list_harnesses`/`spawn`/
+  `get_status`/`get_result`/`stop`) the main harness calls (ADR-0011).
 
 ## Context
 
 - Connects to API `/runtime/agent/ws` as `devcontainer_runtime_agent`.
+- cli serves the Command channel + MCP server (default 127.0.0.1:8848) concurrently.
 - Tests: `tests/devcontainer_runtime`.

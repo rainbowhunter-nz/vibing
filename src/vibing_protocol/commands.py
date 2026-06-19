@@ -21,6 +21,7 @@ class CommandType(StrEnum):
     STOP_AGENT_SESSION = auto()
     SEND_USER_INPUT = auto()
     RESOLVE_APPROVAL = auto()
+    AUTHENTICATE_HARNESS = auto()
 
 
 COMMAND_TYPES: frozenset[CommandType] = frozenset(CommandType)

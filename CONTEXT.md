@@ -12,6 +12,14 @@ _Avoid_: Workspace, project, environment, repo
 The durable conversation between a user and a coding agent inside a Devcontainer — *not* a single run. Identified by one stable id that is also the agent's own session id and names its Session Transcript. Re-openable: after a run ends it rests in a resumable state and can be **continued in place**, appending more turns to the same conversation. At most one is active per Devcontainer. The agent is Claude Code today, but the entity is named for the role, not the vendor — domain terms, table (`agent_sessions`), and FKs all use `agent_session`. Spelled "agent-session" in prose. "Claude" may appear in user-facing UI copy only.
 _Avoid_: Claude session, agent run, single-shot run
 
+**Coding Harness**:
+The installable CLI program that runs a coding agent non-interactively inside a Devcontainer — Claude Code (`claude`), Codex CLI (`codex`), Cursor CLI (`cursor-agent`). A harness has two queryable states: **installed** (the binary is present) and **authenticated** (it has working credentials). A model is a *parameter* passed when spawning, not part of the harness identity. Two roles a harness plays: the **main harness** is the one a human drives directly inside the Devcontainer (Claude Code today) — it is the *client* of the MCP server and is never managed by the runtime; a **managed harness** is one the Devcontainer Runtime Agent checks, installs, authenticates, and spawns on the main harness's behalf (Codex, Cursor; extensible). Claude Code is also the harness behind an Agent Session today.
+_Avoid_: tool, agent, vendor, provider; do not conflate with Agent Session (the conversation) or coding agent (the role)
+
+**Delegated Run**:
+One one-shot execution of a *managed* Coding Harness, spawned through the runtime agent's MCP server when the main harness delegates a task. Carries a harness, a model, and a prompt; produces a result. Keyed by its own run id, owned by the Devcontainer, and independent of any Agent Session (the in-container workflow may have no Agent Session at all). Unattended and fully autonomous (it runs in the harness's bypass mode — no human to answer approvals). Not a durable, resumable conversation — when it ends, it is done. Its lifecycle is reported to the Control Plane as Runtime Events for visibility, but it is *not* an Agent Session and does not use that machinery.
+_Avoid_: agent-session, subagent session, job, task (when ambiguous)
+
 **Control Plane**:
 The backend (FastAPI + SQLite). The single hub: it holds all metadata, sends Commands to runtimes and consumes the Runtime Events they emit (over TCP/IP, star topology — see [ADR-0003](docs/adr/0003-runtimes-connect-to-the-control-plane-over-tcp-ip-in-a-star-topology.md)), and is the only writer of derived state. The frontend is a separate client over `/api/v1` HTTP and is *not* part of the Control Plane.
 _Avoid_: server, backend, orchestrator; do not include the frontend
@@ -21,7 +29,7 @@ A frontend development mode where the browser receives mock `/api/v1` Control Pl
 _Avoid_: backendless mode, fake backend, mock server
 
 **Runtime**:
-A process that executes Commands and emits Runtime Events. Two kinds: the **Host Runtime Worker** (owns Devcontainer lifecycle — containers on the host) and the **Devcontainer Runtime Agent** (owns Agent Session lifecycle, running inside a Devcontainer).
+A process that executes Commands and emits Runtime Events. Two kinds: the **Host Runtime Worker** (owns Devcontainer lifecycle — containers on the host) and the **Devcontainer Runtime Agent** (runs inside a Devcontainer). The agent owns Agent Session lifecycle *and* manages Coding Harnesses for the main harness: it checks whether managed harnesses are installed/authenticated, installs them on demand, authenticates them from credentials the Control Plane sends, and hosts the MCP server that the main harness calls to start Delegated Runs.
 _Avoid_: worker, daemon (when ambiguous)
 
 **Command**:
