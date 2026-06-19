@@ -79,11 +79,11 @@ describe('MockEventSource — addEventListener and invalidate delivery', () => {
     let count = 0
     const listener = () => { count++ }
     es.addEventListener('invalidate', listener)
-    emitInvalidation('agent_sessions')
+    emitInvalidation('harnesses')
     expect(count).toBe(1)
 
     es.removeEventListener('invalidate', listener)
-    emitInvalidation('agent_sessions')
+    emitInvalidation('harnesses')
     expect(count).toBe(1)
     es.close()
   })
@@ -99,7 +99,7 @@ describe('MockEventSource — addEventListener and invalidate delivery', () => {
     expect(count).toBe(0)
   })
 
-  it('delivers all 3 scopes', async () => {
+  it('delivers all scopes', async () => {
     const es = new MockEventSource('/api/v1/events')
     await flushMicrotasks()
 
@@ -108,7 +108,7 @@ describe('MockEventSource — addEventListener and invalidate delivery', () => {
       scopes.push(JSON.parse((e as MessageEvent).data).scope as string)
     })
 
-    const all = ['devcontainers', 'agent_sessions', 'runtime'] as const
+    const all = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs'] as const
     for (const s of all) emitInvalidation(s)
 
     expect(scopes).toEqual([...all])

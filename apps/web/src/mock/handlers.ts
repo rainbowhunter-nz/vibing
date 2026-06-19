@@ -2,9 +2,10 @@ import { http, HttpResponse } from 'msw'
 import type { JsonBodyType, DefaultBodyType } from 'msw'
 import * as f from './fixtures'
 import { getScenario } from './scenario'
-import type { ApiErrorEnvelope, AgentSessionResumeBody, AgentSessionStartBody, DevcontainerUpdateBody } from '../lib/api/types'
+import type { ApiErrorEnvelope, DevcontainerUpdateBody } from '../lib/api/types'
 import * as dc from './state/devcontainers'
-import * as as from './state/agentSessions'
+import * as hn from './state/harnesses'
+import * as dr from './state/delegatedRuns'
 import { emitInvalidation } from './events'
 
 // Wildcard origin so handlers work in both browser (service worker) and Node (vitest/msw node).
@@ -147,45 +148,7 @@ const devcontainerHandlers = [
     }
   }),
 
-  http.get('*/api/v1/devcontainers/:dc/agent-sessions/:sid/transcript', ({ params }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
-    if (failure) return failure
-    try {
-      dc.getDevcontainer(params.dc as string)
-    } catch (e) {
-      if (e instanceof dc.NotFoundError) return notFound(params.dc as string)
-      throw e
-    }
-    try {
-      return HttpResponse.json(as.getAgentSessionTranscript(params.dc as string, params.sid as string))
-    } catch (e) {
-      if (e instanceof as.NotFoundError) {
-        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
-      }
-      throw e
-    }
-  }),
-
-  http.get('*/api/v1/devcontainers/:dc/agent-sessions/:sid', ({ params }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
-    if (failure) return failure
-    try {
-      dc.getDevcontainer(params.dc as string)
-    } catch (e) {
-      if (e instanceof dc.NotFoundError) return notFound(params.dc as string)
-      throw e
-    }
-    try {
-      return HttpResponse.json(as.getAgentSession(params.dc as string, params.sid as string))
-    } catch (e) {
-      if (e instanceof as.NotFoundError) {
-        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
-      }
-      throw e
-    }
-  }),
-
-  http.get('*/api/v1/devcontainers/:id/agent-sessions', ({ params }) => {
+  http.get('*/api/v1/devcontainers/:id/harnesses', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
     try {
@@ -194,12 +157,41 @@ const devcontainerHandlers = [
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e
     }
-    const scenario = getScenario()
-    if (scenario === 'empty') return HttpResponse.json({ items: [] })
-    return HttpResponse.json(as.listAgentSessions(params.id as string))
+    if (getScenario() === 'empty') return HttpResponse.json({ items: [] })
+    return HttpResponse.json(hn.listHarnesses(params.id as string))
   }),
 
-  http.post('*/api/v1/devcontainers/:id/agent-sessions', async ({ params, request }) => {
+  http.post('*/api/v1/devcontainers/:id/harnesses/:name/install', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'HARNESS_NOT_FOUND')
+    if (failure) return failure
+    try {
+      const status = hn.installHarness(params.id as string, params.name as string)
+      emitInvalidation('harnesses')
+      return HttpResponse.json(status)
+    } catch (e) {
+      if (e instanceof hn.NotFoundError) {
+        return HttpResponse.json(errorEnvelope('HARNESS_NOT_FOUND', e.message), { status: 404 })
+      }
+      throw e
+    }
+  }),
+
+  http.post('*/api/v1/devcontainers/:id/harnesses/:name/authenticate', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'HARNESS_NOT_FOUND')
+    if (failure) return failure
+    try {
+      const status = hn.authenticateHarness(params.id as string, params.name as string)
+      emitInvalidation('harnesses')
+      return HttpResponse.json(status)
+    } catch (e) {
+      if (e instanceof hn.NotFoundError) {
+        return HttpResponse.json(errorEnvelope('HARNESS_NOT_FOUND', e.message), { status: 404 })
+      }
+      throw e
+    }
+  }),
+
+  http.get('*/api/v1/devcontainers/:id/delegated-runs', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
     try {
@@ -208,71 +200,20 @@ const devcontainerHandlers = [
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e
     }
-    const body = await request.json() as AgentSessionStartBody
-    const session = as.startAgentSession(params.id as string, body)
-    emitInvalidation('agent_sessions')
-    return HttpResponse.json(session, { status: 201 })
+    if (getScenario() === 'empty') return HttpResponse.json({ items: [] })
+    return HttpResponse.json(dr.listDelegatedRuns(params.id as string))
   }),
 
-  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/resume', async ({ params, request }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_RESTING')
+  http.post('*/api/v1/devcontainers/:id/delegated-runs/:runId/stop', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'DELEGATED_RUN_NOT_FOUND')
     if (failure) return failure
     try {
-      dc.getDevcontainer(params.dc as string)
+      const run = dr.stopDelegatedRun(params.id as string, params.runId as string)
+      emitInvalidation('delegated_runs')
+      return HttpResponse.json(run)
     } catch (e) {
-      if (e instanceof dc.NotFoundError) return notFound(params.dc as string)
-      throw e
-    }
-    const body = await request.json() as AgentSessionResumeBody
-    try {
-      const session = as.resumeAgentSession(params.dc as string, params.sid as string, body)
-      emitInvalidation('agent_sessions')
-      return HttpResponse.json(session, { status: 202 })
-    } catch (e) {
-      if (e instanceof as.NotFoundError) {
-        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
-      }
-      if (e instanceof as.NonRestingError || e instanceof as.OtherSessionActiveError) {
-        return HttpResponse.json(errorEnvelope(e.code, e.message), { status: 409 })
-      }
-      throw e
-    }
-  }),
-
-  http.post('*/api/v1/devcontainers/:dc/agent-sessions/:sid/stop', ({ params }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
-    if (failure) return failure
-    try {
-      const session = as.stopAgentSession(params.dc as string, params.sid as string)
-      emitInvalidation('agent_sessions')
-      return HttpResponse.json(session)
-    } catch (e) {
-      if (e instanceof as.NotFoundError) {
-        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
-      }
-      throw e
-    }
-  }),
-
-  http.delete('*/api/v1/devcontainers/:dc/agent-sessions/:sid', ({ params }) => {
-    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'AGENT_SESSION_NOT_FOUND')
-    if (failure) return failure
-    try {
-      dc.getDevcontainer(params.dc as string)
-    } catch (e) {
-      if (e instanceof dc.NotFoundError) return notFound(params.dc as string)
-      throw e
-    }
-    try {
-      as.deleteAgentSession(params.dc as string, params.sid as string)
-      emitInvalidation('agent_sessions')
-      return new HttpResponse(null, { status: 204 })
-    } catch (e) {
-      if (e instanceof as.NotFoundError) {
-        return HttpResponse.json(errorEnvelope('AGENT_SESSION_NOT_FOUND', e.message), { status: 404 })
-      }
-      if (e instanceof as.ActiveSessionError) {
-        return HttpResponse.json(errorEnvelope('AGENT_SESSION_STILL_ACTIVE', e.message), { status: 409 })
+      if (e instanceof dr.NotFoundError) {
+        return HttpResponse.json(errorEnvelope('DELEGATED_RUN_NOT_FOUND', e.message), { status: 404 })
       }
       throw e
     }

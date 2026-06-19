@@ -3,9 +3,7 @@ import {
   createDevcontainer,
   deleteDevcontainer,
   fetchDevcontainer,
-  startAgentSession,
   startDevcontainer,
-  stopAgentSession,
   stopDevcontainer,
   updateDevcontainer,
 } from '../endpoints'
@@ -119,69 +117,3 @@ describe('stopDevcontainer', () => {
   })
 })
 
-const agentSession = {
-  id: 'sess-1',
-  devcontainer_id: 'dc-1',
-  status: 'running',
-  prompt: null,
-  started_at: '2024-01-01T00:00:00Z',
-  ended_at: null,
-  last_event_at: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-}
-
-describe('fetchAgentSession', () => {
-  it('GETs /devcontainers/{id}/agent-sessions/{sid}', async () => {
-    const { fetchAgentSession } = await import('../endpoints')
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ...agentSession, summary_text: 'done' }))
-    vi.stubGlobal('fetch', fetchMock)
-    const result = await fetchAgentSession('dc-1', 'sess-1')
-    const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/devcontainers/dc-1/agent-sessions/sess-1')
-    expect((init as RequestInit).method).toBeUndefined()
-    expect(result.summary_text).toBe('done')
-  })
-})
-
-describe('startAgentSession', () => {
-  it('POSTs to /devcontainers/{id}/agent-sessions with prompt body', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(202, { ...agentSession, status: 'starting' }))
-    vi.stubGlobal('fetch', fetchMock)
-    const result = await startAgentSession('dc-1', { prompt: 'do something' })
-    const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/devcontainers/dc-1/agent-sessions')
-    expect((init as RequestInit).method).toBe('POST')
-    expect((init as RequestInit).body).toBe(JSON.stringify({ prompt: 'do something' }))
-    expect(result).toEqual({ ...agentSession, status: 'starting' })
-  })
-
-  it('encodes special characters in devcontainer id', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(202, agentSession))
-    vi.stubGlobal('fetch', fetchMock)
-    await startAgentSession('dc 1/x', { prompt: 'hi' })
-    const [url] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/devcontainers/dc%201%2Fx/agent-sessions')
-  })
-})
-
-describe('stopAgentSession', () => {
-  it('POSTs to /devcontainers/{id}/agent-sessions/{sid}/stop with no body', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(202, { ...agentSession, status: 'stopped' }))
-    vi.stubGlobal('fetch', fetchMock)
-    const result = await stopAgentSession('dc-1', 'sess-1')
-    const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/devcontainers/dc-1/agent-sessions/sess-1/stop')
-    expect((init as RequestInit).method).toBe('POST')
-    expect((init as RequestInit).body).toBeUndefined()
-    expect(result).toEqual({ ...agentSession, status: 'stopped' })
-  })
-
-  it('encodes special characters in devcontainer id and session id', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(202, agentSession))
-    vi.stubGlobal('fetch', fetchMock)
-    await stopAgentSession('dc 1', 'sess/2')
-    const [url] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/devcontainers/dc%201/agent-sessions/sess%2F2/stop')
-  })
-})

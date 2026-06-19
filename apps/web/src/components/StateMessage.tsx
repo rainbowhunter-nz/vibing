@@ -11,7 +11,7 @@ interface StateMessageProps {
 
 const TONE_CHIP: Record<'muted' | 'error', string> = {
   muted: 'bg-surface-muted text-accent',
-  error: 'bg-red-100 text-bad',
+  error: 'bg-bad/15 text-bad',
 }
 
 export function StateMessage({ icon, title, helper, tone = 'muted', action }: StateMessageProps) {

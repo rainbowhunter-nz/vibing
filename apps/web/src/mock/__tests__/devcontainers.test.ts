@@ -108,34 +108,6 @@ describe('GET /api/v1/devcontainers/:id', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Agent sessions — GET /api/v1/devcontainers/:id/agent-sessions
-// ---------------------------------------------------------------------------
-
-describe('GET /api/v1/devcontainers/:id/agent-sessions', () => {
-  it('happy — returns only the requesting devcontainer’s sessions', async () => {
-    const res = await get('/api/v1/devcontainers/dc-seed-0001/agent-sessions')
-    expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.items).toHaveLength(4)
-    expect(body.items.every((s: { devcontainer_id: string }) => s.devcontainer_id === 'dc-seed-0001')).toBe(true)
-  })
-
-  it('happy — returns empty items for a seeded id with no sessions', async () => {
-    const res = await get('/api/v1/devcontainers/dc-seed-0003/agent-sessions')
-    expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.items).toEqual([])
-  })
-
-  it('happy — returns 404 for unknown devcontainer id', async () => {
-    const res = await get('/api/v1/devcontainers/nope/agent-sessions')
-    expect(res.status).toBe(404)
-    const body = await res.json()
-    expect(body.error.code).toBe('DEVCONTAINER_NOT_FOUND')
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Create — POST /api/v1/devcontainers
 // ---------------------------------------------------------------------------
 

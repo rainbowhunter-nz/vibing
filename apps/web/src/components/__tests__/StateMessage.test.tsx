@@ -15,7 +15,7 @@ describe('StateMessage', () => {
     )
     expect(container.querySelector('.bg-surface-muted')).toBeTruthy()
     rerender(<StateMessage icon={<svg />} title="t" helper="h" tone="error" />)
-    expect(container.querySelector('.bg-red-100')).toBeTruthy()
+    expect(container.querySelector('.bg-bad\\/15')).toBeTruthy()
   })
 
   it('renders an action when provided', () => {

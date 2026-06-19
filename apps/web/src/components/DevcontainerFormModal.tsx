@@ -136,7 +136,7 @@ export function DevcontainerFormModal({ mode, devcontainer, onClose, onSuccess }
           <button
             type="submit"
             disabled={submitting || !isValid}
-            className="flex items-center rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            className="flex items-center rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-bg disabled:opacity-50"
           >
             {submitting ? (
               <>

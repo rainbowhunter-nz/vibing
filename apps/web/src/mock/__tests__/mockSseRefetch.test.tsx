@@ -54,7 +54,7 @@ describe('AC5: manual emitInvalidation triggers refetch callback via coordinator
   it('all 3 scopes route to the correct callbacks', async () => {
     const cbs = {
       devcontainers: vi.fn(),
-      agent_sessions: vi.fn(),
+      harnesses: vi.fn(),
       runtime: vi.fn(),
     } as const
 

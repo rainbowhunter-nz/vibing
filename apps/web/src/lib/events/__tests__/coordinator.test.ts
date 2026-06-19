@@ -119,7 +119,7 @@ describe('coordinator — scope-based callbacks', () => {
     const cbA = vi.fn()
     const cbB = vi.fn()
     coord.register('devcontainers', cbA)
-    coord.register('agent_sessions', cbB)
+    coord.register('harnesses', cbB)
 
     const [es] = MockEventSource.instances
     es.simulateOpen()
@@ -130,10 +130,10 @@ describe('coordinator — scope-based callbacks', () => {
     coord.disconnect()
   })
 
-  it('AC4: all 3 scopes are routable', () => {
+  it('AC4: all scopes are routable', () => {
     const coord = createCoordinator()
     coord.connect()
-    const scopes: Scope[] = ['devcontainers', 'agent_sessions', 'runtime']
+    const scopes: Scope[] = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs']
     const cbs = scopes.map((s) => {
       const cb = vi.fn()
       coord.register(s, cb)
@@ -170,15 +170,15 @@ describe('coordinator — scope-based callbacks', () => {
     const coord = createCoordinator()
     coord.connect()
     const cb = vi.fn()
-    const unsub = coord.register('agent_sessions', cb)
+    const unsub = coord.register('harnesses', cb)
 
     const [es] = MockEventSource.instances
     es.simulateOpen()
-    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'harnesses', ids: [] })
     expect(cb).toHaveBeenCalledOnce()
 
     unsub()
-    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+    es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'harnesses', ids: [] })
     expect(cb).toHaveBeenCalledOnce() // still just once
     coord.disconnect()
   })
@@ -257,9 +257,9 @@ describe('coordinator — reconnect catch-up', () => {
     coord.disconnect()
   })
 
-  it('AC4: reconnect catch-up covers all registered scopes', () => {
+  it('AC4: reconnect catch-up covers all scopes', () => {
     const coord = createCoordinator()
-    const scopes: Scope[] = ['devcontainers', 'agent_sessions', 'runtime']
+    const scopes: Scope[] = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs']
     const cbs = scopes.map((s) => {
       const cb = vi.fn()
       coord.register(s, cb)

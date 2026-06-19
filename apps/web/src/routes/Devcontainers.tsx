@@ -67,12 +67,12 @@ function isRunning(status: string): boolean {
 function statusBadgeClass(status: string): string {
   switch (status) {
     case 'running':
-      return 'bg-emerald-100 text-emerald-800'
+      return 'bg-accent/15 text-accent'
     case 'starting':
     case 'stopping':
-      return 'bg-accent-bg text-accent'
+      return 'bg-accent/15 text-accent'
     case 'error':
-      return 'bg-red-100 text-bad'
+      return 'bg-bad/15 text-bad'
     default:
       return 'bg-surface-muted text-text-muted'
   }
@@ -242,7 +242,7 @@ export function Devcontainers() {
   const addButton = (
     <button
       onClick={() => setModal({ mode: 'create' })}
-      className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white"
+      className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-bg"
     >
       + Add
     </button>
@@ -272,7 +272,7 @@ export function Devcontainers() {
                 action={
                   <button
                     onClick={() => setModal({ mode: 'create' })}
-                    className="rounded-md bg-accent px-3.5 py-2 text-xs font-semibold text-white"
+                    className="rounded-md bg-accent px-3.5 py-2 text-xs font-semibold text-bg"
                   >
                     Add devcontainer
                   </button>

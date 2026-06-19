@@ -14,11 +14,10 @@ pnpm dev:mock   # VITE_API_MOCKING=true vite
 |---|---|
 | `handlers.ts` | Central MSW request handlers (wildcard origin — works in browser worker and `msw/node` tests) |
 | `fixtures.ts` | Healthy baseline DTO values for static read endpoints |
-| `state/seeds.ts` | Shared seed identities (devcontainers, agent sessions) — one id means the same object across every mock module |
+| `state/seeds.ts` | Shared seed identities (devcontainers) — one id means the same object across every mock module |
 | `state/devcontainers.ts` | Mutable in-browser store for devcontainer CRUD/lifecycle |
 | `scenario.ts` + `useScenario.ts` | Global scenario store (6 scenarios); persisted to `localStorage` |
 | `events.ts` + `useMockSse.ts` | `MockEventSource` adapter (replaces browser `EventSource` for BOTH `/api/v1/events` and the per-session `/stream`), stream-state store, `emitInvalidation`, `liveInstancesMatching`. `MockEventSource.lastEventId` tracks the last delivered event's `id`, mirroring native EventSource behaviour (VIB-111) |
-| `agentSessionStreams.ts` | Scripted per-session SSE delta playback with replay support (ADR-0010, VIB-111): plays assistant text token-by-token through the MockEventSource opened at a session's `/stream` URL. Each event carries a monotonic `id`. `playSessionStream(sessionId, opts)` with injectable `schedule` for deterministic tests. `deliverBuffered(sessionId, es, lastEventId?)` replays buffered events to a fresh EventSource for AC1/AC2 testing. Wired into RailMock as a "play live deltas" button |
 | `browser.ts` | `setupWorker(...handlers)` for the service worker |
 | `RailMock.tsx` | Right-rail mock controls (scenario indicator, stream state, scope-emit buttons) |
 | `routes/MockScenarios.tsx` | Dev-only `/mock` route (full scenario + event stream controls) |
@@ -69,7 +68,7 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 
 - Add the field to the relevant fixture in `fixtures.ts`, matching the type from `src/lib/api/types.ts`.
 - Field coverage should match what the UI reads — do not add fields the UI ignores; do not omit fields the UI reads.
-- Fixtures cover **static** read endpoints (health, status, config, runtimeStatus, settings, diagnostics) plus read-only `agentSessions` (seeded against dc-seed-0001; the handler filters it by devcontainer_id). For mutable domain objects, the seed data lives in `state/`.
+- Fixtures cover **static** read endpoints (health, status, config, runtimeStatus, settings, diagnostics). For mutable domain objects, the seed data lives in `state/`.
 
 ### 3. Mutable state — user actions that should survive later refetches
 
@@ -93,18 +92,6 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 - Emitting a scope nudges the existing stale-while-revalidate refetch path (`useApiQuery` + the SSE coordinator) — it does **not** mutate stores or simulate any backend logic.
 - Stream-state controls (`connected` / `reconnecting` / `disconnected`) are already in both places; add a new connection scenario only if the coordinator grows a new state that needs visual inspection.
 
-### 5. Per-session live stream — token-by-token assistant text to inspect
-
-**When**: a session's live turn-deltas (ADR-0010) need human inspection without a real Control Plane.
-
-**How**:
-
-- The per-session stream is a SEPARATE `EventSource` (`openAgentSessionStream`) from the global invalidation coordinator. `installMockEventSource()` swaps `globalThis.EventSource` for ALL EventSources, so per-session streams become `MockEventSource` instances too (keyed by their `/stream` URL).
-- `agentSessionStreams.ts` holds scripted text-delta scripts per session id. `playSessionStream(sessionId)` delivers `run_started` → text tokens → `run_ended` as named `turn_delta` events (each with a monotonic integer `id`) to the matching live instance(s), mirroring the real wire format. An in-memory buffer tracks the current run's events; `deliverBuffered(sessionId, es, lastEventId?)` replays them to a freshly-opened EventSource, mirroring the real server's replay-on-connect behaviour.
-- `MockEventSource.lastEventId` is updated with each delivered event's `id`, matching native `EventSource` behaviour. On a simulated reconnect, callers can pass `es.lastEventId` to `deliverBuffered` to resume without gaps (AC2).
-- The RailMock "play live deltas" button plays the default script for a seeded active session (`as-seed-0005`). To inspect: open that session's chat while the devcontainer is running, then click play — assistant text types in token-by-token, the session status moves to `completed` on `run_ended`, and the transcript reconciles without a refresh.
-- Boundary: this is scripted playback only — no Runtime Event simulation or projection logic.
-
 ---
 
 ## Manual verification procedure (AC6)
@@ -112,7 +99,7 @@ Switch via the `/mock` route or the right-rail "switch scenario" link.
 Run once after any significant change to the mock subsystem. Automated checks (`pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`) are the machine-checked baseline; this procedure adds human confirmation.
 
 1. **Boot** — `pnpm dev:mock` in `apps/web`. Confirm the browser console shows `[MSW] Mocking enabled.` and no console errors on load.
-2. **Scenario route** — navigate to `/mock`. Confirm 6 scenario buttons (happy/empty/api-error/network-down/stale-action/not-found) and the Event Stream section (3 connection-state buttons + 3 scope-emit buttons) render.
+2. **Scenario route** — navigate to `/mock`. Confirm 6 scenario buttons (happy/empty/api-error/network-down/stale-action/not-found) and the Event Stream section (3 connection-state buttons + 4 scope-emit buttons) render.
 3. **Right-rail controls** — load `/devcontainers`. Confirm the right rail shows the Mock section: current scenario name, "switch scenario" link, stream-state dot + label, stream-state buttons, and scope-emit buttons.
 4. **Happy scenario** — select `happy` on `/mock`. Load `/devcontainers` — seeded items render (my-webapp, api-service, data-pipeline, legacy-app).
 5. **Empty scenario** — select `empty`. Reload `/devcontainers` — shows empty-state UI (no items).
@@ -128,6 +115,6 @@ Control Plane API Mocking **must not model backend behavior the UI does not expo
 - No Control Plane projection logic — mock stores are flat CRUD; they do not replicate event-sourcing, cascades, or derived state the backend computes.
 - No automatic playback — scenarios and invalidation events are always manually triggered.
 - No Storybook integration or toast system.
-- **`empty` scenario only empties list endpoints.** Per-item routes (`/devcontainers/:id`, `/agent-sessions`) still return seeded data in `empty` — there is no UI path to them when the list is empty, so this is intentional.
+- **`empty` scenario only empties list endpoints.** Per-item routes (`/devcontainers/:id`) still return seeded data in `empty` — there is no UI path to them when the list is empty, so this is intentional.
 
 If a screen does not read a field, do not add it to fixtures. If the UI does not surface a state transition, do not add it to the mock stores.

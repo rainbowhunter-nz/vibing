@@ -1,8 +1,8 @@
-import type { AgentSession, Devcontainer } from '../../lib/api/types'
+import type { Devcontainer, HarnessStatus, DelegatedRun } from '../../lib/api/types'
 
-// Single source of truth for cross-module mock identities: a given devcontainer
-// or agent-session id describes the same object everywhere. Modules that need
-// richer shapes (DevcontainerView) layer their extra fields on top of these.
+// Single source of truth for cross-module mock identities: a given devcontainer id
+// describes the same object everywhere. Modules that need richer shapes (DevcontainerView)
+// layer their extra fields on top of these.
 
 export const seedDevcontainers: Devcontainer[] = [
   { id: 'dc-seed-0001', name: 'my-webapp', local_path: '/home/dev/my-webapp', status: 'running', created_at: '2024-01-10T08:00:00.000Z', updated_at: '2024-01-15T10:00:00.000Z' },
@@ -11,16 +11,19 @@ export const seedDevcontainers: Devcontainer[] = [
   { id: 'dc-seed-0004', name: 'legacy-app', local_path: '/home/dev/legacy-app', status: 'error', created_at: '2024-01-08T07:00:00.000Z', updated_at: '2024-01-13T16:00:00.000Z' },
 ]
 
-// dc-seed-0001 (my-webapp) carries a spread of statuses for inspection;
-// dc-seed-0002 (api-service) has two; dc-seed-0003/0004 have none.
-export const seedAgentSessions: AgentSession[] = [
-  { id: 'as-seed-0001', devcontainer_id: 'dc-seed-0001', status: 'running', prompt: 'Refactor the auth module', started_at: '2024-01-15T09:00:00.000Z', ended_at: null, last_event_at: '2024-01-15T09:55:00.000Z', created_at: '2024-01-15T09:00:00.000Z', updated_at: '2024-01-15T09:55:00.000Z' },
-  { id: 'as-seed-0002', devcontainer_id: 'dc-seed-0002', status: 'running', prompt: 'Run the test suite', started_at: '2024-01-15T10:00:00.000Z', ended_at: null, last_event_at: '2024-01-15T10:30:00.000Z', created_at: '2024-01-15T10:00:00.000Z', updated_at: '2024-01-15T10:30:00.000Z' },
-  { id: 'as-seed-0003', devcontainer_id: 'dc-seed-0002', status: 'failed', prompt: 'Deploy to staging', started_at: '2024-01-14T08:00:00.000Z', ended_at: '2024-01-14T08:45:00.000Z', last_event_at: '2024-01-14T08:45:00.000Z', created_at: '2024-01-14T08:00:00.000Z', updated_at: '2024-01-14T08:45:00.000Z' },
-  { id: 'as-seed-0004', devcontainer_id: 'dc-seed-0001', status: 'completed', prompt: 'Fix the flaky test in auth', started_at: '2024-01-13T12:00:00.000Z', ended_at: '2024-01-13T12:30:00.000Z', last_event_at: '2024-01-13T12:30:00.000Z', created_at: '2024-01-13T12:00:00.000Z', updated_at: '2024-01-13T12:30:00.000Z' },
-  { id: 'as-seed-0005', devcontainer_id: 'dc-seed-0001', status: 'running', prompt: 'Add logging to the API', started_at: '2024-01-15T09:30:00.000Z', ended_at: null, last_event_at: '2024-01-15T10:05:00.000Z', created_at: '2024-01-15T09:30:00.000Z', updated_at: '2024-01-15T10:05:00.000Z' },
-  { id: 'as-seed-0006', devcontainer_id: 'dc-seed-0001', status: 'failed', prompt: 'Run pytest', started_at: '2024-01-13T11:00:00.000Z', ended_at: '2024-01-13T11:08:00.000Z', last_event_at: '2024-01-13T11:08:00.000Z', created_at: '2024-01-13T11:00:00.000Z', updated_at: '2024-01-13T11:08:00.000Z' },
-]
+// Harness status per devcontainer. dc-seed-0001 spans all three states for inspection.
+export const seedHarnesses: Record<string, HarnessStatus[]> = {
+  'dc-seed-0001': [
+    { name: 'claude-code', installed: true, authenticated: true },
+    { name: 'codex', installed: true, authenticated: false },
+    { name: 'cursor', installed: false, authenticated: false },
+  ],
+  'dc-seed-0002': [
+    { name: 'claude-code', installed: true, authenticated: false },
+    { name: 'codex', installed: false, authenticated: false },
+    { name: 'cursor', installed: false, authenticated: false },
+  ],
+}
 
 export function seedDevcontainer(id: string): Devcontainer {
   const d = seedDevcontainers.find((x) => x.id === id)
@@ -28,8 +31,11 @@ export function seedDevcontainer(id: string): Devcontainer {
   return d
 }
 
-export function seedSession(id: string): AgentSession {
-  const s = seedAgentSessions.find((x) => x.id === id)
-  if (!s) throw new Error(`Unknown seed session: ${id}`)
-  return s
+// Delegated runs per devcontainer — one of each terminal state plus a live one.
+export const seedDelegatedRuns: Record<string, DelegatedRun[]> = {
+  'dc-seed-0001': [
+    { run_id: 'run-4', harness: 'codex', model: 'gpt-5-codex', status: 'running', result: null, error: null, started_at: '2024-01-15T10:00:00.000Z' },
+    { run_id: 'run-3', harness: 'claude-code', model: 'opus-4.8', status: 'completed', result: 'Refactored auth module; 3 files changed, tests pass.', error: null, started_at: '2024-01-15T09:55:00.000Z' },
+    { run_id: 'run-2', harness: 'cursor', model: 'auto', status: 'failed', result: null, error: { exit_code: 1, stderr_tail: 'ENOENT: package.json not found' }, started_at: '2024-01-15T09:40:00.000Z' },
+  ],
 }

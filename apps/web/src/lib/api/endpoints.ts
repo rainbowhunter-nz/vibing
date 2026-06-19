@@ -1,12 +1,8 @@
-import { API_BASE, getJson, sendJson } from './client'
+import { getJson, sendJson } from './client'
 import type {
-  AgentSession,
-  AgentSessionDetail,
-  AgentSessionList,
-  AgentSessionResumeBody,
-  AgentSessionStartBody,
-  AgentSessionTranscript,
   ConfigResponse,
+  DelegatedRun,
+  DelegatedRunList,
   Devcontainer,
   DevcontainerCreateBody,
   DevcontainerList,
@@ -15,6 +11,8 @@ import type {
   DevcontainerViewList,
   DiagnosticsResponse,
   HealthResponse,
+  HarnessStatus,
+  HarnessStatusList,
   RuntimeStatus,
   SettingsResponse,
   StatusResponse,
@@ -47,28 +45,18 @@ export const startDevcontainer = (id: string): Promise<Devcontainer> =>
 export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
   sendJson<Devcontainer>(`/devcontainers/${encodeURIComponent(id)}/stop`, 'POST') as Promise<Devcontainer>
 
-export const fetchAgentSessions = (devcontainerId: string): Promise<AgentSessionList> =>
-  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions`)
 
-export const fetchAgentSession = (devcontainerId: string, sessionId: string): Promise<AgentSessionDetail> =>
-  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}`)
+export const fetchHarnesses = (devcontainerId: string): Promise<HarnessStatusList> =>
+  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses`)
 
-export const startAgentSession = (devcontainerId: string, body: AgentSessionStartBody): Promise<AgentSession> =>
-  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions`, 'POST', body) as Promise<AgentSession>
+export const installHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
+  sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/install`, 'POST') as Promise<HarnessStatus>
 
-export const stopAgentSession = (devcontainerId: string, sessionId: string): Promise<AgentSession> =>
-  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/stop`, 'POST') as Promise<AgentSession>
+export const authenticateHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
+  sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/authenticate`, 'POST') as Promise<HarnessStatus>
 
-export const resumeAgentSession = (devcontainerId: string, sessionId: string, body: AgentSessionResumeBody): Promise<AgentSession> =>
-  sendJson<AgentSession>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/resume`, 'POST', body) as Promise<AgentSession>
+export const fetchDelegatedRuns = (devcontainerId: string): Promise<DelegatedRunList> =>
+  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/delegated-runs`)
 
-export const deleteAgentSession = (devcontainerId: string, sessionId: string): Promise<void> =>
-  sendJson<void>(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}`, 'DELETE')
-
-export const fetchAgentSessionTranscript = (devcontainerId: string, sessionId: string): Promise<AgentSessionTranscript> =>
-  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/transcript`)
-
-// Per-session live turn-delta stream (ADR-0010). A SEPARATE EventSource from the global
-// invalidation coordinator; open only while a session is active, close when it rests.
-export const openAgentSessionStream = (devcontainerId: string, sessionId: string): EventSource =>
-  new EventSource(`${API_BASE}/devcontainers/${encodeURIComponent(devcontainerId)}/agent-sessions/${encodeURIComponent(sessionId)}/stream`)
+export const stopDelegatedRun = (devcontainerId: string, runId: string): Promise<DelegatedRun> =>
+  sendJson<DelegatedRun>(`/devcontainers/${encodeURIComponent(devcontainerId)}/delegated-runs/${encodeURIComponent(runId)}/stop`, 'POST') as Promise<DelegatedRun>

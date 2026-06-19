@@ -114,13 +114,13 @@ describe('useSseInvalidation via SseProvider', () => {
 
     let unsub!: () => void
     act(() => {
-      unsub = result.current.register('agent_sessions', cb)
+      unsub = result.current.register('harnesses', cb)
     })
 
     act(() => {
       const [es] = MockEventSource.instances
       es.simulateOpen()
-      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'harnesses', ids: [] })
     })
     expect(cb).toHaveBeenCalledOnce()
 
@@ -128,7 +128,7 @@ describe('useSseInvalidation via SseProvider', () => {
 
     act(() => {
       const [es] = MockEventSource.instances
-      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'agent_sessions', ids: [] })
+      es.simulateEvent('invalidate', { event_type: 'invalidate', scope: 'harnesses', ids: [] })
     })
     expect(cb).toHaveBeenCalledOnce()
   })

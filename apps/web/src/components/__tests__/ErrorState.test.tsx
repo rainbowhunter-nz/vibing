@@ -9,7 +9,7 @@ describe('ErrorState', () => {
     )
     expect(screen.getByText("Couldn't load X")).toBeTruthy()
     expect(screen.getByText('Try again')).toBeTruthy()
-    expect(container.querySelector('.bg-red-100')).toBeTruthy()
+    expect(container.querySelector('.bg-bad\\/15')).toBeTruthy()
     expect(container.querySelector('svg')).toBeTruthy()
   })
 

@@ -3,14 +3,10 @@ import { cn } from '../lib/cn'
 import { useScenario } from './useScenario'
 import { useStreamState } from './useMockSse'
 import { emitInvalidation, setStreamState } from './events'
-import { playSessionStream } from './agentSessionStreams'
 import type { Scope } from '../lib/events/types'
 import type { StreamState } from './events'
 
-// A seeded active session (running, on a running devcontainer) for live-chat inspection.
-const LIVE_DEMO_SESSION = 'as-seed-0005'
-
-const SCOPES: Scope[] = ['devcontainers', 'agent_sessions', 'runtime']
+const SCOPES: Scope[] = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs']
 const STREAM_STATES: StreamState[] = ['connected', 'reconnecting', 'disconnected']
 
 const STATE_DOT: Record<StreamState, string> = {
@@ -61,7 +57,7 @@ export function RailMock() {
               className={cn(
                 'rounded px-1.5 py-0.5 text-[10px]',
                 s === streamState
-                  ? 'bg-accent text-white'
+                  ? 'bg-accent text-bg'
                   : 'bg-surface-muted text-text-muted hover:bg-border',
               )}
             >
@@ -81,16 +77,6 @@ export function RailMock() {
             </button>
           ))}
         </div>
-        <p className="mt-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">
-          Session stream
-        </p>
-        <button
-          type="button"
-          onClick={() => playSessionStream(LIVE_DEMO_SESSION, { tokenDelayMs: 150 })}
-          className="rounded bg-surface-muted px-1.5 py-0.5 text-[10px] text-text-subtle hover:bg-border"
-        >
-          play live deltas ({LIVE_DEMO_SESSION.slice(0, 11)})
-        </button>
       </div>
     </section>
   )

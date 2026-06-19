@@ -1,6 +1,5 @@
 // Healthy baseline fixtures — field coverage matches what the UI reads from each DTO.
 import type {
-  AgentSessionList,
   ConfigResponse,
   DiagnosticsResponse,
   HealthResponse,
@@ -8,7 +7,6 @@ import type {
   SettingsResponse,
   StatusResponse,
 } from '../lib/api/types'
-import { seedAgentSessions } from './state/seeds'
 
 export const health: HealthResponse = { status: 'ok', service: 'vibing' }
 
@@ -31,8 +29,3 @@ export const diagnostics: DiagnosticsResponse = {
     { id: 'claude_code', label: 'Claude Code', status: 'unknown', message: null },
   ],
 }
-
-// Read-only agent sessions, filtered per devcontainer_id by the handler.
-// Identities come from the shared seed so an id means the same session everywhere.
-export const agentSessions: AgentSessionList = { items: seedAgentSessions }
-

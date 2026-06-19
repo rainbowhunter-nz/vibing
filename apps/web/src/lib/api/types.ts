@@ -84,93 +84,32 @@ export interface DiagnosticsResponse {
   checks: DiagnosticCheck[]
 }
 
-export type AgentSessionStatus =
-  | 'starting'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'stopped'
-
-export interface AgentSession {
-  id: string
-  devcontainer_id: string
-  status: AgentSessionStatus
-  prompt: string | null
-  started_at: string | null
-  ended_at: string | null
-  last_event_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface AgentSessionDetail extends AgentSession {
-  summary_text: string | null
-}
-
-export interface AgentSessionList {
-  items: AgentSession[]
-}
-
-export interface AgentSessionStartBody {
-  prompt: string
-}
-
-export interface AgentSessionResumeBody {
-  prompt: string
-}
-
-export interface TranscriptTextBlock {
-  kind: 'text'
-  text: string
-}
-
-export interface TranscriptToolUseBlock {
-  kind: 'tool_use'
+// Coding-harness status (runtime HarnessStatus, ADR-0012).
+export interface HarnessStatus {
   name: string
-  summary: string
+  installed: boolean
+  authenticated: boolean
 }
 
-export type TranscriptBlock = TranscriptTextBlock | TranscriptToolUseBlock
-
-export interface TranscriptTurn {
-  // Claude's per-message uuid (ADR-0010): the stable key the live reducer merges on.
-  id: string
-  role: 'user' | 'assistant'
-  blocks: TranscriptBlock[]
-  at: string
+export interface HarnessStatusList {
+  items: HarnessStatus[]
 }
 
-export type TranscriptState = 'has_turns' | 'empty' | 'summary_fallback' | 'error'
+// Delegated runs (runtime DelegatedRunManager, ADR-0013).
+export type DelegatedRunStatus = 'running' | 'completed' | 'failed' | 'stopped'
 
-// Per-session live turn-deltas (ADR-0010), relayed over the per-session SSE stream.
-export interface RunStartedDelta {
-  kind: 'run_started'
+export interface DelegatedRun {
+  run_id: string
+  harness: string
+  model: string
+  status: DelegatedRunStatus
+  result: string | null
+  error: Record<string, unknown> | null
+  started_at: string
 }
 
-export interface TextDelta {
-  kind: 'text'
-  turn_id: string
-  role: 'assistant'
-  text: string
-}
-
-export interface RunEndedDelta {
-  kind: 'run_ended'
-}
-
-export interface ToolUseDelta {
-  kind: 'tool_use'
-  turn_id: string
-  name: string
-  summary: string
-}
-
-export type TurnDelta = RunStartedDelta | TextDelta | RunEndedDelta | ToolUseDelta
-
-export interface AgentSessionTranscript {
-  state: TranscriptState
-  turns: TranscriptTurn[]
-  summary_text: string | null
+export interface DelegatedRunList {
+  items: DelegatedRun[]
 }
 
 // Backend error envelope (src/vibing_api/core/errors.py).
