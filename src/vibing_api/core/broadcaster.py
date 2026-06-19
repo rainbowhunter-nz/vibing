@@ -1,9 +1,9 @@
 """In-memory SSE broadcaster: publish invalidation events to all subscribed browser clients.
 
-Downstream tickets (VIB-45, VIB-46) call `broadcaster.publish(SseEvent(...))` to notify
-clients to refetch canonical HTTP data. No payload data is sent — only scope + ids.
+Callers invoke `broadcaster.publish(SseEvent(...))` to notify clients to refetch canonical
+HTTP data. No payload data is sent — only scope + ids.
 
-Scopes: devcontainers | agent_sessions | inbox | approvals | runtime
+Scopes: devcontainers | runtime | harnesses
 
 Thread-safe: publish() may be called from any thread. subscribe/unsubscribe are
 called from the async request context (FastAPI route coroutines).
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-Scope = Literal["devcontainers", "agent_sessions", "inbox", "approvals", "runtime"]
+Scope = Literal["devcontainers", "runtime", "harnesses"]
 
 
 @dataclass(frozen=True)

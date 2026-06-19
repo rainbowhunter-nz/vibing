@@ -54,9 +54,9 @@ def test_broadcaster_multiple_subscribers() -> None:
     b = Broadcaster()
     q1 = b.subscribe()
     q2 = b.subscribe()
-    b.publish(SseEvent(scope="inbox", ids=["e-1"]))
-    assert q1.get_nowait().scope == "inbox"
-    assert q2.get_nowait().scope == "inbox"
+    b.publish(SseEvent(scope="harnesses", ids=["e-1"]))
+    assert q1.get_nowait().scope == "harnesses"
+    assert q2.get_nowait().scope == "harnesses"
 
 
 def test_broadcaster_unsubscribe_removes_queue() -> None:
@@ -71,13 +71,13 @@ def test_broadcaster_unsubscribe_stops_delivery() -> None:
     b = Broadcaster()
     q = b.subscribe()
     b.unsubscribe(q)
-    b.publish(SseEvent(scope="approvals", ids=[]))
+    b.publish(SseEvent(scope="runtime", ids=[]))
     assert q.empty()
 
 
 def test_sse_event_all_scopes_valid() -> None:
-    """All required scopes can be constructed without error."""
-    for scope in ("devcontainers", "agent_sessions", "inbox", "approvals", "runtime"):
+    """All live scopes can be constructed without error."""
+    for scope in ("devcontainers", "runtime", "harnesses"):
         e = SseEvent(scope=scope, ids=["x"])
         assert e.scope == scope
 
@@ -123,8 +123,8 @@ def test_sse_delivers_event_with_correct_shape() -> None:
 
 
 def test_sse_delivers_all_required_scopes() -> None:
-    """AC3: All five scopes are deliverable through the broadcaster."""
-    scopes: list[str] = ["devcontainers", "agent_sessions", "inbox", "approvals", "runtime"]
+    """AC3: All live scopes are deliverable through the broadcaster."""
+    scopes: list[str] = ["devcontainers", "runtime", "harnesses"]
     app = create_app()
     events = [SseEvent(scope=scope, ids=["x"]) for scope in scopes]  # type: ignore[arg-type]
     t = _publish_after_subscribe(app.state.broadcaster, events)
@@ -175,7 +175,7 @@ def test_sse_heartbeat_appears_in_stream(monkeypatch: pytest.MonkeyPatch) -> Non
             time.sleep(0.005)
         # wait at least 2x the ping interval so a ping is injected before the event
         time.sleep(ping_interval * 2)
-        app.state.broadcaster.publish(SseEvent(scope="inbox", ids=[]))
+        app.state.broadcaster.publish(SseEvent(scope="harnesses", ids=[]))
 
     t = threading.Thread(target=_delayed_publish, daemon=True)
     t.start()
@@ -217,7 +217,10 @@ def test_sse_is_separate_from_runtime_websocket() -> None:
         with client.stream("GET", "/api/v1/events?_max=0") as r:
             assert r.status_code == 200
 
-        with client.websocket_connect("/api/v1/runtime/ws") as ws:
-            ws.send_json({"type": "runtime_registered", "source": "host_runtime_worker"})
+        # Seed a devcontainer so the agent WS registration has a valid devcontainer_id
+        resp = client.post("/api/v1/devcontainers", json={"name": "dc", "local_path": "/tmp/dc"})
+        dc_id = resp.json()["id"]
+        with client.websocket_connect("/api/v1/runtime/agent/ws") as ws:
+            ws.send_json({"type": "runtime_registered", "devcontainer_id": dc_id})
             ack = ws.receive_json()
             assert ack == {"type": "registered"}

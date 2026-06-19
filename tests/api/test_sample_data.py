@@ -4,18 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from vibing_api.core.database import get_connection, init_db
-from vibing_api.core.vocabularies import (
-    AgentSessionStatus,
-    ApprovalStatus,
-    DevcontainerStatus,
-    InboxEventType,
-)
+from vibing_api.core.vocabularies import DevcontainerStatus
 from vibing_api.dev.sample_data import (
-    SAMPLE_AGENT_SESSIONS,
-    SAMPLE_APPROVAL_REQUESTS,
-    SAMPLE_ID_PREFIX,
-    SAMPLE_INBOX_EVENTS,
     SAMPLE_DEVCONTAINERS,
+    SAMPLE_ID_PREFIX,
     reset,
     seed,
     status,
@@ -32,12 +24,7 @@ def seeded_db(db_path: Path) -> Path:
 
 
 def test_seed_inserts_curated_dataset(seeded_db: Path) -> None:
-    expected = {
-        "devcontainers": len(SAMPLE_DEVCONTAINERS),
-        "agent_sessions": len(SAMPLE_AGENT_SESSIONS),
-        "approval_requests": len(SAMPLE_APPROVAL_REQUESTS),
-        "inbox_events": len(SAMPLE_INBOX_EVENTS),
-    }
+    expected = {"devcontainers": len(SAMPLE_DEVCONTAINERS)}
     with get_connection() as conn:
         for table, count in expected.items():
             row = conn.execute(
@@ -84,7 +71,7 @@ def test_reset_removes_only_sample_rows(db_path: Path) -> None:
     with get_connection() as conn:
         removed = reset(conn)
         conn.commit()
-    assert removed == 12
+    assert removed == len(SAMPLE_DEVCONTAINERS)
     with get_connection() as conn:
         remaining_sample = conn.execute(
             "SELECT COUNT(*) FROM devcontainers WHERE id LIKE ?",
@@ -117,18 +104,8 @@ def test_status_counts_sample_rows(db_path: Path) -> None:
         reset(conn)
         conn.commit()
         after_reset = status(conn)
-    assert before == {
-        "devcontainers": 0,
-        "agent_sessions": 0,
-        "approval_requests": 0,
-        "inbox_events": 0,
-    }
-    assert after == {
-        "devcontainers": len(SAMPLE_DEVCONTAINERS),
-        "agent_sessions": len(SAMPLE_AGENT_SESSIONS),
-        "approval_requests": len(SAMPLE_APPROVAL_REQUESTS),
-        "inbox_events": len(SAMPLE_INBOX_EVENTS),
-    }
+    assert before == {"devcontainers": 0}
+    assert after == {"devcontainers": len(SAMPLE_DEVCONTAINERS)}
     assert after_reset == before
 
 
@@ -148,15 +125,5 @@ def test_seeded_sample_devcontainers_visible_via_api(client: TestClient) -> None
 
 def test_sample_rows_use_valid_vocabulary_values() -> None:
     dc_statuses = frozenset(DevcontainerStatus)
-    session_statuses = frozenset(AgentSessionStatus)
-    approval_statuses = frozenset(ApprovalStatus)
-    inbox_event_types = frozenset(InboxEventType)
-
     for row in SAMPLE_DEVCONTAINERS:
         assert row["status"] in dc_statuses, f"bad devcontainer status: {row['status']}"
-    for row in SAMPLE_AGENT_SESSIONS:
-        assert row["status"] in session_statuses, f"bad session status: {row['status']}"
-    for row in SAMPLE_APPROVAL_REQUESTS:
-        assert row["status"] in approval_statuses, f"bad approval status: {row['status']}"
-    for row in SAMPLE_INBOX_EVENTS:
-        assert row["event_type"] in inbox_event_types, f"bad inbox event_type: {row['event_type']}"

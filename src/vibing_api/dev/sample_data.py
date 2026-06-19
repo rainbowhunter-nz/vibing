@@ -1,10 +1,9 @@
 """Local-development sample data for product UI validation.
 
-Inserts a curated, deterministic set of devcontainers, agent sessions,
-approval requests, and inbox events. Every sample row has an id
-prefixed with `sample-` and every sample devcontainer name starts with
-`[sample] ` so rows are visible in the UI and removable in a single
-DELETE per table. Not part of the production import graph.
+Inserts a curated, deterministic set of devcontainers. Every sample row has an id
+prefixed with `sample-` and every sample devcontainer name starts with `[sample] `
+so rows are visible in the UI and removable in a single DELETE per table.
+Not part of the production import graph.
 """
 
 import sqlite3
@@ -40,112 +39,8 @@ SAMPLE_DEVCONTAINERS: tuple[dict, ...] = (
     },
 )
 
-SAMPLE_AGENT_SESSIONS: tuple[dict, ...] = (
-    {
-        "id": "sample-as-web",
-        "devcontainer_id": "sample-dc-web",
-        "status": "running",
-        "started_at": FIXED_TS,
-        "ended_at": None,
-        "last_event_at": FIXED_TS,
-        "created_at": FIXED_TS,
-        "updated_at": FIXED_TS,
-    },
-    {
-        "id": "sample-as-api",
-        "devcontainer_id": "sample-dc-api",
-        "status": "waiting_for_approval",
-        "started_at": FIXED_TS,
-        "ended_at": None,
-        "last_event_at": FIXED_TS,
-        "created_at": FIXED_TS,
-        "updated_at": FIXED_TS,
-    },
-    {
-        "id": "sample-as-cli",
-        "devcontainer_id": "sample-dc-cli",
-        "status": "completed",
-        "started_at": FIXED_TS,
-        "ended_at": FIXED_TS,
-        "last_event_at": FIXED_TS,
-        "created_at": FIXED_TS,
-        "updated_at": FIXED_TS,
-    },
-)
-
-SAMPLE_APPROVAL_REQUESTS: tuple[dict, ...] = (
-    {
-        "id": "sample-ar-001",
-        "devcontainer_id": "sample-dc-api",
-        "agent_session_id": "sample-as-api",
-        "status": "pending",
-        "requested_action": "run: pnpm migrate",
-        "created_at": FIXED_TS,
-        "decided_at": None,
-    },
-    {
-        "id": "sample-ar-002",
-        "devcontainer_id": "sample-dc-web",
-        "agent_session_id": "sample-as-web",
-        "status": "approved",
-        "requested_action": "run: rm node_modules",
-        "created_at": FIXED_TS,
-        "decided_at": FIXED_TS,
-    },
-)
-
-SAMPLE_INBOX_EVENTS: tuple[dict, ...] = (
-    {
-        "id": "sample-ie-001",
-        "devcontainer_id": "sample-dc-api",
-        "agent_session_id": "sample-as-api",
-        "approval_request_id": None,
-        "event_type": "question",
-        "status": "unread",
-        "content": "Which database should I use for the cache layer — Redis or in-memory?",
-        "created_at": FIXED_TS,
-        "updated_at": FIXED_TS,
-    },
-    {
-        "id": "sample-ie-002",
-        "devcontainer_id": "sample-dc-api",
-        "agent_session_id": "sample-as-api",
-        "approval_request_id": "sample-ar-001",
-        "event_type": "approval_request",
-        "status": "unread",
-        "created_at": FIXED_TS,
-        "updated_at": FIXED_TS,
-    },
-    {
-        "id": "sample-ie-003",
-        "devcontainer_id": "sample-dc-cli",
-        "agent_session_id": "sample-as-cli",
-        "approval_request_id": None,
-        "event_type": "failure",
-        "status": "read",
-        "created_at": FIXED_TS,
-        "updated_at": FIXED_TS,
-    },
-    {
-        "id": "sample-ie-004",
-        "devcontainer_id": "sample-dc-cli",
-        "agent_session_id": "sample-as-cli",
-        "approval_request_id": None,
-        "event_type": "completion",
-        "status": "resolved",
-        "created_at": FIXED_TS,
-        "updated_at": FIXED_TS,
-    },
-)
-
-# Insert order = top to bottom (parents before children for foreign keys).
-# Reset order = reverse of this.
-_DATASET: tuple[tuple[str, tuple[dict, ...]], ...] = (
-    ("devcontainers", SAMPLE_DEVCONTAINERS),
-    ("agent_sessions", SAMPLE_AGENT_SESSIONS),
-    ("approval_requests", SAMPLE_APPROVAL_REQUESTS),
-    ("inbox_events", SAMPLE_INBOX_EVENTS),
-)
+# Insert order = top to bottom. Reset order = reverse of this.
+_DATASET: tuple[tuple[str, tuple[dict, ...]], ...] = (("devcontainers", SAMPLE_DEVCONTAINERS),)
 
 
 def seed(conn: sqlite3.Connection) -> int:
