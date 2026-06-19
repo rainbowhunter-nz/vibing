@@ -10,16 +10,17 @@ Root Typer command aggregator. Public command: `vibing`.
 - `client/`: HTTP-client commands that drive the running API (`httpx`).
   - `http.py`: `configure()`/`base_url()`, `request()`, error rendering.
   - `render.py`: rich table/object rendering + shared `--json` option.
-  - `devcontainers.py`: `vibing devcontainer ...` incl. nested `session` sub-app.
-  - `inbox.py`, `approvals.py`, `system.py`: read endpoints.
+  - `devcontainers.py`: `vibing devcontainer ...` CRUD + lifecycle.
+  - `harnesses.py`: `vibing harness ...` + nested `creds` sub-app.
+  - `system.py`: read endpoints.
 
 ## Commands
 
 - `vibing dev ...`: from `vibing_api.cli`.
-- `vibing runtime host ...`: host runtime worker (`vibing_host_runtime.cli`).
 - `vibing runtime devcontainer ...`: agent runtime worker (`vibing_devcontainer_runtime.cli`).
-- `vibing devcontainer ...`: devcontainer CRUD + lifecycle + `session` agent commands.
-- `vibing inbox ...` / `vibing approval ...` / `vibing system ...`: read endpoints.
+- `vibing devcontainer ...`: devcontainer CRUD + lifecycle.
+- `vibing harness ls <id>` / `vibing harness authenticate <id> <name>` / `vibing harness creds set <name>`.
+- `vibing system ...`: read endpoints.
 
 ## Context
 
