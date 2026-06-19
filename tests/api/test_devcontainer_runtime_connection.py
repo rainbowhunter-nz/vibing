@@ -1,17 +1,16 @@
-"""Tests for runtime connection state in Devcontainer list/detail responses (VIB-49)."""
+"""Tests for runtime connection state in Devcontainer list/detail responses (VIB-49).
+
+Updated for ADR-0014/0015: single per-devcontainer agent WS; `runtime_connected` field.
+"""
 
 from fastapi.testclient import TestClient
 
-WORKER_WS_URL = "/api/v1/runtime/ws"
 AGENT_WS_URL = "/api/v1/runtime/agent/ws"
-
-_WORKER_REGISTER = {"type": "runtime_registered", "source": "host_runtime_worker"}
 
 
 def _agent_register(dc_id: str) -> dict:
     return {
         "type": "runtime_registered",
-        "source": "devcontainer_runtime_agent",
         "devcontainer_id": dc_id,
     }
 
@@ -22,7 +21,7 @@ def _create(client: TestClient, name: str = "dc") -> str:
     return resp.json()["id"]
 
 
-# --- AC1: list includes worker connection state ---
+# --- list includes runtime field ---
 
 
 def test_list_includes_runtime_field(client: TestClient) -> None:
@@ -31,37 +30,22 @@ def test_list_includes_runtime_field(client: TestClient) -> None:
     assert "runtime" in body["items"][0]
 
 
-def test_list_worker_disconnected_by_default(client: TestClient) -> None:
+def test_list_disconnected_by_default(client: TestClient) -> None:
     _create(client)
     body = client.get("/api/v1/devcontainers").json()
-    assert body["items"][0]["runtime"]["worker_connected"] is False
+    assert body["items"][0]["runtime"]["runtime_connected"] is False
 
 
-def test_list_worker_connected_when_ws_open(client: TestClient) -> None:
-    _create(client)
-    with client.websocket_connect(WORKER_WS_URL) as ws:
-        ws.send_json(_WORKER_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        body = client.get("/api/v1/devcontainers").json()
-        assert body["items"][0]["runtime"]["worker_connected"] is True
-
-
-# --- AC2: list/detail include agent connection state ---
-
-
-def test_list_agent_disconnected_by_default(client: TestClient) -> None:
-    _create(client)
-    body = client.get("/api/v1/devcontainers").json()
-    assert body["items"][0]["runtime"]["agent_connected"] is False
-
-
-def test_list_agent_connected_when_ws_open(client: TestClient) -> None:
+def test_list_connected_when_ws_open(client: TestClient) -> None:
     dc_id = _create(client)
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         body = client.get("/api/v1/devcontainers").json()
-        assert body["items"][0]["runtime"]["agent_connected"] is True
+        assert body["items"][0]["runtime"]["runtime_connected"] is True
+
+
+# --- detail includes runtime field ---
 
 
 def test_detail_includes_runtime_field(client: TestClient) -> None:
@@ -70,112 +54,66 @@ def test_detail_includes_runtime_field(client: TestClient) -> None:
     assert "runtime" in body
 
 
-def test_detail_worker_disconnected_by_default(client: TestClient) -> None:
+def test_detail_disconnected_by_default(client: TestClient) -> None:
     dc_id = _create(client)
     body = client.get(f"/api/v1/devcontainers/{dc_id}").json()
-    assert body["runtime"]["worker_connected"] is False
+    assert body["runtime"]["runtime_connected"] is False
 
 
-def test_detail_worker_connected_when_ws_open(client: TestClient) -> None:
-    dc_id = _create(client)
-    with client.websocket_connect(WORKER_WS_URL) as ws:
-        ws.send_json(_WORKER_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        body = client.get(f"/api/v1/devcontainers/{dc_id}").json()
-        assert body["runtime"]["worker_connected"] is True
-
-
-def test_detail_agent_disconnected_by_default(client: TestClient) -> None:
-    dc_id = _create(client)
-    body = client.get(f"/api/v1/devcontainers/{dc_id}").json()
-    assert body["runtime"]["agent_connected"] is False
-
-
-def test_detail_agent_connected_when_ws_open(client: TestClient) -> None:
+def test_detail_connected_when_ws_open(client: TestClient) -> None:
     dc_id = _create(client)
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         body = client.get(f"/api/v1/devcontainers/{dc_id}").json()
-        assert body["runtime"]["agent_connected"] is True
+        assert body["runtime"]["runtime_connected"] is True
 
 
-# --- AC5/AC6: state changes reflected ---
+# --- state changes reflected ---
 
 
-def test_list_worker_state_changes_after_connect_disconnect(client: TestClient) -> None:
-    _create(client)
-    # disconnected
-    assert (
-        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["worker_connected"]
-        is False
-    )
-    with client.websocket_connect(WORKER_WS_URL) as ws:
-        ws.send_json(_WORKER_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        # connected
-        assert (
-            client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["worker_connected"]
-            is True
-        )
-    # disconnected again
-    assert (
-        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["worker_connected"]
-        is False
-    )
-
-
-def test_detail_worker_state_changes_after_connect_disconnect(client: TestClient) -> None:
+def test_list_state_changes_after_connect_disconnect(client: TestClient) -> None:
     dc_id = _create(client)
     assert (
-        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["worker_connected"] is False
-    )
-    with client.websocket_connect(WORKER_WS_URL) as ws:
-        ws.send_json(_WORKER_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        assert (
-            client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["worker_connected"]
-            is True
-        )
-    assert (
-        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["worker_connected"] is False
-    )
-
-
-def test_detail_agent_state_changes_after_connect_disconnect(client: TestClient) -> None:
-    dc_id = _create(client)
-    assert (
-        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["agent_connected"] is False
+        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["runtime_connected"]
+        is False
     )
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         assert (
-            client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["agent_connected"]
+            client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["runtime_connected"]
             is True
         )
     assert (
-        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["agent_connected"] is False
+        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["runtime_connected"]
+        is False
     )
 
 
-def test_agent_connected_is_per_devcontainer(client: TestClient) -> None:
+def test_detail_state_changes_after_connect_disconnect(client: TestClient) -> None:
+    dc_id = _create(client)
+    assert (
+        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["runtime_connected"] is False
+    )
+    with client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_agent_register(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        assert (
+            client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["runtime_connected"]
+            is True
+        )
+    assert (
+        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["runtime_connected"] is False
+    )
+
+
+def test_connected_is_per_devcontainer(client: TestClient) -> None:
     dc1 = _create(client, "dc1")
     dc2 = _create(client, "dc2")
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register(dc1))
         assert ws.receive_json() == {"type": "registered"}
         items = {i["id"]: i for i in client.get("/api/v1/devcontainers").json()["items"]}
-        assert items[dc1]["runtime"]["agent_connected"] is True
-        assert items[dc2]["runtime"]["agent_connected"] is False
-
-
-def test_worker_connected_is_global_for_all_devcontainers(client: TestClient) -> None:
-    dc1 = _create(client, "dc1")
-    dc2 = _create(client, "dc2")
-    with client.websocket_connect(WORKER_WS_URL) as ws:
-        ws.send_json(_WORKER_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        items = {i["id"]: i for i in client.get("/api/v1/devcontainers").json()["items"]}
-        assert items[dc1]["runtime"]["worker_connected"] is True
-        assert items[dc2]["runtime"]["worker_connected"] is True
+        assert items[dc1]["runtime"]["runtime_connected"] is True
+        assert items[dc2]["runtime"]["runtime_connected"] is False

@@ -16,12 +16,11 @@ const DESCRIPTIONS: Record<Scenario, string> = {
   'not-found': '404 not-found envelope on all endpoints.',
 }
 
-const SCOPES: Scope[] = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs']
+const SCOPES: Scope[] = ['devcontainers', 'runtime', 'harnesses']
 const SCOPE_DESC: Record<Scope, string> = {
   devcontainers: 'Triggers devcontainer list/detail refetch.',
   runtime: 'Triggers runtime status refetch.',
   harnesses: 'Triggers harness list refetch.',
-  delegated_runs: 'Triggers delegated run list refetch.',
 }
 
 const STREAM_STATES: StreamState[] = ['connected', 'reconnecting', 'disconnected']

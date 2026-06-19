@@ -1,225 +1,201 @@
-"""Tests for the agent WebSocket channel and AgentRegistry."""
+"""Tests for the runtime agent WebSocket channel (/runtime/agent/ws).
 
+Uses a minimal FastAPI app fixture — does NOT depend on create_app() / _APP_IMPORTABLE.
+"""
+
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import WebSocketDisconnect
+from fastapi import FastAPI, WebSocketDisconnect
 from fastapi.testclient import TestClient
 
-from vibing_api.core.database import get_connection
-from vibing_api.core.runtime_channel import AgentRegistry
-from vibing_api.repositories.runtime_events import RuntimeEventRepository
+from vibing_api.core.broadcaster import SseEvent
+from vibing_api.core.database import get_connection, init_db
+from vibing_api.core.runtime_channel import RuntimeRegistry
+from vibing_api.repositories.devcontainers import DevcontainerRepository
+from vibing_api.repositories.harness_status import HarnessStatusRepository
+
+
+class _FakeBroadcaster:
+    def __init__(self) -> None:
+        self.published: list[SseEvent] = []
+
+    def publish(self, event: SseEvent) -> None:
+        self.published.append(event)
+
+
+@pytest.fixture()
+def db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from vibing_api.core.config import settings
+
+    path = tmp_path / "test.db"
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{path}")
+    init_db()
+    return path
+
+
+@pytest.fixture()
+def spy() -> _FakeBroadcaster:
+    return _FakeBroadcaster()
+
+
+@pytest.fixture()
+def ws_client(db_path: Path, spy: _FakeBroadcaster) -> Iterator[TestClient]:
+    from vibing_api.api.routes import runtime
+
+    app = FastAPI()
+    app.state.runtime_manager = RuntimeRegistry()
+    app.state.broadcaster = spy
+    app.include_router(runtime.router, prefix="/api/v1")
+
+    with TestClient(app) as client:
+        yield client
+
+
+def _seed_devcontainer(name: str = "dc") -> str:
+    with get_connection() as conn:
+        dc = DevcontainerRepository(conn).create(name=name, local_path="/tmp/dc")
+        conn.commit()
+    return dc.id
+
 
 AGENT_WS_URL = "/api/v1/runtime/agent/ws"
 
-_REGISTER = {
-    "type": "runtime_registered",
-    "source": "devcontainer_runtime_agent",
-    "devcontainer_id": "dc-1",
-}
+
+def _register_msg(dc_id: str) -> dict[str, Any]:
+    return {"type": "runtime_registered", "devcontainer_id": dc_id}
 
 
-def _event_envelope(dc_id: str, event_type: str = "agent_session_started") -> dict[str, Any]:
+def _harness_status_msg(dc_id: str) -> dict[str, Any]:
     return {
-        "type": "runtime_event",
-        "event": {
-            "event_type": event_type,
-            "source": "devcontainer_runtime_agent",
-            "devcontainer_id": dc_id,
-        },
+        "type": "harness_status",
+        "devcontainer_id": dc_id,
+        "items": [
+            {"name": "claude", "installed": True, "authenticated": True},
+            {"name": "gh", "installed": False, "authenticated": False},
+        ],
     }
 
 
-# --- route tests ---
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
 
 
-def test_agent_registers(client: TestClient) -> None:
-    with client.websocket_connect(AGENT_WS_URL) as ws:
-        ws.send_json(_REGISTER)
+def test_agent_registers(ws_client: TestClient, db_path: Path) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_register_msg(dc_id))
         assert ws.receive_json() == {"type": "registered"}
 
 
-def test_agent_missing_id_is_rejected(client: TestClient) -> None:
-    with client.websocket_connect(AGENT_WS_URL) as ws:
-        ws.send_json({"type": "runtime_registered", "source": "devcontainer_runtime_agent"})
+def test_agent_missing_id_is_rejected(ws_client: TestClient) -> None:
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json({"type": "runtime_registered"})
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_json()
         assert exc.value.code == 4400
 
 
-def test_agent_wrong_source_is_rejected(client: TestClient) -> None:
-    with client.websocket_connect(AGENT_WS_URL) as ws:
-        ws.send_json(
-            {
-                "type": "runtime_registered",
-                "source": "host_runtime_worker",
-                "devcontainer_id": "dc-1",
-            }
-        )
-        with pytest.raises(WebSocketDisconnect) as exc:
-            ws.receive_json()
-        assert exc.value.code == 4400
-
-
-def test_duplicate_agent_is_rejected(client: TestClient) -> None:
-    with client.websocket_connect(AGENT_WS_URL) as ws1:
-        ws1.send_json(_REGISTER)
+def test_duplicate_agent_is_rejected(ws_client: TestClient, db_path: Path) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws1:
+        ws1.send_json(_register_msg(dc_id))
         assert ws1.receive_json() == {"type": "registered"}
-        with client.websocket_connect(AGENT_WS_URL) as ws2:
-            ws2.send_json(_REGISTER)
+        with ws_client.websocket_connect(AGENT_WS_URL) as ws2:
+            ws2.send_json(_register_msg(dc_id))
             with pytest.raises(WebSocketDisconnect) as exc:
                 ws2.receive_json()
             assert exc.value.code == 4409
 
 
-def test_agent_slot_freed_after_disconnect(client: TestClient) -> None:
-    with client.websocket_connect(AGENT_WS_URL) as ws1:
-        ws1.send_json(_REGISTER)
+def test_agent_slot_freed_after_disconnect(ws_client: TestClient, db_path: Path) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws1:
+        ws1.send_json(_register_msg(dc_id))
         assert ws1.receive_json() == {"type": "registered"}
-    with client.websocket_connect(AGENT_WS_URL) as ws2:
-        ws2.send_json(_REGISTER)
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws2:
+        ws2.send_json(_register_msg(dc_id))
         assert ws2.receive_json() == {"type": "registered"}
 
 
-def test_agent_event_persisted(client: TestClient) -> None:
-    resp = client.post("/api/v1/devcontainers", json={"name": "dc", "local_path": "/tmp/dc"})
-    assert resp.status_code == 201
-    dc_id = resp.json()["id"]
-    register = {**_REGISTER, "devcontainer_id": dc_id}
-    with client.websocket_connect(AGENT_WS_URL) as ws:
-        ws.send_json(register)
+# ---------------------------------------------------------------------------
+# harness_status intake
+# ---------------------------------------------------------------------------
+
+
+def test_harness_status_persisted(ws_client: TestClient, db_path: Path) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_register_msg(dc_id))
         assert ws.receive_json() == {"type": "registered"}
-        ws.send_json(_event_envelope(dc_id))
+        ws.send_json(_harness_status_msg(dc_id))
+
     with get_connection() as conn:
-        events = RuntimeEventRepository(conn).list_by_devcontainer(dc_id)
-        assert len(events) == 1
-        assert events[0].source == "devcontainer_runtime_agent"
+        rows = HarnessStatusRepository(conn).list(dc_id)
+    assert len(rows) == 2
+    by_name = {r.name: r for r in rows}
+    assert by_name["claude"].installed is True
+    assert by_name["claude"].authenticated is True
+    assert by_name["gh"].installed is False
 
 
-# --- AgentRegistry unit tests (AC7) ---
+def test_harness_status_publishes_harnesses_invalidation(
+    ws_client: TestClient, spy: _FakeBroadcaster, db_path: Path
+) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_register_msg(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        spy.published.clear()  # clear the connect broadcast
+        ws.send_json(_harness_status_msg(dc_id))
+
+    harness_events = [e for e in spy.published if e.scope == "harnesses"]
+    assert len(harness_events) == 1
+    assert harness_events[0].ids == [dc_id]
 
 
-@pytest.fixture
-def manager() -> AgentRegistry:
-    return AgentRegistry()
+def test_harness_status_ignored_before_registration(ws_client: TestClient, db_path: Path) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_harness_status_msg(dc_id))
+        # Should be ignored (no crash)
+
+    with get_connection() as conn:
+        rows = HarnessStatusRepository(conn).list(dc_id)
+    assert len(rows) == 0
 
 
-def _ws() -> MagicMock:
+# ---------------------------------------------------------------------------
+# RuntimeRegistry unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_registry_register_and_check() -> None:
+    from unittest.mock import MagicMock
+
+    reg = RuntimeRegistry()
     ws = MagicMock()
-    ws.send_json = AsyncMock()
-    return ws
+    assert reg.register("dc-1", ws) is True
+    assert reg.is_connected("dc-1")
 
 
-def test_register_succeeds(manager: AgentRegistry) -> None:
-    ws = _ws()
-    assert manager.register("dc-1", ws) is True
-    assert manager.is_connected("dc-1")
+def test_registry_reject_duplicate() -> None:
+    from unittest.mock import MagicMock
+
+    reg = RuntimeRegistry()
+    ws1, ws2 = MagicMock(), MagicMock()
+    assert reg.register("dc-1", ws1) is True
+    assert reg.register("dc-1", ws2) is False
 
 
-def test_reject_missing_id(manager: AgentRegistry) -> None:
-    # Simulate the route rejecting it: is_connected("") should be False by default
-    assert not manager.is_connected("")
-    assert not manager.is_connected("dc-nonexistent")
+def test_registry_unregister() -> None:
+    from unittest.mock import MagicMock
 
-
-def test_reject_duplicate(manager: AgentRegistry) -> None:
-    ws1, ws2 = _ws(), _ws()
-    assert manager.register("dc-1", ws1) is True
-    assert manager.register("dc-1", ws2) is False
-
-
-def test_route_to_match(manager: AgentRegistry) -> None:
-    ws1, ws2 = _ws(), _ws()
-    manager.register("dc-1", ws1)
-    manager.register("dc-2", ws2)
-    from vibing_protocol import Command
-    import asyncio
-
-    cmd = Command(type="start_agent_session", devcontainer_id="dc-1")
-    asyncio.run(manager.send_command(cmd))
-    ws1.send_json.assert_called_once()
-    ws2.send_json.assert_not_called()
-
-
-def test_unavailable_when_none(manager: AgentRegistry) -> None:
-    from vibing_protocol import Command
-    import asyncio
-
-    cmd = Command(type="start_agent_session", devcontainer_id="dc-missing")
-    with pytest.raises(RuntimeError, match="No runtime connection registered"):
-        asyncio.run(manager.send_command(cmd))
-
-
-def test_unregister(manager: AgentRegistry) -> None:
-    ws = _ws()
-    manager.register("dc-1", ws)
-    manager.unregister("dc-1", ws)
-    assert not manager.is_connected("dc-1")
-
-
-# --- transcript request/reply (VIB-104, ADR-0009) ---
-
-
-def test_request_transcript_sends_request_and_resolves(manager: AgentRegistry) -> None:
-    import asyncio
-
-    ws = _ws()
-    manager.register("dc-1", ws)
-
-    async def scenario() -> list:
-        task = asyncio.create_task(manager.request_transcript("dc-1", "sess-1", timeout=5.0))
-        await asyncio.sleep(0)  # let the send happen and the future register
-        sent = ws.send_json.call_args.args[0]
-        assert sent["type"] == "transcript_request"
-        assert sent["agent_session_id"] == "sess-1"
-        request_id = sent["request_id"]
-        assert request_id  # a fresh cp-side id
-        manager.resolve_transcript(request_id, [{"role": "user", "blocks": [], "at": "t"}])
-        return await task
-
-    turns = asyncio.run(scenario())
-    assert turns == [{"role": "user", "blocks": [], "at": "t"}]
-
-
-def test_request_transcript_times_out(manager: AgentRegistry) -> None:
-    import asyncio
-
-    ws = _ws()
-    manager.register("dc-1", ws)
-
-    async def scenario() -> None:
-        with pytest.raises(asyncio.TimeoutError):
-            await manager.request_transcript("dc-1", "sess-1", timeout=0.01)
-
-    asyncio.run(scenario())
-
-
-def test_disconnect_fails_inflight_futures(manager: AgentRegistry) -> None:
-    import asyncio
-
-    ws = _ws()
-    manager.register("dc-1", ws)
-
-    async def scenario() -> None:
-        task = asyncio.create_task(manager.request_transcript("dc-1", "sess-1", timeout=5.0))
-        await asyncio.sleep(0)
-        manager.unregister("dc-1", ws)  # connection drops
-        with pytest.raises(ConnectionError):
-            await task
-
-    asyncio.run(scenario())
-
-
-def test_resolve_unknown_request_is_noop(manager: AgentRegistry) -> None:
-    manager.resolve_transcript("never-registered", [])  # must not raise
-
-
-def test_request_transcript_no_agent_raises(manager: AgentRegistry) -> None:
-    import asyncio
-
-    async def scenario() -> None:
-        with pytest.raises(RuntimeError):
-            await manager.request_transcript("dc-missing", "sess-1", timeout=5.0)
-
-    asyncio.run(scenario())
+    reg = RuntimeRegistry()
+    ws = MagicMock()
+    reg.register("dc-1", ws)
+    reg.unregister("dc-1", ws)
+    assert not reg.is_connected("dc-1")

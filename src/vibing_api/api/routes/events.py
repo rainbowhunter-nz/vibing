@@ -6,7 +6,7 @@ They MUST refetch canonical HTTP endpoints on receipt — no payload data is sen
 FastAPI's native EventSourceResponse handles keepalive pings (default 15 s, patchable
 via `fastapi.sse._PING_INTERVAL`) and structured cancellation on client disconnect.
 
-Scopes: devcontainers | agent_sessions | inbox | approvals | runtime
+Scopes: devcontainers | runtime | harnesses
 """
 
 import asyncio

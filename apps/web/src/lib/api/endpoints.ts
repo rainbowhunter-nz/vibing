@@ -1,8 +1,6 @@
 import { getJson, sendJson } from './client'
 import type {
   ConfigResponse,
-  DelegatedRun,
-  DelegatedRunList,
   Devcontainer,
   DevcontainerCreateBody,
   DevcontainerList,
@@ -13,7 +11,6 @@ import type {
   HealthResponse,
   HarnessStatus,
   HarnessStatusList,
-  RuntimeStatus,
   SettingsResponse,
   StatusResponse,
 } from './types'
@@ -23,7 +20,6 @@ export const fetchStatus = (): Promise<StatusResponse> => getJson('/status')
 export const fetchConfig = (): Promise<ConfigResponse> => getJson('/config')
 export const fetchDevcontainers = (): Promise<DevcontainerList> => getJson('/devcontainers')
 export const fetchDevcontainerViews = (): Promise<DevcontainerViewList> => getJson('/devcontainers')
-export const fetchRuntimeStatus = (): Promise<RuntimeStatus> => getJson('/runtime/status')
 export const fetchSettings = (): Promise<SettingsResponse> => getJson('/settings')
 export const fetchDiagnostics = (): Promise<DiagnosticsResponse> => getJson('/diagnostics')
 
@@ -49,14 +45,5 @@ export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
 export const fetchHarnesses = (devcontainerId: string): Promise<HarnessStatusList> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses`)
 
-export const installHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
-  sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/install`, 'POST') as Promise<HarnessStatus>
-
 export const authenticateHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
   sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/authenticate`, 'POST') as Promise<HarnessStatus>
-
-export const fetchDelegatedRuns = (devcontainerId: string): Promise<DelegatedRunList> =>
-  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/delegated-runs`)
-
-export const stopDelegatedRun = (devcontainerId: string, runId: string): Promise<DelegatedRun> =>
-  sendJson<DelegatedRun>(`/devcontainers/${encodeURIComponent(devcontainerId)}/delegated-runs/${encodeURIComponent(runId)}/stop`, 'POST') as Promise<DelegatedRun>

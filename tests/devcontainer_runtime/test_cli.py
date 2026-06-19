@@ -1,4 +1,4 @@
-"""Tests for the Devcontainer Runtime Agent CLI — no real connection is made."""
+"""Tests for the Devcontainer Runtime CLI — no real connection is made."""
 
 import pytest
 from typer.testing import CliRunner
@@ -18,7 +18,7 @@ def test_cli_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     result = CliRunner().invoke(cli, ["--devcontainer-id", "dc-test"])
     assert result.exit_code == 0, result.output
     assert calls == [(DEFAULT_CONTROL_PLANE_URL, "dc-test", "127.0.0.1", "8848", ".")]
-    assert DEFAULT_CONTROL_PLANE_URL == "ws://host.docker.internal:8000/api/v1/runtime/agent/ws"
+    assert DEFAULT_CONTROL_PLANE_URL == "ws://host.docker.internal:8080/api/v1/runtime/agent/ws"
 
 
 def test_cli_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -57,41 +57,36 @@ def test_cli_missing_devcontainer_id_fails() -> None:
 
 def test_register_envelope_shape() -> None:
     """RegisterEnvelope with devcontainer_id serializes correctly."""
-    env = RegisterEnvelope(source="devcontainer_runtime_agent", devcontainer_id="dc-abc")
+    env = RegisterEnvelope(devcontainer_id="dc-abc")
     d = env.model_dump()
-    assert d["source"] == "devcontainer_runtime_agent"
     assert d["devcontainer_id"] == "dc-abc"
     assert d["type"] == "runtime_registered"
 
 
-def test_host_register_envelope_unaffected() -> None:
-    """Host RegisterEnvelope still works without devcontainer_id."""
-    env = RegisterEnvelope(source="host_runtime_worker")
-    d = env.model_dump()
-    assert d["devcontainer_id"] is None
-    assert d["source"] == "host_runtime_worker"
-
-
 def test_serve_builds_managers_and_runs_both(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_serve_blocking wires HarnessCommandHandler + RuntimeChannelClient + MCP; reports status on connect."""
     built: dict[str, object] = {}
 
     class FakeClient:
-        def __init__(self, url: str, register: object, handler: object) -> None:
-            built["handler_owner"] = (
-                handler.__self__
-            )  # AgentCommandHandler instance  # type: ignore[union-attr]
-            self._requests: dict[str, object] = {}
-
-        def on_request(self, message_type: str, respond: object) -> None:
-            self._requests[message_type] = respond
+        def __init__(
+            self,
+            url: str,
+            register: object,
+            handler: object,
+            on_registered: object = None,
+        ) -> None:
+            built["handler"] = handler
+            built["on_registered"] = on_registered
 
         async def run(self) -> None:
             built["client_ran"] = True
+            if built.get("on_registered") is not None:
+                await built["on_registered"]()  # type: ignore[operator]
 
         async def send_envelope(self, envelope: object) -> None:
-            pass
+            built["sent_envelopes"] = built.get("sent_envelopes", 0) + 1  # type: ignore[operator]
 
-    async def fake_serve_http(self: object) -> None:  # FastMCP.run_streamable_http_async stand-in
+    async def fake_serve_http(self: object) -> None:
         built["mcp_ran"] = True
 
     monkeypatch.setattr(cli_module, "RuntimeChannelClient", FakeClient)
@@ -103,5 +98,7 @@ def test_serve_builds_managers_and_runs_both(monkeypatch: pytest.MonkeyPatch) ->
 
     assert built["client_ran"] is True
     assert built["mcp_ran"] is True
-    # the command handler got a harness manager wired
-    assert built["handler_owner"]._harness_manager is not None  # type: ignore[union-attr]
+    # on_registered hook was wired
+    assert built["on_registered"] is not None
+    # calling on_registered invoked send_envelope (initial harness status report)
+    assert built.get("sent_envelopes", 0) >= 1

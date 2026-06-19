@@ -13,21 +13,6 @@ VALIDATION_ERROR = "VALIDATION_ERROR"
 DEVCONTAINER_NOT_FOUND = "DEVCONTAINER_NOT_FOUND"
 INVALID_DEVCONTAINER_STATE = "INVALID_DEVCONTAINER_STATE"
 RUNTIME_UNAVAILABLE = "RUNTIME_UNAVAILABLE"
-AGENT_SESSION_ACTIVE = "AGENT_SESSION_ACTIVE"
-AGENT_SESSION_NOT_FOUND = "AGENT_SESSION_NOT_FOUND"
-AGENT_SESSION_NOT_ACTIVE = "AGENT_SESSION_NOT_ACTIVE"
-AGENT_SESSION_NOT_RESTING = "AGENT_SESSION_NOT_RESTING"
-AGENT_SESSION_STILL_ACTIVE = "AGENT_SESSION_STILL_ACTIVE"
-# --- Stable User Intervention stale-target error contract (VIB-35 epic) ---
-# Frontend uses these codes to explain why a question or approval is no longer actionable.
-INBOX_EVENT_NOT_FOUND = "INBOX_EVENT_NOT_FOUND"  # 404 — event missing or belongs to another session
-INBOX_EVENT_NOT_ACTIONABLE = "INBOX_EVENT_NOT_ACTIONABLE"  # 409 — wrong type or already resolved
-APPROVAL_REQUEST_NOT_FOUND = (
-    "APPROVAL_REQUEST_NOT_FOUND"  # 404 — approval missing or belongs to another session
-)
-APPROVAL_REQUEST_NOT_PENDING = "APPROVAL_REQUEST_NOT_PENDING"  # 409 — approval already handled
-# ---
-
 INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -67,78 +52,6 @@ class RuntimeUnavailableError(APIError):
 
     def __init__(self, message: str = "No Host Runtime Worker is connected") -> None:
         super().__init__(message)
-
-
-class ActiveAgentSessionError(APIError):
-    status_code = 409
-    code = AGENT_SESSION_ACTIVE
-
-    def __init__(self, devcontainer_id: str) -> None:
-        super().__init__(f"An agent session is already active for devcontainer: {devcontainer_id}")
-
-
-class AgentSessionNotFoundError(APIError):
-    status_code = 404
-    code = AGENT_SESSION_NOT_FOUND
-
-    def __init__(self, session_id: str) -> None:
-        super().__init__(f"Agent session not found: {session_id}")
-
-
-class InactiveAgentSessionError(APIError):
-    status_code = 409
-    code = AGENT_SESSION_NOT_ACTIVE
-
-    def __init__(self, session_id: str) -> None:
-        super().__init__(f"Agent session is not active: {session_id}")
-
-
-class NonRestingAgentSessionError(APIError):
-    status_code = 409
-    code = AGENT_SESSION_NOT_RESTING
-
-    def __init__(self, session_id: str) -> None:
-        super().__init__(f"Agent session is not in a resting state: {session_id}")
-
-
-class ActiveAgentSessionDeleteError(APIError):
-    status_code = 409
-    code = AGENT_SESSION_STILL_ACTIVE
-
-    def __init__(self, session_id: str) -> None:
-        super().__init__(f"Cannot delete active agent session: {session_id}")
-
-
-class InboxEventNotFoundError(APIError):
-    status_code = 404
-    code = INBOX_EVENT_NOT_FOUND
-
-    def __init__(self, inbox_event_id: str) -> None:
-        super().__init__(f"Inbox event not found: {inbox_event_id}")
-
-
-class InboxEventNotActionableError(APIError):
-    status_code = 409
-    code = INBOX_EVENT_NOT_ACTIONABLE
-
-    def __init__(self, inbox_event_id: str) -> None:
-        super().__init__(f"Inbox event is not actionable: {inbox_event_id}")
-
-
-class ApprovalRequestNotFoundError(APIError):
-    status_code = 404
-    code = APPROVAL_REQUEST_NOT_FOUND
-
-    def __init__(self, approval_request_id: str) -> None:
-        super().__init__(f"Approval request not found: {approval_request_id}")
-
-
-class ApprovalRequestNotPendingError(APIError):
-    status_code = 409
-    code = APPROVAL_REQUEST_NOT_PENDING
-
-    def __init__(self, approval_request_id: str) -> None:
-        super().__init__(f"Approval request is not pending: {approval_request_id}")
 
 
 def _envelope(code: str, message: str, details: Any | None = None) -> dict[str, Any]:

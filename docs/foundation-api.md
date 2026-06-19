@@ -9,9 +9,9 @@ that full path. Bodies are JSON; the error envelope is shared (see [Errors](#err
 
 > **Metadata APIs vs. runtime APIs.** Most routes here are the **metadata**
 > surface: read-only config/health plus Devcontainer CRUD. Lifecycle routes
-> record user intent by sending Commands to connected runtimes; read-model state
-> still changes only after Runtime Events are emitted back and projected. Session
-> Output streaming remains deferred. The forward-looking fields below —
+> (`start`/`stop`) return `202 Accepted`; the Control Plane runs the Dev Container
+> CLI in a background task and writes state directly as it progresses — the browser
+> sees changes via SSE invalidation. The forward-looking fields below —
 > `runtime` in `/settings`, and the `docker`/`podman`/`devcontainer_cli`/
 > `claude_code` diagnostics — exist now but report `null`/`unknown` until
 > detection lands in a later ticket.
@@ -96,8 +96,8 @@ The Devcontainer is the central entity (the domain term for what a user calls a
 `status` is one of `created` | `starting` | `running` | `stopping` | `stopped` | `error`.
 
 Creating a Devcontainer does **not** start a container, and `PATCH`-ing `status`
-records metadata only. Use the lifecycle routes below to send start/stop Commands
-to a connected Host Runtime Worker.
+records metadata only. Use the lifecycle routes below to trigger start/stop via the
+Control Plane.
 
 ### `POST /api/v1/devcontainers` → `201`
 
@@ -161,50 +161,39 @@ Empty body on success; `404` if unknown.
 
 ### `POST /api/v1/devcontainers/{id}/start` → `202`
 
-Requires a connected Host Runtime Worker (`uv run vibing host-runtime`) and a
-Devcontainer currently in `created`, `stopped`, or `error`. Returns the current
-Devcontainer read model unchanged; `starting`/`running`/`error` arrives later via
-Runtime Events.
+Requires the Devcontainer to be in `created`, `stopped`, or `error`. The Control
+Plane runs `devcontainer up` in a background task, writing status (`starting →
+running`, or `error`) directly as it progresses. After a successful up it injects
+and launches the Devcontainer Runtime. Returns the current Devcontainer read model.
 
 ### `POST /api/v1/devcontainers/{id}/stop` → `202`
 
-Requires a connected Host Runtime Worker and a Devcontainer currently in
-`running` or `error`. Returns the current Devcontainer read model unchanged;
-`stopping`/`stopped`/`error` arrives later via Runtime Events.
+Requires the Devcontainer to be in `running` or `error`. The Control Plane stops
+the container, writing status (`stopping → stopped`, or `error`) directly. Returns
+the current Devcontainer read model.
 
-### `POST /api/v1/devcontainers/{id}/agent-sessions` → `202`
+## Harnesses
 
-Requires the Devcontainer to be `running` and its Devcontainer Runtime Agent to
-be connected. Sends `start_agent_session` to that agent and returns the created
-Agent Session read model.
+### `POST /api/v1/devcontainers/{id}/harnesses/{harness}/authenticate` → `202`
 
-Request:
+Requires the Devcontainer to be `running` and its Devcontainer Runtime connected.
+Sends an `authenticate_harness` Command carrying the stored credentials. The
+runtime installs and authenticates the harness, then reports updated Harness Status.
 
-```json
-{ "prompt": "Implement the failing test" }
-```
+`harness` is one of `codex`, `cursor` (managed harnesses).
 
-### `POST /api/v1/devcontainers/{id}/agent-sessions/{session_id}/resume` → `202`
+### `GET /api/v1/devcontainers/{id}/harnesses`
 
-Continues a rested conversation in place (ADR-0008). Requires the session to be in
-a resting state (`completed`/`failed`/`stopped`), the Devcontainer `running`, its
-agent connected, and no other session active (else `409`
-`AGENT_SESSION_NOT_RESTING` / `INVALID_DEVCONTAINER_STATE` / `RUNTIME_UNAVAILABLE`
-/ `AGENT_SESSION_ACTIVE`). Optimistically sets the session to `starting`, sends
-`resume_agent_session` to the agent (which runs `claude --resume <id>`), and
-returns the updated Agent Session. Reuses the existing lifecycle events.
-
-Request:
+Returns current Harness Status for all managed harnesses in the Devcontainer.
 
 ```json
-{ "prompt": "Now run the tests" }
+{
+  "items": [
+    { "harness": "codex", "installed": true, "authenticated": false },
+    { "harness": "cursor", "installed": false, "authenticated": false }
+  ]
+}
 ```
-
-### `POST /api/v1/devcontainers/{id}/agent-sessions/{session_id}/stop` → `202`
-
-Requires the Agent Session to be active and the Devcontainer Runtime Agent to be
-connected. Sends `stop_agent_session` to that agent and returns the current Agent
-Session read model unchanged; final status arrives later via Runtime Events.
 
 ## Sample data
 
@@ -215,21 +204,18 @@ touching real rows.
 
 ```
 $ uv run vibing dev sample_data seed
-Seeded 12 rows.
+Seeded rows.
 
 $ uv run vibing dev sample_data status
         Sample data
-┏━━━━━━━━━━━━━━━━━━━┳━━━━━━┓
-┃ Table             ┃ Rows ┃
-┡━━━━━━━━━━━━━━━━━━━╇━━━━━━┩
-│ devcontainers     │    3 │
-│ agent_sessions    │    3 │
-│ approval_requests │    2 │
-│ inbox_events      │    4 │
-└───────────────────┴──────┘
+┏━━━━━━━━━━━━━━━┳━━━━━━┓
+┃ Table         ┃ Rows ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━┩
+│ devcontainers │    3 │
+└───────────────┴──────┘
 
 $ uv run vibing dev sample_data reset
-Removed 12 sample rows.
+Removed sample rows.
 ```
 
 A seeded Devcontainer row, as returned by `GET /api/v1/devcontainers`:

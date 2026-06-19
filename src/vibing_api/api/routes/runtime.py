@@ -1,46 +1,26 @@
-"""Runtime WebSocket channel routes (ADR-0003): runtime -> Control Plane intake.
+"""Runtime WebSocket channel routes (ADR-0003, ADR-0014/0015): runtime -> Control Plane intake.
 
-Two WebSocket endpoints, each backed by a `ConnectionRegistry`:
-- `/runtime/ws` — host worker slot (single connection, WORKER_SLOT)
-- `/runtime/agent/ws` — per-devcontainer agent slot (keyed by devcontainer_id)
-
-Malformed JSON, malformed envelopes, and unsupported types are ignored.
+Single WebSocket endpoint `/runtime/agent/ws` — per-devcontainer agent slot keyed by devcontainer_id.
+Inbound types: `runtime_registered` (registration), `harness_status` (status update).
 """
 
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from logzero import logger
 from pydantic import ValidationError
-from vibing_protocol import (
-    RegisterEnvelope,
-    RuntimeEventEnvelope,
-    RuntimeEventSource,
-    TranscriptResponseEnvelope,
-    TurnDeltaEnvelope,
-)
+from vibing_protocol import HarnessStatusEnvelope, RegisterEnvelope
 
-from vibing_api.api.schemas.devcontainers import RuntimeStatus
 from vibing_api.core.broadcaster import SseEvent
-from vibing_api.core.runtime_channel import (
-    WORKER_SLOT,
-    AgentRegistry,
-    WorkerRegistry,
-    persist_runtime_event,
-)
-from vibing_api.core.session_stream import SessionStreamRegistry
+from vibing_api.core.runtime_channel import RuntimeRegistry, persist_harness_status
 
 router = APIRouter(tags=["runtime"], prefix="/runtime")
 
-_WORKER_ALREADY_CONNECTED = 4409
 _AGENT_MISSING_ID = 4400
 _AGENT_ALREADY_CONNECTED = 4409
 
-# A register callback validates the `runtime_registered` message and claims a slot.
-# Returns an unregister thunk on success, None to keep waiting (invalid envelope),
-# or raises _Reject to close the connection with a code.
 Register = Callable[[dict[str, Any]], Awaitable[Callable[[], None] | None]]
 
 
@@ -50,7 +30,6 @@ class _Reject(Exception):
 
 
 def _broadcast_connection(websocket: WebSocket, ids: list[str]) -> None:
-    """Publish a runtime connection invalidation if a broadcaster is available."""
     broadcaster = getattr(websocket.app.state, "broadcaster", None)
     if broadcaster is not None:
         broadcaster.publish(SseEvent(scope="runtime", ids=ids))
@@ -64,21 +43,7 @@ def _parse(raw: str) -> dict[str, Any] | None:
     return message if isinstance(message, dict) else None
 
 
-# Resolves a transcript_response onto its in-flight Future. Only the agent route
-# supplies one; the worker route passes None, leaving transcript handling inert there.
-ResolveTranscript = Callable[[str, list[Any]], None]
-
-# Relays a live turn-delta (ADR-0010) to the per-session SSE registry. Agent route only.
-RelayDelta = Callable[[TurnDeltaEnvelope], None]
-
-
-async def _serve(
-    websocket: WebSocket,
-    register: Register,
-    resolve_transcript: ResolveTranscript | None = None,
-    relay_delta: RelayDelta | None = None,
-) -> None:
-    """Shared registration + RuntimeEvent intake loop for both runtime channels."""
+async def _serve(websocket: WebSocket, register: Register) -> None:
     await websocket.accept()
     unregister: Callable[[], None] | None = None
     try:
@@ -96,38 +61,20 @@ async def _serve(
                     await websocket.send_json({"type": "registered"})
                 continue
 
-            if unregister is not None and msg_type == "transcript_response" and resolve_transcript:
-                try:
-                    response = TranscriptResponseEnvelope.model_validate(message)
-                except ValidationError:
-                    continue
-                resolve_transcript(response.request_id, [t.model_dump() for t in response.turns])
-                continue
-
-            if unregister is not None and msg_type == "turn_delta" and relay_delta:
-                try:
-                    delta_envelope = TurnDeltaEnvelope.model_validate(message)
-                except ValidationError:
-                    continue
-                relay_delta(delta_envelope)
-                continue
-
-            if unregister is None or msg_type != "runtime_event":
+            if unregister is None or msg_type != "harness_status":
                 continue
 
             try:
-                envelope = RuntimeEventEnvelope.model_validate(message)
+                envelope = HarnessStatusEnvelope.model_validate(message)
             except ValidationError:
                 continue
             broadcaster = getattr(websocket.app.state, "broadcaster", None)
             try:
-                persist_runtime_event(envelope.event, broadcaster)
+                persist_harness_status(envelope.devcontainer_id, envelope.items, broadcaster)
             except Exception:
                 logger.exception(
-                    "Failed to persist runtime event %s (devcontainer=%s, session=%s)",
-                    envelope.event.event_type,
-                    envelope.event.devcontainer_id,
-                    envelope.event.agent_session_id,
+                    "Failed to persist harness status (devcontainer=%s)",
+                    envelope.devcontainer_id,
                 )
     except WebSocketDisconnect:
         pass
@@ -138,56 +85,16 @@ async def _serve(
             unregister()
 
 
-@router.get("/status", response_model=RuntimeStatus)
-def get_runtime_status(request: Request) -> RuntimeStatus:
-    manager: WorkerRegistry = request.app.state.runtime_manager
-    return RuntimeStatus(worker_connected=manager.is_connected(WORKER_SLOT))
-
-
-@router.websocket("/ws")
-async def runtime_ws(websocket: WebSocket) -> None:
-    manager: WorkerRegistry = websocket.app.state.runtime_manager
-
-    async def register(message: dict[str, Any]) -> Callable[[], None] | None:
-        try:
-            RegisterEnvelope.model_validate(message)
-        except ValidationError:
-            return None
-        if not manager.register(WORKER_SLOT, websocket):
-            raise _Reject(_WORKER_ALREADY_CONNECTED)
-        _broadcast_connection(websocket, ids=[])
-
-        def unregister() -> None:
-            manager.unregister(WORKER_SLOT, websocket)
-            _broadcast_connection(websocket, ids=[])
-
-        return unregister
-
-    await _serve(websocket, register)
-
-
 @router.websocket("/agent/ws")
 async def agent_ws(websocket: WebSocket) -> None:
-    manager: AgentRegistry = websocket.app.state.agent_manager
-    session_streams: SessionStreamRegistry | None = getattr(
-        websocket.app.state, "session_streams", None
-    )
-
-    def relay_delta(envelope: TurnDeltaEnvelope) -> None:
-        if session_streams is not None:
-            session_streams.publish(
-                envelope.agent_session_id, json.dumps(envelope.delta.model_dump())
-            )
+    manager: RuntimeRegistry = websocket.app.state.runtime_manager
 
     async def register(message: dict[str, Any]) -> Callable[[], None] | None:
         try:
             envelope = RegisterEnvelope.model_validate(message)
         except ValidationError:
             return None
-        if (
-            envelope.source != RuntimeEventSource.DEVCONTAINER_RUNTIME_AGENT
-            or not envelope.devcontainer_id
-        ):
+        if not envelope.devcontainer_id:
             raise _Reject(_AGENT_MISSING_ID)
         if not manager.register(envelope.devcontainer_id, websocket):
             raise _Reject(_AGENT_ALREADY_CONNECTED)
@@ -200,9 +107,4 @@ async def agent_ws(websocket: WebSocket) -> None:
 
         return unregister
 
-    await _serve(
-        websocket,
-        register,
-        resolve_transcript=manager.resolve_transcript,
-        relay_delta=relay_delta,
-    )
+    await _serve(websocket, register)

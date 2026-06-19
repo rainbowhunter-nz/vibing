@@ -3,9 +3,8 @@ from typing import Annotated
 import typer
 
 from vibing_api.cli import dev_app
-from vibing_cli.client import approvals, devcontainers, http, inbox, system
+from vibing_cli.client import devcontainers, harnesses, http, system
 from vibing_devcontainer_runtime.cli import cli as devcontainer_runtime_app
-from vibing_host_runtime.cli import cli as host_runtime_app
 
 app = typer.Typer(name="vibing", help="Vibing CLI.", no_args_is_help=True)
 
@@ -26,11 +25,9 @@ def main(
 app.add_typer(dev_app, name="dev")
 
 runtime_app = typer.Typer(help="Run long-lived runtime workers.", no_args_is_help=True)
-runtime_app.add_typer(host_runtime_app, name="host")
 runtime_app.add_typer(devcontainer_runtime_app, name="devcontainer")
 app.add_typer(runtime_app, name="runtime")
 
 app.add_typer(devcontainers.app, name="devcontainer")
-app.add_typer(inbox.app, name="inbox")
-app.add_typer(approvals.app, name="approval")
+app.add_typer(harnesses.app, name="harness")
 app.add_typer(system.app, name="system")

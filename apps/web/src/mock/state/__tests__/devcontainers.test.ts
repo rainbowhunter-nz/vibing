@@ -27,8 +27,7 @@ describe('listDevcontainers', () => {
     const { items } = listDevcontainers()
     for (const item of items) {
       expect(item).toHaveProperty('runtime')
-      expect(item.runtime).toHaveProperty('worker_connected')
-      expect(item.runtime).toHaveProperty('agent_connected')
+      expect(item.runtime).toHaveProperty('runtime_connected')
     }
   })
 })
@@ -38,7 +37,7 @@ describe('getDevcontainer', () => {
     const dc = getDevcontainer('dc-seed-0001')
     expect(dc.id).toBe('dc-seed-0001')
     expect(dc.name).toBe('my-webapp')
-    expect(dc.runtime).toEqual({ worker_connected: true, agent_connected: true })
+    expect(dc.runtime).toEqual({ runtime_connected: true })
   })
 
   it('throws NotFoundError for unknown id', () => {

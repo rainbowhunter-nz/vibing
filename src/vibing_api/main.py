@@ -8,25 +8,24 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from vibing_api.api.routes import (
-    agent_sessions,
-    approvals,
     config,
     devcontainers,
     diagnostics,
     events,
+    harnesses,
     health,
-    inbox,
     runtime,
-    session_stream,
     settings as settings_route,
     status,
 )
 from vibing_api.core.broadcaster import Broadcaster
 from vibing_api.core.config import settings
 from vibing_api.core.database import init_db
+from vibing_api.core.devcontainer_cli import DevcontainerCliAdapter
+from vibing_api.core.devcontainer_service import DevcontainerService
 from vibing_api.core.errors import register_error_handlers
-from vibing_api.core.runtime_channel import AgentRegistry, WorkerRegistry
-from vibing_api.core.session_stream import SessionStreamRegistry
+from vibing_api.core.runtime_channel import RuntimeRegistry
+from vibing_api.core.runtime_injector import RuntimeInjector
 
 
 class SpaStaticFiles(StaticFiles):
@@ -53,24 +52,24 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
-    app.state.runtime_manager = WorkerRegistry()
-    app.state.agent_manager = AgentRegistry()
+    app.state.runtime_manager = RuntimeRegistry()
     app.state.broadcaster = Broadcaster()
-    app.state.session_streams = SessionStreamRegistry()
+    adapter = DevcontainerCliAdapter()
+    injector = RuntimeInjector()
+    app.state.devcontainer_service = DevcontainerService(
+        adapter, injector, broadcaster=app.state.broadcaster
+    )
     register_error_handlers(app)
     for router in (
         health.router,
         status.router,
         config.router,
         devcontainers.router,
-        agent_sessions.router,
-        inbox.router,
-        approvals.router,
+        harnesses.router,
         settings_route.router,
         diagnostics.router,
         runtime.router,
         events.router,
-        session_stream.router,
     ):
         app.include_router(router, prefix=settings.api_v1_prefix)
     if settings.static_dir:

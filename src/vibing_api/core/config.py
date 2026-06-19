@@ -20,7 +20,5 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 8080
 
-    transcript_timeout_seconds: float = 10.0
-
 
 settings = Settings()

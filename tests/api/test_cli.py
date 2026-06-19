@@ -2,36 +2,38 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from vibing_api.cli import dev_app
 from vibing_api.core.database import get_connection, init_db
 from vibing_api.dev.sample_data import (
     SAMPLE_ID_PREFIX,
     SAMPLE_DEVCONTAINERS,
     seed as seed_helper,
 )
-from vibing_cli import app
+from vibing_cli import app as _vibing_app
 
 runner = CliRunner()
 
 
 def test_root_cli_exposes_runtime_subcommands() -> None:
-    result = runner.invoke(app, ["--help"])
+    result = runner.invoke(_vibing_app, ["--help"])
 
     assert result.exit_code == 0, result.output
     assert "runtime" in result.output
+    assert "harness" in result.output
     assert "host-runtime" not in result.output
     assert "devcontainer-runtime" not in result.output
 
 
-def test_runtime_group_exposes_host_and_devcontainer() -> None:
-    result = runner.invoke(app, ["runtime", "--help"])
+def test_runtime_group_exposes_devcontainer_only() -> None:
+    result = runner.invoke(_vibing_app, ["runtime", "--help"])
 
     assert result.exit_code == 0, result.output
-    assert "host" in result.output
     assert "devcontainer" in result.output
+    assert "host" not in result.output
 
 
 def test_seed_command_inserts_sample_rows(db_path: Path) -> None:
-    result = runner.invoke(app, ["dev", "sample_data", "seed"])
+    result = runner.invoke(dev_app, ["sample_data", "seed"])
 
     assert result.exit_code == 0, result.output
     assert "Seeded" in result.output
@@ -51,7 +53,7 @@ def test_reset_command_removes_sample_rows(db_path: Path) -> None:
         seed_helper(conn)
         conn.commit()
 
-    result = runner.invoke(app, ["dev", "sample_data", "reset"])
+    result = runner.invoke(dev_app, ["sample_data", "reset"])
 
     assert result.exit_code == 0, result.output
     assert "Removed" in result.output
@@ -70,9 +72,8 @@ def test_status_command_reports_counts(db_path: Path) -> None:
         seed_helper(conn)
         conn.commit()
 
-    result = runner.invoke(app, ["dev", "sample_data", "status"])
+    result = runner.invoke(dev_app, ["sample_data", "status"])
 
     assert result.exit_code == 0, result.output
-    for table_name in ("devcontainers", "agent_sessions", "approval_requests", "inbox_events"):
-        assert table_name in result.output
+    assert "devcontainers" in result.output
     assert str(len(SAMPLE_DEVCONTAINERS)) in result.output

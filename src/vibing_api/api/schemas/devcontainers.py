@@ -27,8 +27,7 @@ class DevcontainerList(BaseModel):
 
 
 class RuntimeConnection(BaseModel):
-    worker_connected: bool
-    agent_connected: bool
+    runtime_connected: bool
 
 
 class DevcontainerView(Devcontainer):
@@ -37,7 +36,3 @@ class DevcontainerView(Devcontainer):
 
 class DevcontainerViewList(BaseModel):
     items: list[DevcontainerView]
-
-
-class RuntimeStatus(BaseModel):
-    worker_connected: bool

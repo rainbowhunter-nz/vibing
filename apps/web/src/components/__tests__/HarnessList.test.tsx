@@ -28,14 +28,13 @@ describe('HarnessList', () => {
     expect(screen.getByTitle('Authenticate codex')).toBeTruthy()
   })
 
-  it('offers Install on a not-installed harness', () => {
+  it('offers Authenticate on a not-installed harness (install-on-demand)', () => {
     setup()
-    expect(screen.getByTitle('Install cursor')).toBeTruthy()
+    expect(screen.getByTitle('Authenticate cursor')).toBeTruthy()
   })
 
-  it('disables Authenticate until the harness is installed', () => {
+  it('shows a check tick for an authenticated harness', () => {
     setup()
-    const btn = screen.getByTitle('Install cursor first') as HTMLButtonElement
-    expect(btn.disabled).toBe(true)
+    expect(screen.getByTitle('Authenticated')).toBeTruthy()
   })
 })

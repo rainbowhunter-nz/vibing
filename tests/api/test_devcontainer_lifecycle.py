@@ -1,11 +1,14 @@
+"""Devcontainer lifecycle tests — wired to the in-process DevcontainerService (ADR-0014).
+
+All tests use the full-app `client` fixture (needs Task 2.5 wiring) — expected-red until then.
+"""
+
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 
-from vibing_api.core.database import get_connection
-from vibing_api.repositories.runtime_events import RuntimeEventRepository
-
-WS_URL = "/api/v1/runtime/ws"
-_REGISTER = {"type": "runtime_registered", "source": "host_runtime_worker"}
+from vibing_api.core.devcontainer_service import DevcontainerService
 
 
 def _create(client: TestClient, status: str = "created", local_path: str = "/work/repo") -> str:
@@ -18,58 +21,58 @@ def _create(client: TestClient, status: str = "created", local_path: str = "/wor
     return dc_id
 
 
-def test_start_sends_command_and_returns_202(client: TestClient) -> None:
+def _fake_service() -> DevcontainerService:
+    """DevcontainerService with a no-op adapter and injector."""
+    adapter = MagicMock()
+    adapter.start = AsyncMock(return_value=MagicMock(payload={}))
+    adapter.stop = AsyncMock(return_value=MagicMock())
+    injector = MagicMock()
+    injector.inject = AsyncMock()
+    return DevcontainerService(adapter, injector)
+
+
+def test_start_returns_202(client: TestClient) -> None:
     dc_id = _create(client, local_path="/work/repo")
-    with client.websocket_connect(WS_URL) as ws:
-        ws.send_json(_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        resp = client.post(f"/api/v1/devcontainers/{dc_id}/start")
-        assert resp.status_code == 202
-        body = resp.json()
-        assert body["id"] == dc_id
-        assert body["status"] == "created"  # API does not mutate projected status
-        assert ws.receive_json() == {
-            "type": "command",
-            "command": {
-                "type": "start_devcontainer",
-                "devcontainer_id": dc_id,
-                "agent_session_id": None,
-                "payload": {"local_path": "/work/repo"},
-            },
-        }
-
-
-def test_stop_sends_command_and_returns_202(client: TestClient) -> None:
-    dc_id = _create(client, status="running", local_path="/work/repo")
-    with client.websocket_connect(WS_URL) as ws:
-        ws.send_json(_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        resp = client.post(f"/api/v1/devcontainers/{dc_id}/stop")
-        assert resp.status_code == 202
-        cmd = ws.receive_json()
-        assert cmd["command"]["type"] == "stop_devcontainer"
-        assert cmd["command"]["payload"] == {"local_path": "/work/repo"}
-
-
-def test_start_without_worker_returns_409(client: TestClient) -> None:
-    dc_id = _create(client)
+    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/start")
-    assert resp.status_code == 409
-    assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["id"] == dc_id
+    assert body["status"] == "created"  # API returns snapshot; background task mutates later
 
 
-def test_stop_without_worker_returns_409(client: TestClient) -> None:
-    dc_id = _create(client, status="running")
+def test_stop_returns_202(client: TestClient) -> None:
+    dc_id = _create(client, status="running", local_path="/work/repo")
+    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/stop")
-    assert resp.status_code == 409
-    assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["id"] == dc_id
+    assert body["status"] == "running"
 
 
-def test_unavailable_worker_writes_no_runtime_event(client: TestClient) -> None:
-    dc_id = _create(client)
-    client.post(f"/api/v1/devcontainers/{dc_id}/start")
-    with get_connection() as conn:
-        assert RuntimeEventRepository(conn).list_by_devcontainer(dc_id) == []
+def test_start_invokes_service(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import vibing_api.api.routes.devcontainers as dc_routes
+
+    dc_id = _create(client, local_path="/work/repo")
+    svc = MagicMock()
+    svc.start = AsyncMock()
+    client.app.state.devcontainer_service = svc  # type: ignore[union-attr]
+
+    captured: list[object] = []
+
+    def _capture(coro) -> None:  # type: ignore[no-untyped-def]
+        captured.append(coro)
+        coro.close()  # prevent "coroutine never awaited" warning
+
+    monkeypatch.setattr(dc_routes, "run_in_background", _capture)
+
+    resp = client.post(f"/api/v1/devcontainers/{dc_id}/start")
+    assert resp.status_code == 202
+    assert resp.json()["id"] == dc_id
+    assert len(captured) == 1
+    # Behaviorally assert service.start was called with correct args
+    svc.start.assert_called_once_with(dc_id, "/work/repo")
 
 
 @pytest.mark.parametrize("status", ["starting", "running", "stopping"])
@@ -91,23 +94,17 @@ def test_stop_rejected_from_invalid_states(client: TestClient, status: str) -> N
 @pytest.mark.parametrize("status", ["created", "stopped", "error"])
 def test_start_allowed_states(client: TestClient, status: str) -> None:
     dc_id = _create(client, status=status)
-    with client.websocket_connect(WS_URL) as ws:
-        ws.send_json(_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        resp = client.post(f"/api/v1/devcontainers/{dc_id}/start")
-        assert resp.status_code == 202
-        assert ws.receive_json()["command"]["type"] == "start_devcontainer"
+    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
+    resp = client.post(f"/api/v1/devcontainers/{dc_id}/start")
+    assert resp.status_code == 202
 
 
 @pytest.mark.parametrize("status", ["running", "error"])
 def test_stop_allowed_states(client: TestClient, status: str) -> None:
     dc_id = _create(client, status=status)
-    with client.websocket_connect(WS_URL) as ws:
-        ws.send_json(_REGISTER)
-        assert ws.receive_json() == {"type": "registered"}
-        resp = client.post(f"/api/v1/devcontainers/{dc_id}/stop")
-        assert resp.status_code == 202
-        assert ws.receive_json()["command"]["type"] == "stop_devcontainer"
+    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
+    resp = client.post(f"/api/v1/devcontainers/{dc_id}/stop")
+    assert resp.status_code == 202
 
 
 def test_start_unknown_devcontainer_returns_404(client: TestClient) -> None:

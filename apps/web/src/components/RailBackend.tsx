@@ -1,6 +1,4 @@
-import { useEffect } from 'react'
-import { fetchConfig, fetchHealth, fetchRuntimeStatus, useApiQuery, type ConfigResponse } from '../lib/api'
-import { useSseInvalidation } from '../lib/events'
+import { fetchConfig, fetchHealth, useApiQuery, type ConfigResponse } from '../lib/api'
 import { cn } from '../lib/cn'
 
 type ApiState =
@@ -20,10 +18,6 @@ function useApiState(): ApiState {
 
 export function RailBackend() {
   const apiState = useApiState()
-  const { state: runtimeState, refetch } = useApiQuery(fetchRuntimeStatus, [])
-  const { register } = useSseInvalidation()
-
-  useEffect(() => register('runtime', refetch), [register, refetch])
 
   const dotClass =
     apiState.kind === 'ok'
@@ -37,10 +31,6 @@ export function RailBackend() {
       : apiState.kind === 'error'
         ? 'Unreachable'
         : 'Checking…'
-
-  const workerConnected = runtimeState.kind === 'ready' ? runtimeState.data.worker_connected : false
-  const workerDotClass = workerConnected ? 'bg-ok' : 'bg-text-subtle'
-  const workerText = workerConnected ? 'Worker connected' : 'Worker disconnected'
 
   return (
     <section>
@@ -60,10 +50,6 @@ export function RailBackend() {
       {apiState.kind === 'error' && (
         <div className="ml-4 text-[11px] text-text-subtle">service: unavailable</div>
       )}
-      <div className="mt-2 flex items-center gap-2 text-[12px] text-text-muted">
-        <span className={cn('h-2 w-2 rounded-full', workerDotClass)} />
-        {workerText}
-      </div>
     </section>
   )
 }

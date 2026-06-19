@@ -92,7 +92,7 @@ const sample: DevcontainerView = {
   status: 'stopped',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
-  runtime: { worker_connected: false, agent_connected: false },
+  runtime: { runtime_connected: false },
 }
 
 const runningDc: DevcontainerView = { ...sample, id: 'dc2', name: 'running-project', status: 'running' }
@@ -414,11 +414,11 @@ describe('Devcontainers SSE invalidation', () => {
     await waitFor(() => expect(mockFetch.mock.calls.length).toBe(callsBefore + 1))
   })
 
-  it('runtime invalidation triggers refetch (AC2: agent_connected updates live)', async () => {
-    const agentConnected: DevcontainerView = { ...sample, runtime: { worker_connected: false, agent_connected: true } }
+  it('runtime invalidation triggers refetch (AC2: runtime_connected updates live)', async () => {
+    const runtimeConnected: DevcontainerView = { ...sample, runtime: { runtime_connected: true } }
     mockFetch
       .mockResolvedValueOnce({ items: [sample] })
-      .mockResolvedValueOnce({ items: [agentConnected] })
+      .mockResolvedValueOnce({ items: [runtimeConnected] })
 
     renderPage()
     await screen.findByText('my-project')
@@ -432,7 +432,7 @@ describe('Devcontainers SSE invalidation', () => {
     })
 
     await waitFor(() => expect(mockFetch.mock.calls.length).toBeGreaterThan(callsBefore))
-    // Agent-connected dot should now be visible
-    await waitFor(() => expect(screen.getByTitle('Agent connected')).toBeTruthy())
+    // Runtime-connected dot should now be visible
+    await waitFor(() => expect(screen.getByTitle('Runtime connected')).toBeTruthy())
   })
 })
