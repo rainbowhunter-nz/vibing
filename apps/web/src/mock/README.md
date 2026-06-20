@@ -16,6 +16,8 @@ pnpm dev:mock   # VITE_API_MOCKING=true vite
 | `fixtures.ts` | Healthy baseline DTO values for static read endpoints |
 | `state/seeds.ts` | Shared seed identities (devcontainers) — one id means the same object across every mock module |
 | `state/devcontainers.ts` | Mutable in-browser store for devcontainer CRUD/lifecycle |
+| `state/harnesses.ts` | Mutable in-browser store for per-devcontainer coding-harness status |
+| `state/delegatedRuns.ts` | In-browser store for per-devcontainer delegated runs (list) |
 | `scenario.ts` + `useScenario.ts` | Global scenario store (6 scenarios); persisted to `localStorage` |
 | `events.ts` + `useMockSse.ts` | `MockEventSource` adapter (replaces browser `EventSource` for BOTH `/api/v1/events` and the per-session `/stream`), stream-state store, `emitInvalidation`, `liveInstancesMatching`. `MockEventSource.lastEventId` tracks the last delivered event's `id`, mirroring native EventSource behaviour (VIB-111) |
 | `browser.ts` | `setupWorker(...handlers)` for the service worker |

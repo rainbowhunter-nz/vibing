@@ -6,7 +6,7 @@ import { emitInvalidation, setStreamState } from './events'
 import type { Scope } from '../lib/events/types'
 import type { StreamState } from './events'
 
-const SCOPES: Scope[] = ['devcontainers', 'runtime', 'harnesses']
+const SCOPES: Scope[] = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs']
 const STREAM_STATES: StreamState[] = ['connected', 'reconnecting', 'disconnected']
 
 const STATE_DOT: Record<StreamState, string> = {

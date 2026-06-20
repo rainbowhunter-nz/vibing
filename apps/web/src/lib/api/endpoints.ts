@@ -1,6 +1,7 @@
 import { getJson, sendJson } from './client'
 import type {
   ConfigResponse,
+  DelegatedRunList,
   Devcontainer,
   DevcontainerCreateBody,
   DevcontainerList,
@@ -45,5 +46,11 @@ export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
 export const fetchHarnesses = (devcontainerId: string): Promise<HarnessStatusList> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses`)
 
+export const installHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
+  sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/install`, 'POST') as Promise<HarnessStatus>
+
 export const authenticateHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
   sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/authenticate`, 'POST') as Promise<HarnessStatus>
+
+export const fetchDelegatedRuns = (devcontainerId: string): Promise<DelegatedRunList> =>
+  getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/delegated-runs`)

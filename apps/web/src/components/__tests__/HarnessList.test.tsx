@@ -25,16 +25,26 @@ describe('HarnessList', () => {
 
   it('offers Authenticate on an installed-but-unauthenticated harness', () => {
     setup()
-    expect(screen.getByTitle('Authenticate codex')).toBeTruthy()
+    expect((screen.getByTitle('Authenticate codex') as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('offers Authenticate on a not-installed harness (install-on-demand)', () => {
+  it('offers Install on a not-installed harness', () => {
     setup()
-    expect(screen.getByTitle('Authenticate cursor')).toBeTruthy()
+    expect(screen.getByTitle('Install cursor')).toBeTruthy()
+  })
+
+  it('greys out Authenticate until the harness is installed', () => {
+    setup()
+    expect((screen.getByTitle('Install cursor first') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('shows a check tick for an authenticated harness', () => {
     setup()
     expect(screen.getByTitle('Authenticated')).toBeTruthy()
+  })
+
+  it('shows a tick for installed harnesses', () => {
+    setup()
+    expect(screen.getAllByTitle('Installed').length).toBe(2)
   })
 })

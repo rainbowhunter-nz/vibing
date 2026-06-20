@@ -1,11 +1,19 @@
 import { useState } from 'react'
 import type { HarnessStatus } from '../lib/api/types'
-import { authenticateHarness } from '../lib/api'
+import { authenticateHarness, installHarness } from '../lib/api'
 import { cn } from '../lib/cn'
 
 const checkIcon = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
+
+const installIcon = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
   </svg>
 )
 
@@ -69,22 +77,37 @@ export function HarnessList({ devcontainerId, harnesses, onChange }: {
 
   return (
     <div className="rounded-xl border border-border bg-surface-rail">
-      <div className="grid grid-cols-[1fr_120px] border-b border-border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">
+      <div className="grid grid-cols-[1fr_120px_120px] border-b border-border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">
         <span>Harness</span>
+        <span className="text-center">Installed</span>
         <span className="text-center">Authenticated</span>
       </div>
       {harnesses.length === 0 ? (
         <p className="px-3 py-4 text-[13px] text-text-muted">No harnesses reported.</p>
       ) : (
         harnesses.map((h) => (
-          <div key={h.name} className="grid grid-cols-[1fr_120px] items-center border-b border-border px-3 py-3 last:border-b-0">
+          <div key={h.name} className="grid grid-cols-[1fr_120px_120px] items-center border-b border-border px-3 py-3 last:border-b-0">
             <span className="text-[13px] font-medium text-text">{h.name}</span>
+            <span className="flex justify-center">
+              {h.installed ? (
+                <Tick label="Installed" />
+              ) : (
+                <ActionIcon
+                  title={`Install ${h.name}`}
+                  busy={busy === `install:${h.name}`}
+                  onClick={() => run(`install:${h.name}`, () => installHarness(devcontainerId, h.name))}
+                >
+                  {installIcon}
+                </ActionIcon>
+              )}
+            </span>
             <span className="flex justify-center">
               {h.authenticated ? (
                 <Tick label="Authenticated" />
               ) : (
                 <ActionIcon
-                  title={`Authenticate ${h.name}`}
+                  title={h.installed ? `Authenticate ${h.name}` : `Install ${h.name} first`}
+                  disabled={!h.installed}
                   busy={busy === `auth:${h.name}`}
                   onClick={() => run(`auth:${h.name}`, () => authenticateHarness(devcontainerId, h.name))}
                 >

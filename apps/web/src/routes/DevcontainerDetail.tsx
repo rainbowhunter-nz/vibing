@@ -4,6 +4,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
 import { HarnessList } from '../components/HarnessList'
+import { Dialog } from '../components/Dialog'
 import {
   fetchDevcontainer,
   startDevcontainer,
@@ -43,9 +44,31 @@ function ConnDot({ label, ok }: { label: string; ok: boolean }) {
   )
 }
 
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">{label}</div>
+      <div className="mt-0.5 text-[13px] text-text">{value}</div>
+    </div>
+  )
+}
+
+function DetailsDialog({ dc, onClose }: { dc: DevcontainerView; onClose: () => void }) {
+  return (
+    <Dialog title={dc.name} onClose={onClose}>
+      <div className="space-y-3">
+        <DetailRow label="Status" value={dc.status} />
+        <DetailRow label="Local path" value={dc.local_path} />
+        <DetailRow label="Created" value={formatRelativeTime(dc.created_at)} />
+        <DetailRow label="Updated" value={formatRelativeTime(dc.updated_at)} />
+      </div>
+    </Dialog>
+  )
+}
+
 function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () => void }) {
   const [busy, setBusy] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
   const running = RUNNING.has(dc.status)
 
   async function act(fn: () => Promise<unknown>) {
@@ -61,7 +84,14 @@ function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () 
   return (
     <div className="border-b border-border bg-surface-rail px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="text-[15px] font-semibold text-text">{dc.name}</span>
+        <button
+          type="button"
+          onClick={() => setShowDetails(true)}
+          className="text-[15px] font-semibold text-text hover:text-accent"
+          title="View details"
+        >
+          {dc.name}
+        </button>
         <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
           {dc.status}
         </span>
@@ -86,31 +116,9 @@ function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () 
               Start
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="text-[11px] text-text-muted hover:text-text"
-          >
-            {expanded ? '▾' : '▸'} details
-          </button>
         </div>
       </div>
-      {expanded && (
-        <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-2 border-t border-border pt-3 text-[13px]">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">Local path</div>
-            <div className="mt-0.5 text-text">{dc.local_path}</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">Created</div>
-            <div className="mt-0.5 text-text">{formatRelativeTime(dc.created_at)}</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">Updated</div>
-            <div className="mt-0.5 text-text">{formatRelativeTime(dc.updated_at)}</div>
-          </div>
-        </div>
-      )}
+      {showDetails && <DetailsDialog dc={dc} onClose={() => setShowDetails(false)} />}
     </div>
   )
 }

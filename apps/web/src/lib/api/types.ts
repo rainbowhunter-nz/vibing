@@ -90,6 +90,23 @@ export interface HarnessStatusList {
   items: HarnessStatus[]
 }
 
+// Delegated runs (runtime DelegatedRunManager, ADR-0013).
+export type DelegatedRunStatus = 'running' | 'completed' | 'failed' | 'stopped'
+
+export interface DelegatedRun {
+  run_id: string
+  harness: string
+  model: string
+  status: DelegatedRunStatus
+  result: string | null
+  error: Record<string, unknown> | null
+  started_at: string
+}
+
+export interface DelegatedRunList {
+  items: DelegatedRun[]
+}
+
 // Backend error envelope (src/vibing_api/core/errors.py).
 
 export interface ApiErrorBody {

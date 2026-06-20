@@ -108,7 +108,7 @@ describe('MockEventSource — addEventListener and invalidate delivery', () => {
       scopes.push(JSON.parse((e as MessageEvent).data).scope as string)
     })
 
-    const all = ['devcontainers', 'runtime', 'harnesses'] as const
+    const all = ['devcontainers', 'runtime', 'harnesses', 'delegated_runs'] as const
     for (const s of all) emitInvalidation(s)
 
     expect(scopes).toEqual([...all])
