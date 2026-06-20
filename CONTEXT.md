@@ -62,13 +62,12 @@ _Avoid_: runtime event, harness event
 One one-shot execution of a *managed* Coding Harness, spawned through the Devcontainer Runtime's MCP
 server when the main harness delegates a task. Carries a harness, a model, and a prompt; produces a
 result. Unattended and fully autonomous (runs in the harness's bypass mode — no human to answer
-approvals). Not durable or resumable — when it ends, it is done. **In-container only**: observable
-by the main harness via MCP (`get_status`/`get_result`); the Control Plane does not track it.
+approvals). Not durable or resumable — when it ends, it is done. Spawned and observed in-container via MCP (`get_status`/`get_result`); additionally reported to the Control Plane as a read-only snapshot projection over the runtime channel (ADR-0016). Non-durable — the CP projection is best-effort and may be empty after a runtime restart.
 _Avoid_: agent-session, subagent session, job, task (when ambiguous)
 
 **Command**:
 A message the Control Plane sends to a Devcontainer Runtime expressing intent. The extensible
-runtime channel; today only `authenticate_harness`. Flows Control Plane → Devcontainer Runtime.
+runtime channel; today `authenticate_harness` and `install_harness`. Flows Control Plane → Devcontainer Runtime.
 _Avoid_: action, request, message; not used for the Devcontainer lifecycle (the Control Plane drives
 that in-process, not via a Command)
 
@@ -97,6 +96,4 @@ One lifecycle now — the Devcontainer's, owned by the **Control Plane**.
 The Control Plane is the **single writer of derived state and mutates it directly** — there is no
 `runtime_events` log and no projection/reducer layer. When the Dev Container CLI advances the
 lifecycle, or a Devcontainer Runtime reports Harness Status, the Control Plane writes the read model
-and publishes an SSE invalidation in the same step. The runtime channel carries exactly three
-message kinds: `register`, `command` (Control Plane → Runtime), and `harness_status`
-(Runtime → Control Plane).
+and publishes an SSE invalidation in the same step. The runtime channel carries four message kinds: `register`, `command` (Control Plane → Runtime), `harness_status` and `delegated_runs` (Runtime → Control Plane).
