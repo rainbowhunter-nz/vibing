@@ -1,5 +1,6 @@
-"""Shared control-plane message shapes for Vibing host and devcontainer runtimes."""
+"""Shared control-plane message shapes and wire codec for the Vibing runtime channel."""
 
+from .channel import decode, encode
 from .commands import COMMAND_TYPES, Command, CommandType
 from .messages import (
     CommandEnvelope,
@@ -20,4 +21,6 @@ __all__ = [
     "HarnessStatusEnvelope",
     "HarnessStatusItem",
     "RegisterEnvelope",
+    "decode",
+    "encode",
 ]
