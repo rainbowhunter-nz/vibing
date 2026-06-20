@@ -3,12 +3,7 @@
 from typing import Protocol
 
 from fastapi import WebSocket
-from vibing_protocol import Command, CommandEnvelope, DelegatedRunItem, HarnessStatusItem, encode
-
-from vibing_api.core.broadcaster import Broadcaster, SseEvent
-from vibing_api.core.database import get_connection
-from vibing_api.repositories.delegated_runs import DelegatedRunRepository
-from vibing_api.repositories.harness_status import HarnessStatusRepository
+from vibing_protocol import Command, CommandEnvelope, encode
 
 
 class RuntimeConnection(Protocol):
@@ -51,34 +46,3 @@ class RuntimeRegistry:
         if connection is None:
             raise RuntimeError(f"No runtime connection for {devcontainer_id!r}")
         await connection.send(command)
-
-
-def persist_harness_status(
-    devcontainer_id: str,
-    items: list[HarnessStatusItem],
-    broadcaster: Broadcaster | None = None,
-) -> None:
-    with get_connection() as conn:
-        repo = HarnessStatusRepository(conn)
-        for item in items:
-            repo.upsert(
-                devcontainer_id,
-                item.name,
-                installed=item.installed,
-                authenticated=item.authenticated,
-            )
-        conn.commit()
-    if broadcaster is not None:
-        broadcaster.publish(SseEvent(scope="harnesses", ids=[devcontainer_id]))
-
-
-def persist_delegated_runs(
-    devcontainer_id: str,
-    items: list[DelegatedRunItem],
-    broadcaster: Broadcaster | None = None,
-) -> None:
-    with get_connection() as conn:
-        DelegatedRunRepository(conn).replace(devcontainer_id, items)
-        conn.commit()
-    if broadcaster is not None:
-        broadcaster.publish(SseEvent(scope="delegated_runs", ids=[devcontainer_id]))

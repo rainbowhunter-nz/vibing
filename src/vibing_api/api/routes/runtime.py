@@ -13,12 +13,8 @@ from pydantic import ValidationError
 from vibing_protocol import DelegatedRunsEnvelope, HarnessStatusEnvelope, RegisterEnvelope, decode
 
 from vibing_api.core.broadcaster import SseEvent
-from vibing_api.core.runtime_channel import (
-    RuntimeRegistry,
-    WebSocketRuntimeConnection,
-    persist_delegated_runs,
-    persist_harness_status,
-)
+from vibing_api.core.runtime_channel import RuntimeRegistry, WebSocketRuntimeConnection
+from vibing_api.core.runtime_intake import persist_delegated_runs, persist_harness_status
 
 router = APIRouter(tags=["runtime"], prefix="/runtime")
 

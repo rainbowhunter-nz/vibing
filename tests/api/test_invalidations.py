@@ -6,7 +6,7 @@ Updated for ADR-0014/0015: event-sourcing layer removed; broadcaster is tested d
 from fastapi.testclient import TestClient
 
 from vibing_api.core.broadcaster import Broadcaster, SseEvent
-from vibing_api.core.runtime_channel import persist_harness_status
+from vibing_api.core.runtime_intake import persist_harness_status
 
 
 _DC = "dc-1"
