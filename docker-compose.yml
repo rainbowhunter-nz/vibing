@@ -1,6 +1,6 @@
 services:
   vibing:
-    build: .
+    # Image is built separately by scripts/build-image.sh; compose only runs it.
     image: vibing
     ports:
       - "8080:8080"

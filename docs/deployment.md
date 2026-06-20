@@ -37,11 +37,17 @@ exact rootless/rootful socket paths).
 
 ## Run
 
+Build the image first, then start the stack. `scripts/build-image.sh` produces the
+`vibing` image (Control Plane + frontend); compose only runs it.
+
 ```bash
-docker compose up --build
+scripts/build-image.sh
+docker compose up
 ```
 
 Open http://localhost:8080. Health check: `curl http://localhost:8080/api/v1/health`.
+
+To pick up code changes, re-run `scripts/build-image.sh`, then `docker compose up` again.
 
 ## Linux caveat: host.docker.internal in devcontainers
 
@@ -60,7 +66,7 @@ The `devcontainer_examples/sandbox` example already includes this.
 
 The Control Plane injects the Devcontainer Runtime when a devcontainer starts — it
 copies `uv` and the `vibing` wheel from the Control Plane image into the
-container and runs `uv tool install` before launching `vibing devcontainer-runtime`.
+container and runs `uv tool install` before launching `vibing runtime devcontainer`.
 Your project's devcontainer image does **not** need Vibing-specific packages pre-installed.
 
 Each devcontainer must provide:
@@ -74,7 +80,7 @@ See [`devcontainer_examples/sandbox/README.md`](../devcontainer_examples/sandbox
 
 ## Verify end-to-end
 
-1. `docker compose up --build`, then open the UI.
+1. `scripts/build-image.sh && docker compose up`, then open the UI.
 2. Create a devcontainer whose `local_path` is a folder under `PROJECTS_DIR`.
 3. Start it; confirm the container appears on the host (`docker ps`) and the
    Devcontainer Runtime connects (Harness Status appears in the UI).

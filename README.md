@@ -10,7 +10,7 @@ without losing track of running containers, harness status, or delegated work.
 - **Frontend:** React + Vite app in `apps/web`.
 - **Control Plane:** FastAPI + SQLite backend in the root Python package. Drives the Devcontainer
   lifecycle directly in-process (no separate host worker).
-- **Devcontainer Runtime:** `vibing devcontainer-runtime`, runs inside a devcontainer. Manages
+- **Devcontainer Runtime:** `vibing runtime devcontainer`, runs inside a devcontainer. Manages
   harness credentials, reports Harness Status, and hosts the MCP delegation server.
 
 For deeper architecture, domain language, and ADRs, see [`docs/overview.md`](docs/overview.md).
@@ -40,15 +40,15 @@ Use separate terminals.
 
 ```bash
 uv sync
-uv run uvicorn vibing_api.main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn vibing_api.main:app --reload --host 127.0.0.1 --port 8080
 ```
 
-Backend: `http://localhost:8000`
+Backend: `http://localhost:8080`
 
 Health check:
 
 ```bash
-curl http://localhost:8000/api/v1/health
+curl http://localhost:8080/api/v1/health
 ```
 
 ### 2. Frontend
@@ -61,7 +61,7 @@ pnpm dev
 
 Frontend: `http://localhost:5173`
 
-The Vite dev server proxies `/api/v1/*` to `http://localhost:8000`.
+The Vite dev server proxies `/api/v1/*` to `http://localhost:8080`.
 
 The Control Plane drives devcontainer lifecycles directly. No additional process is needed for
 lifecycle operations — start the backend and the frontend and you have the full local stack.
@@ -81,15 +81,23 @@ cd apps/web
 pnpm build
 ```
 
-Production-like container preview:
+Single image (control plane + frontend baked in):
+
+```bash
+scripts/build-image.sh   # builds the `vibing` image
+```
+
+Quick preview of the built image (UI/API only — no host Docker socket, so devcontainer
+lifecycle is disabled):
 
 ```bash
 ./scripts/start.sh
 ./scripts/start.sh --stop
 ```
 
-For a full single-container deployment (control plane + frontend) via docker compose,
-see [`docs/deployment.md`](docs/deployment.md).
+For full docker-out-of-docker deployment, run the pre-built image via compose
+(`scripts/build-image.sh` then `docker compose up`) — see
+[`docs/deployment.md`](docs/deployment.md).
 
 ## Test And Check
 
@@ -125,7 +133,7 @@ Runtime help:
 
 ```bash
 uv run vibing --help
-uv run vibing devcontainer-runtime --help
+uv run vibing runtime devcontainer --help
 uv run vibing harness --help
 uv run vibing system --help
 ```
