@@ -16,6 +16,7 @@ from vibing_protocol import DelegatedRunsEnvelope, HarnessStatusEnvelope, Regist
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.runtime_channel import (
     RuntimeRegistry,
+    WebSocketRuntimeConnection,
     persist_delegated_runs,
     persist_harness_status,
 )
@@ -117,13 +118,14 @@ async def agent_ws(websocket: WebSocket) -> None:
             return None
         if not envelope.devcontainer_id:
             raise _Reject(_AGENT_MISSING_ID)
-        if not manager.register(envelope.devcontainer_id, websocket):
+        connection = WebSocketRuntimeConnection(websocket)
+        if not manager.register(envelope.devcontainer_id, connection):
             raise _Reject(_AGENT_ALREADY_CONNECTED)
         devcontainer_id = envelope.devcontainer_id
         _broadcast_connection(websocket, ids=[devcontainer_id])
 
         def unregister() -> None:
-            manager.unregister(devcontainer_id, websocket)
+            manager.unregister(devcontainer_id, connection)
             _broadcast_connection(websocket, ids=[devcontainer_id])
 
         return unregister

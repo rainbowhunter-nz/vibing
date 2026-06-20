@@ -14,8 +14,7 @@ FastAPI Control Plane. Owns API routes, SQLite state, runtime WS intake. Drives 
 - `api/schemas/`: API response/request models.
 - `core/devcontainer_service.py`: orchestrates `devcontainer up`/stop, runtime injection, and direct read-model writes.
 - `core/runtime_injector.py`: `docker cp` + `uv tool install` + detached exec of `vibing devcontainer-runtime`.
-- `core/runtime_channel.py`: runtime WS manager; routes `register`, `harness_status`, and `delegated_runs` messages; sends `command` envelopes.
-- `core/commands.py`: builds typed `authenticate_harness` Command envelopes.
+- `core/runtime_channel.py`: `RuntimeRegistry` holds one `RuntimeConnection` per `devcontainer_id` and sends `command`s to it; `WebSocketRuntimeConnection` is the real adapter and owns the command wire format. Also routes inbound `harness_status`/`delegated_runs` to direct persistence. Command vocabulary lives in `vibing_protocol.commands`.
 - `core/broadcaster.py`: SSE invalidation fan-out.
 - `core/database.py`, `core/schema.py`: SQLite setup and schema.
 - `repositories/`: SQL only. `devcontainers.py`, `harness_credentials.py`, `harness_status.py`, `delegated_runs.py`. Callers commit transactions.

@@ -1,32 +1,30 @@
 """Tests for POST /devcontainers/{id}/harnesses/{name}/install."""
 
-from unittest.mock import AsyncMock
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
+from vibing_protocol import CommandType
+
+if TYPE_CHECKING:
+    from tests.api.conftest import FakeRuntimeConnection
 
 
-def _create_dc(client: TestClient) -> str:
-    resp = client.post("/api/v1/devcontainers", json={"name": "dc", "local_path": "/work/repo"})
-    assert resp.status_code == 201
-    return resp.json()["id"]
-
-
-def test_install_sends_install_command(client: TestClient) -> None:
-    dc_id = _create_dc(client)
-    ws_mock = AsyncMock()
-    ws_mock.send_json = AsyncMock()
-    client.app.state.runtime_manager._connections[dc_id] = ws_mock  # type: ignore[union-attr]
-
+def test_install_sends_install_command(
+    client: TestClient, connected_runtime: tuple[str, FakeRuntimeConnection]
+) -> None:
+    dc_id, connection = connected_runtime
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/harnesses/codex/install")
     assert resp.status_code == 202
 
-    sent = ws_mock.send_json.call_args.args[0]
-    assert sent["command"]["type"] == "install_harness"
-    assert sent["command"]["payload"] == {"harness": "codex"}
+    assert len(connection.commands) == 1
+    command = connection.commands[0]
+    assert command.type == CommandType.INSTALL_HARNESS
+    assert command.payload == {"harness": "codex"}
 
 
-def test_install_409_when_no_runtime(client: TestClient) -> None:
-    dc_id = _create_dc(client)
-    resp = client.post(f"/api/v1/devcontainers/{dc_id}/harnesses/codex/install")
+def test_install_409_when_no_runtime(client: TestClient, devcontainer_id: str) -> None:
+    resp = client.post(f"/api/v1/devcontainers/{devcontainer_id}/harnesses/codex/install")
     assert resp.status_code == 409
     assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"

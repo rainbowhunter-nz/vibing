@@ -1,15 +1,17 @@
-"""Unit tests for persist_harness_status in runtime_channel."""
+"""Unit tests for runtime_channel: the WebSocket connection adapter and persistence."""
 
+import asyncio
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.database import get_connection, init_db
-from vibing_api.core.runtime_channel import persist_harness_status
+from vibing_api.core.runtime_channel import WebSocketRuntimeConnection, persist_harness_status
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 from vibing_api.repositories.harness_status import HarnessStatusRepository
-from vibing_protocol import HarnessStatusItem
+from vibing_protocol import Command, CommandEnvelope, CommandType, HarnessStatusItem
 
 
 class _FakeBroadcaster:
@@ -26,6 +28,24 @@ def isolated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'test.db'}")
     init_db()
+
+
+def test_websocket_runtime_connection_sends_command_envelope() -> None:
+    websocket = AsyncMock()
+    connection = WebSocketRuntimeConnection(websocket)
+    command = Command(
+        type=CommandType.INSTALL_HARNESS,
+        devcontainer_id="dc-1",
+        payload={"harness": "codex"},
+    )
+
+    asyncio.run(connection.send(command))
+
+    websocket.send_json.assert_awaited_once()
+    sent = websocket.send_json.call_args[0][0]
+    assert sent == CommandEnvelope(command=command).model_dump()
+    assert sent["type"] == "command"
+    assert sent["command"]["payload"] == {"harness": "codex"}
 
 
 def _seed_devcontainer() -> str:

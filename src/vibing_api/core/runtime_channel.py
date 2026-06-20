@@ -1,4 +1,6 @@
-"""Per-devcontainer runtime WebSocket registry."""
+"""Per-devcontainer runtime connection registry."""
+
+from typing import Protocol
 
 from fastapi import WebSocket
 from vibing_protocol import Command, CommandEnvelope, DelegatedRunItem, HarnessStatusItem
@@ -9,30 +11,46 @@ from vibing_api.repositories.delegated_runs import DelegatedRunRepository
 from vibing_api.repositories.harness_status import HarnessStatusRepository
 
 
+class RuntimeConnection(Protocol):
+    """A live link to one Devcontainer Runtime, able to receive Commands."""
+
+    async def send(self, command: Command) -> None: ...
+
+
+class WebSocketRuntimeConnection:
+    """RuntimeConnection over the runtime's WebSocket; owns the wire format."""
+
+    def __init__(self, websocket: WebSocket) -> None:
+        self._websocket = websocket
+
+    async def send(self, command: Command) -> None:
+        await self._websocket.send_json(CommandEnvelope(command=command).model_dump())
+
+
 class RuntimeRegistry:
-    """Keyed WebSocket slots, one per devcontainer_id."""
+    """Keyed runtime connections, one per devcontainer_id."""
 
     def __init__(self) -> None:
-        self._connections: dict[str, WebSocket] = {}
+        self._connections: dict[str, RuntimeConnection] = {}
 
     def is_connected(self, devcontainer_id: str) -> bool:
         return devcontainer_id in self._connections
 
-    def register(self, devcontainer_id: str, websocket: WebSocket) -> bool:
+    def register(self, devcontainer_id: str, connection: RuntimeConnection) -> bool:
         if devcontainer_id in self._connections:
             return False
-        self._connections[devcontainer_id] = websocket
+        self._connections[devcontainer_id] = connection
         return True
 
-    def unregister(self, devcontainer_id: str, websocket: WebSocket) -> None:
-        if self._connections.get(devcontainer_id) is websocket:
+    def unregister(self, devcontainer_id: str, connection: RuntimeConnection) -> None:
+        if self._connections.get(devcontainer_id) is connection:
             del self._connections[devcontainer_id]
 
     async def send_command(self, devcontainer_id: str, command: Command) -> None:
-        ws = self._connections.get(devcontainer_id)
-        if ws is None:
+        connection = self._connections.get(devcontainer_id)
+        if connection is None:
             raise RuntimeError(f"No runtime connection for {devcontainer_id!r}")
-        await ws.send_json(CommandEnvelope(command=command).model_dump())
+        await connection.send(command)
 
 
 def persist_harness_status(
