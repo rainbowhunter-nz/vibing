@@ -50,7 +50,7 @@ class RuntimeUnavailableError(APIError):
     status_code = 409
     code = RUNTIME_UNAVAILABLE
 
-    def __init__(self, message: str = "No Host Runtime Worker is connected") -> None:
+    def __init__(self, message: str = "No Devcontainer Runtime is connected") -> None:
         super().__init__(message)
 
 
