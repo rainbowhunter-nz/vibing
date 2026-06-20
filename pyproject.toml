@@ -35,10 +35,8 @@ build-backend = "uv_build"
 module-name = [
     "vibing_api",
     "vibing_devcontainer_runtime",
-    "vibing_host_runtime",
     "vibing_cli",
     "vibing_protocol",
-    "vibing_runtime_client",
 ]
 
 [tool.ruff]
