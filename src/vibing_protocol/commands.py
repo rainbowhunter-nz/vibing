@@ -10,6 +10,7 @@ class CommandType(StrEnum):
     """Control-plane command vocabulary. Values are the wire strings."""
 
     AUTHENTICATE_HARNESS = auto()
+    INSTALL_HARNESS = auto()
 
 
 COMMAND_TYPES: frozenset[CommandType] = frozenset(CommandType)

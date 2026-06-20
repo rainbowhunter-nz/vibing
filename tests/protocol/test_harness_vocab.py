@@ -12,6 +12,12 @@ def test_authenticate_harness_command_type_wire_value():
     assert cmd.payload["harness"] == "codex"
 
 
+def test_install_harness_in_vocab():
+    from vibing_protocol import CommandType
+
+    assert CommandType.INSTALL_HARNESS.value == "install_harness"
+
+
 def test_harness_status_envelope_round_trips():
     env = HarnessStatusEnvelope(
         devcontainer_id="dc-1",

@@ -35,3 +35,19 @@ class HarnessStatusEnvelope(BaseModel):
     type: Literal["harness_status"] = "harness_status"
     devcontainer_id: str
     items: list[HarnessStatusItem]
+
+
+class DelegatedRunItem(BaseModel):
+    run_id: str
+    harness: str
+    model: str
+    status: str
+    result: str | None = None
+    error: dict | None = None
+    started_at: str
+
+
+class DelegatedRunsEnvelope(BaseModel):
+    type: Literal["delegated_runs"] = "delegated_runs"
+    devcontainer_id: str
+    items: list[DelegatedRunItem]

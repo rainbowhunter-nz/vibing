@@ -3,6 +3,8 @@
 from .commands import COMMAND_TYPES, Command, CommandType
 from .messages import (
     CommandEnvelope,
+    DelegatedRunItem,
+    DelegatedRunsEnvelope,
     HarnessStatusEnvelope,
     HarnessStatusItem,
     RegisterEnvelope,
@@ -13,6 +15,8 @@ __all__ = [
     "Command",
     "CommandEnvelope",
     "CommandType",
+    "DelegatedRunItem",
+    "DelegatedRunsEnvelope",
     "HarnessStatusEnvelope",
     "HarnessStatusItem",
     "RegisterEnvelope",
