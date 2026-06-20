@@ -1,6 +1,7 @@
 """Unit tests for runtime_channel: the WebSocket connection adapter and persistence."""
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -41,8 +42,8 @@ def test_websocket_runtime_connection_sends_command_envelope() -> None:
 
     asyncio.run(connection.send(command))
 
-    websocket.send_json.assert_awaited_once()
-    sent = websocket.send_json.call_args[0][0]
+    websocket.send_text.assert_awaited_once()
+    sent = json.loads(websocket.send_text.call_args[0][0])
     assert sent == CommandEnvelope(command=command).model_dump()
     assert sent["type"] == "command"
     assert sent["command"]["payload"] == {"harness": "codex"}

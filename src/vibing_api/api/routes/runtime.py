@@ -4,14 +4,13 @@ Single WebSocket endpoint `/runtime/agent/ws` — per-devcontainer agent slot ke
 Inbound types: `runtime_registered` (registration), `harness_status` (status update).
 """
 
-import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from logzero import logger
 from pydantic import ValidationError
-from vibing_protocol import DelegatedRunsEnvelope, HarnessStatusEnvelope, RegisterEnvelope
+from vibing_protocol import DelegatedRunsEnvelope, HarnessStatusEnvelope, RegisterEnvelope, decode
 
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.runtime_channel import (
@@ -40,20 +39,12 @@ def _broadcast_connection(websocket: WebSocket, ids: list[str]) -> None:
         broadcaster.publish(SseEvent(scope="runtime", ids=ids))
 
 
-def _parse(raw: str) -> dict[str, Any] | None:
-    try:
-        message = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    return message if isinstance(message, dict) else None
-
-
 async def _serve(websocket: WebSocket, register: Register) -> None:
     await websocket.accept()
     unregister: Callable[[], None] | None = None
     try:
         while True:
-            message = _parse(await websocket.receive_text())
+            message = decode(await websocket.receive_text())
             if message is None:
                 continue
             msg_type = message.get("type")

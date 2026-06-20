@@ -3,7 +3,7 @@
 from typing import Protocol
 
 from fastapi import WebSocket
-from vibing_protocol import Command, CommandEnvelope, DelegatedRunItem, HarnessStatusItem
+from vibing_protocol import Command, CommandEnvelope, DelegatedRunItem, HarnessStatusItem, encode
 
 from vibing_api.core.broadcaster import Broadcaster, SseEvent
 from vibing_api.core.database import get_connection
@@ -24,7 +24,7 @@ class WebSocketRuntimeConnection:
         self._websocket = websocket
 
     async def send(self, command: Command) -> None:
-        await self._websocket.send_json(CommandEnvelope(command=command).model_dump())
+        await self._websocket.send_text(encode(CommandEnvelope(command=command)))
 
 
 class RuntimeRegistry:
