@@ -11,10 +11,14 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from logzero import logger
 from pydantic import ValidationError
-from vibing_protocol import HarnessStatusEnvelope, RegisterEnvelope
+from vibing_protocol import DelegatedRunsEnvelope, HarnessStatusEnvelope, RegisterEnvelope
 
 from vibing_api.core.broadcaster import SseEvent
-from vibing_api.core.runtime_channel import RuntimeRegistry, persist_harness_status
+from vibing_api.core.runtime_channel import (
+    RuntimeRegistry,
+    persist_delegated_runs,
+    persist_harness_status,
+)
 
 router = APIRouter(tags=["runtime"], prefix="/runtime")
 
@@ -61,21 +65,38 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
                     await websocket.send_json({"type": "registered"})
                 continue
 
-            if unregister is None or msg_type != "harness_status":
+            if unregister is None:
                 continue
 
-            try:
-                envelope = HarnessStatusEnvelope.model_validate(message)
-            except ValidationError:
+            if msg_type == "harness_status":
+                try:
+                    envelope = HarnessStatusEnvelope.model_validate(message)
+                except ValidationError:
+                    continue
+                broadcaster = getattr(websocket.app.state, "broadcaster", None)
+                try:
+                    persist_harness_status(envelope.devcontainer_id, envelope.items, broadcaster)
+                except Exception:
+                    logger.exception(
+                        "Failed to persist harness status (devcontainer=%s)",
+                        envelope.devcontainer_id,
+                    )
                 continue
-            broadcaster = getattr(websocket.app.state, "broadcaster", None)
-            try:
-                persist_harness_status(envelope.devcontainer_id, envelope.items, broadcaster)
-            except Exception:
-                logger.exception(
-                    "Failed to persist harness status (devcontainer=%s)",
-                    envelope.devcontainer_id,
-                )
+
+            if msg_type == "delegated_runs":
+                try:
+                    runs_env = DelegatedRunsEnvelope.model_validate(message)
+                except ValidationError:
+                    continue
+                broadcaster = getattr(websocket.app.state, "broadcaster", None)
+                try:
+                    persist_delegated_runs(runs_env.devcontainer_id, runs_env.items, broadcaster)
+                except Exception:
+                    logger.exception(
+                        "Failed to persist delegated runs (devcontainer=%s)",
+                        runs_env.devcontainer_id,
+                    )
+                continue
     except WebSocketDisconnect:
         pass
     except _Reject as reject:

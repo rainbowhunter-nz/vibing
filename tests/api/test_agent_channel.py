@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.database import get_connection, init_db
 from vibing_api.core.runtime_channel import RuntimeRegistry
+from vibing_api.repositories.delegated_runs import DelegatedRunRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 from vibing_api.repositories.harness_status import HarnessStatusRepository
 
@@ -75,6 +76,24 @@ def _harness_status_msg(dc_id: str) -> dict[str, Any]:
         "items": [
             {"name": "claude", "installed": True, "authenticated": True},
             {"name": "gh", "installed": False, "authenticated": False},
+        ],
+    }
+
+
+def _delegated_runs_msg(dc_id: str) -> dict[str, Any]:
+    return {
+        "type": "delegated_runs",
+        "devcontainer_id": dc_id,
+        "items": [
+            {
+                "run_id": "run-1",
+                "harness": "codex",
+                "model": "m",
+                "status": "running",
+                "result": None,
+                "error": None,
+                "started_at": "2026-06-20T00:00:00+00:00",
+            }
         ],
     }
 
@@ -199,3 +218,35 @@ def test_registry_unregister() -> None:
     reg.register("dc-1", ws)
     reg.unregister("dc-1", ws)
     assert not reg.is_connected("dc-1")
+
+
+# ---------------------------------------------------------------------------
+# delegated_runs intake
+# ---------------------------------------------------------------------------
+
+
+def test_delegated_runs_snapshot_is_persisted(ws_client: TestClient, db_path: Path) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_register_msg(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        ws.send_json(_delegated_runs_msg(dc_id))
+
+    with get_connection() as conn:
+        rows = DelegatedRunRepository(conn).list(dc_id)
+    assert [r.run_id for r in rows] == ["run-1"]
+
+
+def test_delegated_runs_publishes_sse_invalidation(
+    ws_client: TestClient, spy: _FakeBroadcaster, db_path: Path
+) -> None:
+    dc_id = _seed_devcontainer()
+    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
+        ws.send_json(_register_msg(dc_id))
+        assert ws.receive_json() == {"type": "registered"}
+        spy.published.clear()
+        ws.send_json(_delegated_runs_msg(dc_id))
+
+    dr_events = [e for e in spy.published if e.scope == "delegated_runs"]
+    assert len(dr_events) == 1
+    assert dr_events[0].ids == [dc_id]

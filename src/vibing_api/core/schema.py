@@ -5,7 +5,7 @@ Keep this file the single source of truth for the on-disk shape.
 
 import sqlite3
 
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "7"
 
 _TABLE_STATEMENTS: tuple[str, ...] = (
     """
@@ -41,10 +41,25 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS delegated_runs (
+        devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL,
+        harness TEXT NOT NULL,
+        model TEXT NOT NULL,
+        status TEXT NOT NULL,
+        result TEXT,
+        error TEXT,
+        started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (devcontainer_id, run_id)
+    )
+    """,
 )
 
 _INDEX_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_harness_status_devcontainer ON harness_status(devcontainer_id)",
+    "CREATE INDEX IF NOT EXISTS idx_delegated_runs_devcontainer ON delegated_runs(devcontainer_id)",
 )
 
 

@@ -29,6 +29,15 @@ def authenticate(devcontainer_id: str, name: str, json_: JsonOption = False) -> 
     )
 
 
+@app.command("install")
+def install(devcontainer_id: str, name: str, json_: JsonOption = False) -> None:
+    """Trigger harness install."""
+    render(
+        request("POST", f"{_DC_BASE}/{devcontainer_id}/harnesses/{name}/install"),
+        json_,
+    )
+
+
 @creds_app.command("set")
 def creds_set(
     name: str,

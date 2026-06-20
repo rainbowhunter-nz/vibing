@@ -35,7 +35,13 @@ def test_schema_has_expected_tables(tmp_path, monkeypatch):
     tables = {
         r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
-    assert tables == {"app_meta", "devcontainers", "harness_status", "harness_credentials"}
+    assert tables == {
+        "app_meta",
+        "devcontainers",
+        "harness_status",
+        "harness_credentials",
+        "delegated_runs",
+    }
 
 
 def test_init_db_creates_database_file(db_path: Path) -> None:
@@ -49,7 +55,7 @@ def test_init_db_records_schema_version(db_path: Path) -> None:
     with get_connection() as conn:
         row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     assert row is not None
-    assert row[0] == "6"
+    assert row[0] == "7"
 
 
 def test_devcontainers_table_exists_with_required_columns(db_path: Path) -> None:

@@ -28,6 +28,23 @@ def list_harnesses(devcontainer_id: str) -> HarnessStatusList:
 
 
 @router.post(
+    "/{devcontainer_id}/harnesses/{name}/install",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def install_harness(devcontainer_id: str, name: str, request: Request) -> dict:
+    runtime_manager: RuntimeRegistry = request.app.state.runtime_manager
+    if not runtime_manager.is_connected(devcontainer_id):
+        raise RuntimeUnavailableError(f"No runtime connected for devcontainer {devcontainer_id!r}")
+    command = Command(
+        type=CommandType.INSTALL_HARNESS,
+        devcontainer_id=devcontainer_id,
+        payload={"harness": name},
+    )
+    await runtime_manager.send_command(devcontainer_id, command)
+    return {}
+
+
+@router.post(
     "/{devcontainer_id}/harnesses/{name}/authenticate",
     status_code=status.HTTP_202_ACCEPTED,
 )

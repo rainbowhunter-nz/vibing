@@ -3,7 +3,7 @@
 Callers invoke `broadcaster.publish(SseEvent(...))` to notify clients to refetch canonical
 HTTP data. No payload data is sent — only scope + ids.
 
-Scopes: devcontainers | runtime | harnesses
+Scopes: devcontainers | runtime | harnesses | delegated_runs
 
 Thread-safe: publish() may be called from any thread. subscribe/unsubscribe are
 called from the async request context (FastAPI route coroutines).
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-Scope = Literal["devcontainers", "runtime", "harnesses"]
+Scope = Literal["devcontainers", "runtime", "harnesses", "delegated_runs"]
 
 
 @dataclass(frozen=True)

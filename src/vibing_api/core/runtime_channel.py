@@ -51,3 +51,17 @@ def persist_harness_status(
         conn.commit()
     if broadcaster is not None:
         broadcaster.publish(SseEvent(scope="harnesses", ids=[devcontainer_id]))
+
+
+def persist_delegated_runs(
+    devcontainer_id: str,
+    items: list,  # list[DelegatedRunItem]
+    broadcaster: Broadcaster | None = None,
+) -> None:
+    from vibing_api.repositories.delegated_runs import DelegatedRunRepository
+
+    with get_connection() as conn:
+        DelegatedRunRepository(conn).replace(devcontainer_id, items)
+        conn.commit()
+    if broadcaster is not None:
+        broadcaster.publish(SseEvent(scope="delegated_runs", ids=[devcontainer_id]))
