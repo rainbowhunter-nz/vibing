@@ -11,6 +11,7 @@ Events.
 
 import asyncio
 import json
+import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,17 +49,25 @@ DevcontainerResult = DevcontainerSuccess | DevcontainerFailure
 
 
 async def _default_runner(command: list[str]) -> RunResult:
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
-    return RunResult(
-        returncode=process.returncode or 0,
-        stdout=stdout.decode(errors="replace"),
-        stderr=stderr.decode(errors="replace"),
-    )
+    # Capture output via temp files, not pipes: `devcontainer up` spawns a
+    # long-lived attached container keep-alive that inherits the child's stdout,
+    # so a pipe never reaches EOF and `communicate()` would hang forever. Files
+    # let us wait only for the direct child to exit, regardless of grandchildren.
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=out,
+            stderr=err,
+        )
+        await process.wait()
+        out.seek(0)
+        err.seek(0)
+        return RunResult(
+            returncode=process.returncode or 0,
+            stdout=out.read().decode(errors="replace"),
+            stderr=err.read().decode(errors="replace"),
+        )
 
 
 def _last_json_object(text: str) -> dict[str, Any] | None:

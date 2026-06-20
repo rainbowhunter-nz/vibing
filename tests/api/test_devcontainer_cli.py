@@ -9,6 +9,7 @@ from vibing_api.core.devcontainer_cli import (
     DevcontainerFailure,
     DevcontainerSuccess,
     RunResult,
+    _default_runner,
 )
 
 
@@ -126,6 +127,18 @@ def test_missing_cli_returns_failure_without_crashing(tmp_path: Path) -> None:
     assert isinstance(result, DevcontainerFailure)
     assert result.exit_code is None
     assert "not found" in result.message.lower()
+
+
+def test_default_runner_returns_when_grandchild_keeps_stdout_open() -> None:
+    """Regression: `devcontainer up` exits but leaves an attached `docker run`
+    keep-alive that inherited our stdout pipe. Waiting for pipe EOF then hangs
+    forever. The runner must return once the direct child exits."""
+    # bash exits immediately; the backgrounded sleep inherits stdout and holds
+    # the pipe's write end open long after bash is gone.
+    cmd = ["bash", "-c", "echo started; sleep 30 &"]
+    result = asyncio.run(asyncio.wait_for(_default_runner(cmd), timeout=5))
+    assert result.returncode == 0
+    assert "started" in result.stdout
 
 
 def test_missing_local_path_fails_without_invoking_cli(tmp_path: Path) -> None:
