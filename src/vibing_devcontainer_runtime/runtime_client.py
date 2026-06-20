@@ -8,7 +8,6 @@ per-session, so in-flight Commands are never replayed after a disconnect or proc
 
 import asyncio
 import contextlib
-import json
 import signal
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -16,7 +15,7 @@ from typing import Any
 import websockets
 from logzero import logger
 from pydantic import BaseModel, ValidationError
-from vibing_protocol import Command, CommandEnvelope, RegisterEnvelope
+from vibing_protocol import Command, CommandEnvelope, RegisterEnvelope, decode, encode
 
 SendFn = Callable[[BaseModel], Awaitable[None]]
 CommandHandler = Callable[[Command, SendFn], Awaitable[None]]
@@ -105,7 +104,7 @@ class RuntimeChannelClient:
     async def _run_session(self, ws: Any) -> None:
         self._ws = ws
         try:
-            await ws.send(json.dumps(self._register.model_dump()))
+            await ws.send(encode(self._register))
             logger.info("Registered with control plane; awaiting commands")
             if self._on_registered is not None:
                 await self._on_registered()
@@ -114,7 +113,7 @@ class RuntimeChannelClient:
             consumer = asyncio.create_task(self._consume(queue, send))
             try:
                 while not self._stopped:
-                    message = _parse_message(await ws.recv())
+                    message = decode(await ws.recv())
                     if message is not None:
                         await self._dispatch(message, queue, send)
             finally:
@@ -154,18 +153,10 @@ class RuntimeChannelClient:
         if ws is None:
             logger.warning("Dropping %s: runtime channel not connected", type(envelope).__name__)
             return
-        await ws.send(json.dumps(envelope.model_dump()))
+        await ws.send(encode(envelope))
 
     def _make_send(self, ws: Any) -> SendFn:
         async def send(envelope: BaseModel) -> None:
-            await ws.send(json.dumps(envelope.model_dump()))
+            await ws.send(encode(envelope))
 
         return send
-
-
-def _parse_message(raw: str) -> dict[str, Any] | None:
-    try:
-        message = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    return message if isinstance(message, dict) else None
