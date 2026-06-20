@@ -25,6 +25,10 @@ const loginIcon = (
   </svg>
 )
 
+const spinner = (
+  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent" />
+)
+
 function Tick({ label }: { label: string }) {
   return (
     <span title={label} className="inline-flex h-6 w-6 items-center justify-center text-accent">
@@ -53,7 +57,7 @@ function ActionIcon({ title, disabled, busy, onClick, children }: {
           : 'cursor-pointer border-border text-text hover:bg-surface-muted',
       )}
     >
-      {children}
+      {busy ? spinner : children}
     </button>
   )
 }

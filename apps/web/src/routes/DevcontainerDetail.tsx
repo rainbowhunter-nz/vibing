@@ -95,7 +95,10 @@ function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () 
         <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
           {dc.status}
         </span>
-        <ConnDot label="runtime" ok={dc.runtime.runtime_connected} />
+        <ConnDot
+          label={dc.runtime.runtime_connected ? 'runtime' : 'runtime not connected'}
+          ok={dc.runtime.runtime_connected}
+        />
         <div className="ml-auto flex items-center gap-2">
           {dc.status === 'running' ? (
             <button
