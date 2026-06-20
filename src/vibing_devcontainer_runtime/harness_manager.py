@@ -18,6 +18,12 @@ class HarnessManager:
     async def list_statuses(self) -> list[HarnessStatus]:
         return list(await asyncio.gather(*(self._status(a) for a in self._adapters.values())))
 
+    async def install(self, harness: str) -> HarnessStatus:
+        adapter = self._adapters[harness]  # KeyError on unknown harness
+        if not await adapter.is_installed():
+            await adapter.install()
+        return await self._status(adapter)
+
     async def authenticate(self, harness: str, blob: dict[str, Any]) -> HarnessStatus:
         adapter = self._adapters[harness]  # KeyError on unknown harness
         if not await adapter.is_installed():

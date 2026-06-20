@@ -173,6 +173,29 @@ class BoomProcess(HarnessProcess):
         pass
 
 
+def test_report_hook_fires_and_lists_runs():
+    reports: list[list[dict]] = []
+
+    def factory(argv, cwd, env):
+        return ScriptedProcess(CompletedCommand(0, "ok", ""))
+
+    mgr = _mgr(factory=factory)
+
+    async def _report():
+        reports.append(mgr.list_runs())
+
+    async def scenario():
+        mgr.report = _report
+        out = await mgr.spawn("codex", "m", "do it")
+        assert out["status"] in {"completed", "failed"}
+        assert len(reports) >= 2
+        last = mgr.list_runs()
+        assert last[0]["run_id"] == out["run_id"]
+        assert last[0]["started_at"]
+
+    asyncio.run(scenario())
+
+
 def test_wait_exception_marks_failed_and_frees_slot():
     async def scenario():
         mgr = _mgr(factory=lambda *a: BoomProcess(), max_concurrent=1)

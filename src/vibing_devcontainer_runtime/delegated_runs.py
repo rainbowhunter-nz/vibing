@@ -1,16 +1,24 @@
 """DelegatedRunManager: runs managed harnesses unattended (ADR-0013).
 
 Concurrent up to a cap; each run is a HarnessProcess tracked by run id. Runs are not
-durable — results live in memory for the process lifetime. Delegated runs are in-container
-only (ADR-0015 Q9=A); no upward event emission.
+durable — results live in memory for the process lifetime. On every state change,
+calls the optional `report` hook so the caller can push snapshots upstream (ADR-0016).
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from vibing_devcontainer_runtime.harness.base import HarnessAdapter
 from vibing_devcontainer_runtime.harness.process import HarnessProcess, HarnessProcessFactory
+
+ReportFn = Callable[[], Awaitable[None]]
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass
@@ -23,6 +31,7 @@ class _Run:
     error: dict[str, Any] = field(default_factory=dict)
     process: HarnessProcess | None = None
     task: asyncio.Task[None] | None = None
+    started_at: str = ""
 
 
 class DelegatedRunManager:
@@ -34,6 +43,7 @@ class DelegatedRunManager:
         devcontainer_id: str,
         workspace: str,
         max_concurrent: int = 4,
+        report: ReportFn | None = None,
     ) -> None:
         self._adapters = adapters
         self._factory = factory
@@ -42,6 +52,7 @@ class DelegatedRunManager:
         self._max = max_concurrent
         self._runs: dict[str, _Run] = {}
         self._counter = 0
+        self.report = report
 
     def _active(self) -> int:
         return sum(1 for r in self._runs.values() if r.status == "running")
@@ -62,12 +73,13 @@ class DelegatedRunManager:
             raise RuntimeError("delegated runs at capacity")
 
         self._counter += 1
-        run = _Run(run_id=f"run-{self._counter}", harness=harness, model=model)
+        run = _Run(run_id=f"run-{self._counter}", harness=harness, model=model, started_at=_now())
         self._runs[run.run_id] = run
 
         argv = adapter.build_spawn_argv(model, prompt)
         run.process = self._factory(argv, cwd or self._workspace, adapter.spawn_env())
 
+        await self._emit()
         if detached:
             run.task = asyncio.create_task(self._await_run(run, adapter))
             return {"run_id": run.run_id, "status": "running"}
@@ -86,13 +98,14 @@ class DelegatedRunManager:
         except Exception as exc:
             run.status = "failed"
             run.error = {"exit_code": None, "stderr_tail": str(exc)[-4000:]}
-            return
-        if result.returncode == 0:
-            run.status = "completed"
-            run.result = adapter.extract_result(result.stdout)
         else:
-            run.status = "failed"
-            run.error = {"exit_code": result.returncode, "stderr_tail": result.stderr[-4000:]}
+            if result.returncode == 0:
+                run.status = "completed"
+                run.result = adapter.extract_result(result.stdout)
+            else:
+                run.status = "failed"
+                run.error = {"exit_code": result.returncode, "stderr_tail": result.stderr[-4000:]}
+        await self._emit()
 
     def _get(self, run_id: str) -> _Run:
         return self._runs[run_id]  # KeyError on unknown run
@@ -117,9 +130,28 @@ class DelegatedRunManager:
             await run.process.terminate()
         if run.status == "running":
             run.status = "stopped"
+        await self._emit()
         return {"run_id": run_id, "status": run.status}
 
     async def wait_all(self) -> None:
         tasks = [r.task for r in self._runs.values() if r.task is not None and not r.task.done()]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _emit(self) -> None:
+        if self.report is not None:
+            await self.report()
+
+    def list_runs(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "run_id": r.run_id,
+                "harness": r.harness,
+                "model": r.model,
+                "status": r.status,
+                "result": r.result or None,
+                "error": r.error or None,
+                "started_at": r.started_at,
+            }
+            for r in self._runs.values()
+        ]

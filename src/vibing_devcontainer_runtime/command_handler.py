@@ -17,13 +17,15 @@ class HarnessCommandHandler:
         self._devcontainer_id = devcontainer_id
 
     async def handle(self, command: Command, send: SendFn) -> None:
-        if command.type != CommandType.AUTHENTICATE_HARNESS:
+        payload = command.payload or {}
+        harness = payload.get("harness", "")
+        if command.type == CommandType.AUTHENTICATE_HARNESS:
+            status = await self._harness.authenticate(harness, payload.get("credentials") or {})
+        elif command.type == CommandType.INSTALL_HARNESS:
+            status = await self._harness.install(harness)
+        else:
             logger.info("Ignoring unsupported command: %s", command.type)
             return
-        payload = command.payload or {}
-        status = await self._harness.authenticate(
-            payload.get("harness", ""), payload.get("credentials") or {}
-        )
         await send(self._envelope([status]))
 
     def _envelope(self, statuses) -> HarnessStatusEnvelope:

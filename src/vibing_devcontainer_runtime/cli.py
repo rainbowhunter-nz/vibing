@@ -10,7 +10,7 @@ from pathlib import Path
 import typer
 from logzero import logger
 from mcp.server.fastmcp import FastMCP
-from vibing_protocol import RegisterEnvelope
+from vibing_protocol import DelegatedRunItem, DelegatedRunsEnvelope, RegisterEnvelope
 
 from vibing_devcontainer_runtime.command_handler import HarnessCommandHandler
 from vibing_devcontainer_runtime.delegated_runs import DelegatedRunManager
@@ -36,12 +36,6 @@ async def _serve_async(
 
     register = RegisterEnvelope(devcontainer_id=devcontainer_id)
     handler = HarnessCommandHandler(harness_manager, devcontainer_id)
-    client = RuntimeChannelClient(
-        control_plane_url,
-        register,
-        handler.handle,
-        on_registered=lambda: handler.report_all(client.send_envelope),
-    )
 
     delegated_runs = DelegatedRunManager(
         adapters,
@@ -49,6 +43,25 @@ async def _serve_async(
         devcontainer_id=devcontainer_id,
         workspace=workspace,
     )
+
+    async def _report_runs() -> None:
+        items = [DelegatedRunItem(**r) for r in delegated_runs.list_runs()]
+        try:
+            await client.send_envelope(
+                DelegatedRunsEnvelope(devcontainer_id=devcontainer_id, items=items)
+            )
+        except Exception:
+            logger.exception("Failed to report delegated runs")
+
+    async def _on_registered() -> None:
+        await handler.report_all(client.send_envelope)
+        await _report_runs()
+
+    client = RuntimeChannelClient(
+        control_plane_url, register, handler.handle, on_registered=_on_registered
+    )
+    delegated_runs.report = _report_runs
+
     mcp: FastMCP = build_mcp_server(harness_manager, delegated_runs, host=mcp_host, port=mcp_port)
 
     await asyncio.gather(

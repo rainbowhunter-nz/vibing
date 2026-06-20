@@ -12,9 +12,14 @@ class FakeHarnessManager:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._statuses: list[HarnessStatus] = []
+        self.install_called: bool = False
 
     async def authenticate(self, harness: str, credentials: dict[str, Any]) -> HarnessStatus:
         self.calls.append((harness, credentials))
+        return HarnessStatus(name=harness, installed=True, authenticated=True)
+
+    async def install(self, harness: str) -> HarnessStatus:
+        self.install_called = True
         return HarnessStatus(name=harness, installed=True, authenticated=True)
 
     async def list_statuses(self) -> list[HarnessStatus]:
@@ -54,6 +59,23 @@ def test_authenticate_harness_calls_manager_and_sends_envelope():
     assert item.name == "codex"
     assert item.installed is True
     assert item.authenticated is True
+
+
+def test_install_command_installs_and_reports():
+    manager = FakeHarnessManager()
+    handler = _make_handler(manager)
+    cmd = Command(
+        type=CommandType.INSTALL_HARNESS,
+        devcontainer_id="dc-1",
+        payload={"harness": "codex"},
+    )
+    sent = asyncio.run(_send_all(handler, cmd))
+    assert manager.install_called
+    assert len(sent) == 1
+    env = sent[0]
+    assert isinstance(env, HarnessStatusEnvelope)
+    assert env.items[0].name == "codex"
+    assert env.items[0].installed is True
 
 
 def test_non_authenticate_command_is_ignored():
