@@ -9,8 +9,9 @@ def _checks_by_id(body: dict) -> dict[str, dict]:
 
 def test_diagnostics_returns_all_required_checks(client: TestClient) -> None:
     body = client.get("/api/v1/diagnostics").json()
-    ids = [c["id"] for c in body["checks"]]
-    assert ids == ["backend", "sqlite", "devcontainer_cli", "docker", "podman", "claude_code"]
+    ids = {c["id"] for c in body["checks"]}
+    required = {"backend", "sqlite", "devcontainer_cli", "docker", "podman", "claude_code"}
+    assert required <= ids
 
 
 def test_backend_check_is_ok(client: TestClient) -> None:

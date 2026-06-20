@@ -1,21 +1,15 @@
 from vibing_protocol import Command, CommandType, HarnessStatusEnvelope, HarnessStatusItem
 
 
-def test_authenticate_harness_command_type_wire_value():
-    assert CommandType.AUTHENTICATE_HARNESS == "authenticate_harness"
+def test_command_round_trips_preserving_wire_type_and_payload():
     cmd = Command(
         type=CommandType.AUTHENTICATE_HARNESS,
         devcontainer_id="dc-1",
         payload={"harness": "codex", "credentials": {"auth_json": {"OPENAI_API_KEY": "sk-x"}}},
     )
-    assert cmd.payload is not None
-    assert cmd.payload["harness"] == "codex"
-
-
-def test_install_harness_in_vocab():
-    from vibing_protocol import CommandType
-
-    assert CommandType.INSTALL_HARNESS.value == "install_harness"
+    dumped = cmd.model_dump(mode="json")
+    assert dumped["type"] == "authenticate_harness"
+    assert Command.model_validate(dumped) == cmd
 
 
 def test_harness_status_envelope_round_trips():

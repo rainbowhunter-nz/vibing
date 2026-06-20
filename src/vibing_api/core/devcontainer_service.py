@@ -1,8 +1,8 @@
 """In-process Devcontainer lifecycle (ADR-0014).
 
-Replaces the Host Runtime Worker: the Control Plane shells out to the Dev Container CLI
-directly, writes status to the read model as it progresses, and injects the Devcontainer
-Runtime after a successful start. Long ops run in a background task; routes return 202.
+The Control Plane shells out to the Dev Container CLI directly, writes status to the read
+model as it progresses, and injects the Devcontainer Runtime after a successful start.
+Long ops run in a background task; routes return 202.
 """
 
 import asyncio
