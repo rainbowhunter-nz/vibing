@@ -1,6 +1,13 @@
+from enum import StrEnum, auto
+
 from pydantic import BaseModel, Field
 
 from vibing_api.core.vocabularies import DevcontainerStatus
+
+
+class DevcontainerSource(StrEnum):
+    MANUAL = auto()
+    DISCOVERED = auto()
 
 
 class DevcontainerCreateRequest(BaseModel):
@@ -10,7 +17,6 @@ class DevcontainerCreateRequest(BaseModel):
 
 class DevcontainerUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1)
-    status: DevcontainerStatus | None = None
 
 
 class Devcontainer(BaseModel):
@@ -18,8 +24,9 @@ class Devcontainer(BaseModel):
     name: str
     local_path: str
     status: DevcontainerStatus
-    created_at: str
-    updated_at: str
+    source: DevcontainerSource
+    created_at: str | None
+    updated_at: str | None
 
 
 class DevcontainerList(BaseModel):

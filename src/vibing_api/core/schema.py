@@ -5,7 +5,7 @@ Keep this file the single source of truth for the on-disk shape.
 
 import sqlite3
 
-SCHEMA_VERSION = "7"
+SCHEMA_VERSION = "8"
 
 _TABLE_STATEMENTS: tuple[str, ...] = (
     """
@@ -19,19 +19,8 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         local_path TEXT NOT NULL,
-        status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS harness_status (
-        devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        installed INTEGER NOT NULL,
-        authenticated INTEGER NOT NULL,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (devcontainer_id, name)
     )
     """,
     """
@@ -58,9 +47,15 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
 )
 
 _INDEX_STATEMENTS: tuple[str, ...] = (
-    "CREATE INDEX IF NOT EXISTS idx_harness_status_devcontainer ON harness_status(devcontainer_id)",
     "CREATE INDEX IF NOT EXISTS idx_delegated_runs_devcontainer ON delegated_runs(devcontainer_id)",
 )
+
+
+def _drop_legacy(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS harness_status")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(devcontainers)")}
+    if "status" in cols:
+        conn.execute("ALTER TABLE devcontainers DROP COLUMN status")
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
@@ -78,6 +73,7 @@ def apply_schema(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
     for statement in _INDEX_STATEMENTS:
         conn.execute(statement)
+    _drop_legacy(conn)
     _migrate_schema(conn)
 
 
