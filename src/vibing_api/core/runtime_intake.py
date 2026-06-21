@@ -1,8 +1,9 @@
-"""Inbound runtime reports → read model.
+"""Inbound runtime reports → live state / read model.
 
 The Devcontainer Runtime pushes Harness Status and Delegated Run snapshots up
-the runtime channel; the Control Plane writes them directly to the read model
-(ADR-0014, ADR-0016) and publishes an SSE invalidation in the same step.
+the runtime channel. Harness status is cached in-memory in LiveStateStore (no
+DB write); delegated-run snapshots are written to the read model (ADR-0014,
+ADR-0016). Both paths publish an SSE invalidation.
 """
 
 from vibing_protocol import DelegatedRunItem, HarnessStatusItem

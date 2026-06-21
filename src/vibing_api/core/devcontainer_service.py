@@ -58,5 +58,11 @@ class DevcontainerService:
         self._clear(devcontainer_id)
 
 
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
 def run_in_background(coro) -> "asyncio.Task[None]":
-    return asyncio.create_task(coro)
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task

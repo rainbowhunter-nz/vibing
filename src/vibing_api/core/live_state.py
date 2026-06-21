@@ -5,6 +5,11 @@ Holds two ephemeral maps keyed by devcontainer_id, alongside RuntimeRegistry:
 - last harness-status the runtime pushed (evicted on disconnect → unknown)
 
 Never persisted; lost on restart by design.
+
+Both maps are intentionally unbounded; entries are cleared on operation
+completion, runtime disconnect, or next start. An id that errors and is never
+retried keeps a small entry until process restart — acceptable because the set
+of devcontainer ids is bounded.
 """
 
 from vibing_protocol import HarnessStatusItem
