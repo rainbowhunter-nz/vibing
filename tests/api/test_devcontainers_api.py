@@ -16,7 +16,7 @@ def test_create_devcontainer_returns_metadata(client: TestClient) -> None:
     body = response.json()
     assert body["name"] == "demo"
     assert body["local_path"] == "/tmp/demo"
-    assert body["status"] == "created"
+    assert body["status"] == "stopped"
     assert body["id"]
     assert body["created_at"]
     assert body["updated_at"]
@@ -97,7 +97,7 @@ def test_get_devcontainer_by_id(client: TestClient) -> None:
     assert body["id"] == create["id"]
     assert body["name"] == "demo"
     assert body["local_path"] == "/tmp/demo"
-    assert body["status"] == "created"
+    assert body["status"] == "stopped"
 
 
 def test_get_devcontainer_unknown_id_returns_not_found(client: TestClient) -> None:
@@ -127,67 +127,20 @@ def test_update_devcontainer_name(client: TestClient) -> None:
     assert body["updated_at"] >= created["updated_at"]
 
 
-def test_update_devcontainer_status(client: TestClient) -> None:
-    created = client.post(
-        "/api/v1/devcontainers",
-        json={"name": "demo", "local_path": "/tmp/demo"},
-    ).json()
-
-    response = client.patch(
-        f"/api/v1/devcontainers/{created['id']}",
-        json={"status": "running"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "running"
-    assert body["name"] == created["name"]
-
-
-def test_update_devcontainer_name_and_status(client: TestClient) -> None:
-    created = client.post(
-        "/api/v1/devcontainers",
-        json={"name": "demo", "local_path": "/tmp/demo"},
-    ).json()
-
-    response = client.patch(
-        f"/api/v1/devcontainers/{created['id']}",
-        json={"name": "renamed", "status": "stopped"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["name"] == "renamed"
-    assert body["status"] == "stopped"
-
-
-def test_update_devcontainer_persists_changes(client: TestClient) -> None:
+def test_update_devcontainer_name_persists_changes(client: TestClient) -> None:
     created = client.post(
         "/api/v1/devcontainers",
         json={"name": "demo", "local_path": "/tmp/demo"},
     ).json()
     client.patch(
         f"/api/v1/devcontainers/{created['id']}",
-        json={"name": "renamed", "status": "running"},
+        json={"name": "renamed"},
     )
 
     response = client.get(f"/api/v1/devcontainers/{created['id']}")
     assert response.status_code == 200
     body = response.json()
     assert body["name"] == "renamed"
-    assert body["status"] == "running"
-
-
-def test_update_devcontainer_rejects_invalid_status(client: TestClient) -> None:
-    created = client.post(
-        "/api/v1/devcontainers",
-        json={"name": "demo", "local_path": "/tmp/demo"},
-    ).json()
-
-    response = client.patch(
-        f"/api/v1/devcontainers/{created['id']}",
-        json={"status": "not-a-real-status"},
-    )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_update_devcontainer_rejects_empty_name(client: TestClient) -> None:

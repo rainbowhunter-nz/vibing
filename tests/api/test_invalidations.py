@@ -6,7 +6,7 @@ Updated for ADR-0014/0015: event-sourcing layer removed; broadcaster is tested d
 from fastapi.testclient import TestClient
 
 from vibing_api.core.broadcaster import Broadcaster, SseEvent
-from vibing_api.core.runtime_intake import persist_harness_status
+from vibing_api.core.runtime_intake import record_harness_status
 
 
 _DC = "dc-1"
@@ -36,12 +36,13 @@ def test_broadcaster_publishes_harnesses_scope() -> None:
 
 
 # ---------------------------------------------------------------------------
-# persist_harness_status broadcasts after commit
+# record_harness_status broadcasts
 # ---------------------------------------------------------------------------
 
 
-def test_persist_harness_status_broadcasts(client: TestClient) -> None:
-    """persist_harness_status publishes a harnesses invalidation after commit."""
+def test_record_harness_status_broadcasts(client: TestClient) -> None:
+    """record_harness_status publishes a harnesses invalidation."""
+    from vibing_api.core.live_state import LiveStateStore
     from vibing_protocol import HarnessStatusItem
 
     resp = client.post("/api/v1/devcontainers", json={"name": "dc", "local_path": "/tmp/dc"})
@@ -56,7 +57,9 @@ def test_persist_harness_status_broadcasts(client: TestClient) -> None:
             self.published.append(event)
 
     spy = _Spy()
-    persist_harness_status(
+    live = LiveStateStore()
+    record_harness_status(
+        live,
         dc_id,
         [HarnessStatusItem(name="codex", installed=True, authenticated=False)],
         spy,  # type: ignore[arg-type]

@@ -13,10 +13,10 @@ from fastapi.testclient import TestClient
 
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.database import get_connection, init_db
+from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
 from vibing_api.repositories.delegated_runs import DelegatedRunRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
-from vibing_api.repositories.harness_status import HarnessStatusRepository
 
 
 class _FakeBroadcaster:
@@ -49,6 +49,7 @@ def ws_client(db_path: Path, spy: _FakeBroadcaster) -> Iterator[TestClient]:
     app = FastAPI()
     app.state.runtime_manager = RuntimeRegistry()
     app.state.broadcaster = spy
+    app.state.live_state = LiveStateStore()
     app.include_router(runtime.router, prefix="/api/v1")
 
     with TestClient(app) as client:
@@ -145,20 +146,20 @@ def test_agent_slot_freed_after_disconnect(ws_client: TestClient, db_path: Path)
 # ---------------------------------------------------------------------------
 
 
-def test_harness_status_persisted(ws_client: TestClient, db_path: Path) -> None:
+def test_harness_status_stored_in_live_state(ws_client: TestClient, db_path: Path) -> None:
     dc_id = _seed_devcontainer()
+    live: LiveStateStore = ws_client.app.state.live_state  # type: ignore[union-attr]
     with ws_client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_register_msg(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         ws.send_json(_harness_status_msg(dc_id))
-
-    with get_connection() as conn:
-        rows = HarnessStatusRepository(conn).list(dc_id)
-    assert len(rows) == 2
-    by_name = {r.name: r for r in rows}
-    assert by_name["claude"].installed is True
-    assert by_name["claude"].authenticated is True
-    assert by_name["gh"].installed is False
+        # Check inside the context — disconnect evicts harness
+        items = live.get_harness(dc_id)
+        assert items is not None
+        by_name = {i.name: i for i in items}
+        assert by_name["claude"].installed is True
+        assert by_name["claude"].authenticated is True
+        assert by_name["gh"].installed is False
 
 
 def test_harness_status_publishes_harnesses_invalidation(
@@ -178,13 +179,11 @@ def test_harness_status_publishes_harnesses_invalidation(
 
 def test_harness_status_ignored_before_registration(ws_client: TestClient, db_path: Path) -> None:
     dc_id = _seed_devcontainer()
+    live: LiveStateStore = ws_client.app.state.live_state  # type: ignore[union-attr]
     with ws_client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_harness_status_msg(dc_id))
         # Should be ignored (no crash)
-
-    with get_connection() as conn:
-        rows = HarnessStatusRepository(conn).list(dc_id)
-    assert len(rows) == 0
+    assert live.get_harness(dc_id) is None
 
 
 # ---------------------------------------------------------------------------

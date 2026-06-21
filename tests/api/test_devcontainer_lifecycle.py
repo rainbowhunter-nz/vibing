@@ -11,24 +11,29 @@ from fastapi.testclient import TestClient
 from vibing_api.core.devcontainer_service import DevcontainerService
 
 
-def _create(client: TestClient, status: str = "created", local_path: str = "/work/repo") -> str:
+def _create(client: TestClient, status: str = "stopped", local_path: str = "/work/repo") -> str:
     resp = client.post("/api/v1/devcontainers", json={"name": "dc", "local_path": local_path})
     assert resp.status_code == 201
     dc_id: str = resp.json()["id"]
-    if status != "created":
-        patched = client.patch(f"/api/v1/devcontainers/{dc_id}", json={"status": status})
-        assert patched.status_code == 200
+    if status == "running":
+        client.app.state.devcontainer_cli.running = {local_path}  # type: ignore[union-attr]
+    elif status in ("starting", "stopping", "error"):
+        from vibing_api.core.vocabularies import DevcontainerStatus
+
+        client.app.state.live_state.set_transient(  # type: ignore[union-attr]
+            dc_id, DevcontainerStatus(status)
+        )
     return dc_id
 
 
 def _fake_service() -> DevcontainerService:
-    """DevcontainerService with a no-op adapter and injector."""
+    """DevcontainerService with a no-op adapter."""
+    from vibing_api.core.live_state import LiveStateStore
+
     adapter = MagicMock()
     adapter.start = AsyncMock(return_value=MagicMock(payload={}))
     adapter.stop = AsyncMock(return_value=MagicMock())
-    injector = MagicMock()
-    injector.inject = AsyncMock()
-    return DevcontainerService(adapter, injector)
+    return DevcontainerService(adapter, live_state=LiveStateStore())
 
 
 def test_start_returns_202(client: TestClient) -> None:
@@ -38,7 +43,7 @@ def test_start_returns_202(client: TestClient) -> None:
     assert resp.status_code == 202
     body = resp.json()
     assert body["id"] == dc_id
-    assert body["status"] == "created"  # API returns snapshot; background task mutates later
+    assert body["status"] == "stopped"  # API returns snapshot; background task mutates later
 
 
 def test_stop_returns_202(client: TestClient) -> None:
@@ -83,7 +88,7 @@ def test_start_rejected_from_invalid_states(client: TestClient, status: str) -> 
     assert resp.json()["error"]["code"] == "INVALID_DEVCONTAINER_STATE"
 
 
-@pytest.mark.parametrize("status", ["created", "starting", "stopping", "stopped"])
+@pytest.mark.parametrize("status", ["starting", "stopping", "stopped"])
 def test_stop_rejected_from_invalid_states(client: TestClient, status: str) -> None:
     dc_id = _create(client, status=status)
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/stop")
@@ -91,7 +96,7 @@ def test_stop_rejected_from_invalid_states(client: TestClient, status: str) -> N
     assert resp.json()["error"]["code"] == "INVALID_DEVCONTAINER_STATE"
 
 
-@pytest.mark.parametrize("status", ["created", "stopped", "error"])
+@pytest.mark.parametrize("status", ["stopped", "error"])
 def test_start_allowed_states(client: TestClient, status: str) -> None:
     dc_id = _create(client, status=status)
     client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]

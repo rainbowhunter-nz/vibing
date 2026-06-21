@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from vibing_api.core.database import get_connection, init_db
-from vibing_api.core.vocabularies import DevcontainerStatus
 from vibing_api.dev.sample_data import (
     SAMPLE_DEVCONTAINERS,
     SAMPLE_ID_PREFIX,
@@ -55,13 +54,12 @@ def test_reset_removes_only_sample_rows(db_path: Path) -> None:
     with get_connection() as conn:
         conn.execute(
             "INSERT INTO devcontainers "
-            "(id, name, local_path, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(id, name, local_path, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
             (
                 "real-1",
                 "real devcontainer",
                 "/tmp/real",
-                "created",
                 "2026-01-01T00:00:00+00:00",
                 "2026-01-01T00:00:00+00:00",
             ),
@@ -121,9 +119,3 @@ def test_seeded_sample_devcontainers_visible_via_api(client: TestClient) -> None
         "[sample] vibing-cli",
         "[sample] vibing-web",
     ]
-
-
-def test_sample_rows_use_valid_vocabulary_values() -> None:
-    dc_statuses = frozenset(DevcontainerStatus)
-    for row in SAMPLE_DEVCONTAINERS:
-        assert row["status"] in dc_statuses, f"bad devcontainer status: {row['status']}"

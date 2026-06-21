@@ -20,13 +20,18 @@ from vibing_api.api.routes import (
     status,
 )
 from vibing_api.core.broadcaster import Broadcaster
+from vibing_api.core.catalog import DevcontainerCatalog
 from vibing_api.core.config import settings
-from vibing_api.core.database import init_db
+from vibing_api.core.database import get_connection, init_db
 from vibing_api.core.devcontainer_cli import DevcontainerCliAdapter
 from vibing_api.core.devcontainer_service import DevcontainerService
+from vibing_api.core.discovery import scan
 from vibing_api.core.errors import register_error_handlers
+from vibing_api.core.file_config import load_devcontainers_dir
+from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
 from vibing_api.core.runtime_injector import RuntimeInjector
+from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 
 class SpaStaticFiles(StaticFiles):
@@ -55,10 +60,27 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.state.runtime_manager = RuntimeRegistry()
     app.state.broadcaster = Broadcaster()
-    adapter = DevcontainerCliAdapter()
-    injector = RuntimeInjector()
+    app.state.live_state = LiveStateStore()
+    app.state.devcontainer_cli = DevcontainerCliAdapter()
+    app.state.runtime_injector = RuntimeInjector()
+
+    def _list_records():
+        with get_connection() as conn:
+            return DevcontainerRepository(conn).list()
+
+    def _get_record(devcontainer_id: str):
+        with get_connection() as conn:
+            return DevcontainerRepository(conn).get(devcontainer_id)
+
+    app.state.catalog = DevcontainerCatalog(
+        list_records=_list_records,
+        get_record=_get_record,
+        scanner=lambda: scan(load_devcontainers_dir()),
+    )
     app.state.devcontainer_service = DevcontainerService(
-        adapter, injector, broadcaster=app.state.broadcaster
+        app.state.devcontainer_cli,
+        live_state=app.state.live_state,
+        broadcaster=app.state.broadcaster,
     )
     register_error_handlers(app)
     for router in (

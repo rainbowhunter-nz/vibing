@@ -38,7 +38,6 @@ def test_schema_has_expected_tables(tmp_path, monkeypatch):
     assert tables == {
         "app_meta",
         "devcontainers",
-        "harness_status",
         "harness_credentials",
         "delegated_runs",
     }
@@ -55,7 +54,7 @@ def test_init_db_records_schema_version(db_path: Path) -> None:
     with get_connection() as conn:
         row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     assert row is not None
-    assert row[0] == "7"
+    assert row[0] == "8"
 
 
 def test_devcontainers_table_exists_with_required_columns(db_path: Path) -> None:
@@ -63,36 +62,8 @@ def test_devcontainers_table_exists_with_required_columns(db_path: Path) -> None
     with get_connection() as conn:
         assert _table_exists(conn, "devcontainers")
         columns = _column_names(conn, "devcontainers")
-    assert columns >= {
-        "id",
-        "name",
-        "local_path",
-        "status",
-        "created_at",
-        "updated_at",
-    }
-
-
-def test_harness_status_table_exists_with_required_columns(db_path: Path) -> None:
-    init_db()
-    with get_connection() as conn:
-        assert _table_exists(conn, "harness_status")
-        columns = _column_names(conn, "harness_status")
-    assert columns >= {
-        "devcontainer_id",
-        "name",
-        "installed",
-        "authenticated",
-        "updated_at",
-    }
-
-
-def test_harness_status_has_devcontainer_foreign_key(db_path: Path) -> None:
-    init_db()
-    with get_connection() as conn:
-        fks = conn.execute("PRAGMA foreign_key_list(harness_status)").fetchall()
-    referenced = {(row[2], row[3]) for row in fks}
-    assert ("devcontainers", "devcontainer_id") in referenced
+    assert columns >= {"id", "name", "local_path", "created_at", "updated_at"}
+    assert "status" not in columns
 
 
 def test_get_connection_enables_foreign_keys(db_path: Path) -> None:
@@ -108,9 +79,10 @@ def test_foreign_keys_block_orphan_inserts(db_path: Path) -> None:
     with get_connection() as conn:
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
-                "INSERT INTO harness_status (devcontainer_id, name, installed, authenticated, updated_at) "
-                "VALUES ('missing-dc', 'claude-code', 1, 0, ?)",
-                (ts,),
+                "INSERT INTO delegated_runs "
+                "(devcontainer_id, run_id, harness, model, status, started_at, updated_at) "
+                "VALUES ('missing-dc', 'run-1', 'gh', 'gpt4', 'running', ?, ?)",
+                (ts, ts),
             )
 
 
@@ -118,8 +90,8 @@ def test_init_db_is_idempotent(db_path: Path) -> None:
     init_db()
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO devcontainers (id, name, local_path, status, created_at, updated_at) "
-            "VALUES ('dc1', 'demo', '/tmp/demo', 'created', "
+            "INSERT INTO devcontainers (id, name, local_path, created_at, updated_at) "
+            "VALUES ('dc1', 'demo', '/tmp/demo', "
             "'2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')"
         )
         conn.commit()
@@ -134,19 +106,20 @@ def test_fk_cascade_on_devcontainer_delete(db_path: Path) -> None:
     ts = "2026-01-01T00:00:00Z"
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO devcontainers (id, name, local_path, status, created_at, updated_at) "
-            "VALUES ('dc-cascade', 'cascade test', '/tmp/c', 'running', ?, ?)",
+            "INSERT INTO devcontainers (id, name, local_path, created_at, updated_at) "
+            "VALUES ('dc-cascade', 'cascade test', '/tmp/c', ?, ?)",
             (ts, ts),
         )
         conn.execute(
-            "INSERT INTO harness_status (devcontainer_id, name, installed, authenticated, updated_at) "
-            "VALUES ('dc-cascade', 'claude-code', 1, 1, ?)",
-            (ts,),
+            "INSERT INTO delegated_runs "
+            "(devcontainer_id, run_id, harness, model, status, started_at, updated_at) "
+            "VALUES ('dc-cascade', 'run-1', 'gh', 'gpt4', 'running', ?, ?)",
+            (ts, ts),
         )
         conn.commit()
         conn.execute("DELETE FROM devcontainers WHERE id = 'dc-cascade'")
         conn.commit()
         (count,) = conn.execute(
-            "SELECT COUNT(*) FROM harness_status WHERE devcontainer_id = 'dc-cascade'"
+            "SELECT COUNT(*) FROM delegated_runs WHERE devcontainer_id = 'dc-cascade'"
         ).fetchone()
-        assert count == 0, "cascade failed: harness_status still has rows after devcontainer delete"
+        assert count == 0, "cascade failed: delegated_runs still has rows after devcontainer delete"

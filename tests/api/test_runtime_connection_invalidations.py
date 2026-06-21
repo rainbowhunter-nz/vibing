@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.database import get_connection, init_db
+from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
@@ -47,6 +48,7 @@ def ws_client(db_path: Path, spy: CapturingBroadcaster) -> Iterator[TestClient]:
     app = FastAPI()
     app.state.runtime_manager = RuntimeRegistry()
     app.state.broadcaster = spy
+    app.state.live_state = LiveStateStore()
     app.include_router(runtime.router, prefix="/api/v1")
 
     with TestClient(app) as client:

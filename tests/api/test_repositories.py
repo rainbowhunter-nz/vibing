@@ -20,19 +20,16 @@ def test_devcontainer_round_trip(conn: sqlite3.Connection) -> None:
     created = repo.create("web", "/projects/web")
     fetched = repo.get(created.id)
     assert fetched == created
-    assert fetched.status == "created"
     assert repo.list() == [created]
 
 
 def test_devcontainer_update_only_provided_fields(conn: sqlite3.Connection) -> None:
-    from vibing_api.core.vocabularies import DevcontainerStatus
-
     repo = DevcontainerRepository(conn)
     created = repo.create("web", "/projects/web")
-    updated = repo.update(created.id, status=DevcontainerStatus.RUNNING)
+    updated = repo.update(created.id, name="renamed")
     assert updated is not None
-    assert updated.status == "running"
-    assert updated.name == "web"
+    assert updated.name == "renamed"
+    assert updated.local_path == "/projects/web"
     assert updated.updated_at >= created.updated_at
 
 
