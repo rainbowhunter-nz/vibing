@@ -8,7 +8,7 @@ Single uv Python package. Import packages below are domains, not separate distri
 ## Packages
 
 - `vibing_cli`: root `vibing` Typer command.
-- `vibing_api`: FastAPI Control Plane. Drives Devcontainer lifecycle in-process. Stores harness credentials. Mutates read-model directly.
+- `vibing_api`: FastAPI Control Plane. Drives Devcontainer lifecycle in-process. Stores harness credentials. Devcontainer status is live/in-memory (never DB). Harness status cached in-memory (evicted on runtime disconnect).
 - `vibing_protocol`: shared command/envelope/harness-status contract.
 - `vibing_devcontainer_runtime`: in-container companion. Manages harness install/auth, reports Harness Status, hosts MCP delegation server.
 

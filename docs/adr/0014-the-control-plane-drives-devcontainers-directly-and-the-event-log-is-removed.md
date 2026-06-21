@@ -36,3 +36,7 @@ a tool the user runs and watches locally.
 Supersedes: ADR-0002, ADR-0003.
 
 Status: accepted
+
+---
+
+**Note (2026-06-22 — live-state refactor):** The phrase "the only remaining consumers (devcontainer status, harness status) are trivial direct writes" is no longer accurate. Both are now **live/in-memory**, not DB writes: devcontainer `status` is computed on each request (transient `LiveStateStore` map → Docker label), and harness status is cached in `LiveStateStore` and evicted on runtime disconnect. The `harness_status` table and `devcontainers.status` column have been removed (schema v8). `delegated_runs` remains a DB-backed projection per ADR-0016.
