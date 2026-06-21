@@ -84,6 +84,24 @@ class RuntimeInjector:
             devcontainer_id,
         )
 
+    async def resolve_container_id(self, local_path: str) -> str | None:
+        label = f"label=devcontainer.local_folder={local_path}"
+        try:
+            result = await self._runner([self._engine, "ps", "-q", "--filter", label])
+        except FileNotFoundError:
+            return None
+        if result.returncode != 0:
+            return None
+        ids = result.stdout.split()
+        return ids[0] if ids else None
+
+    async def inject_by_path(self, devcontainer_id: str, local_path: str) -> None:
+        container_id = await self.resolve_container_id(local_path)
+        if container_id is None:
+            logger.warning("inject: no running container for %s (%s)", devcontainer_id, local_path)
+            return
+        await self.inject(devcontainer_id, container_id, local_path)
+
     def _find_wheel(self) -> Path | None:
         wheels = sorted(Path(self._wheel_dir).glob("*.whl"))
         return wheels[0] if wheels else None
