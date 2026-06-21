@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -47,3 +49,25 @@ def connected_runtime(
     connection = FakeRuntimeConnection()
     client.app.state.runtime_manager.register(devcontainer_id, connection)  # type: ignore[union-attr]
     return devcontainer_id, connection
+
+
+class FakeCli:
+    def __init__(self) -> None:
+        self.running: set[str] = set()
+        self.removed: list[str] = []
+
+    async def running_local_folders(self) -> set[str]:
+        return self.running
+
+    async def remove(self, local_path: str):
+        from vibing_api.core.devcontainer_cli import DevcontainerSuccess
+
+        self.removed.append(local_path)
+        return DevcontainerSuccess(operation="remove")
+
+
+@pytest.fixture
+def fake_cli(client: TestClient) -> FakeCli:
+    cli = FakeCli()
+    client.app.state.devcontainer_cli = cli
+    return cli

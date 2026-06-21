@@ -262,6 +262,49 @@ def test_delete_devcontainer_unknown_id_returns_not_found(client: TestClient) ->
     assert response.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
 
 
+def test_create_then_list_shows_source_and_status(client: TestClient) -> None:
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "demo", "local_path": "/tmp/demo"}
+    ).json()
+    assert created["source"] == "manual"
+    assert created["status"] == "stopped"  # no container running
+
+    listed = client.get("/api/v1/devcontainers").json()["items"]
+    row = next(r for r in listed if r["id"] == created["id"])
+    assert row["source"] == "manual"
+    assert row["status"] == "stopped"
+
+
+def test_get_unknown_id_404(client: TestClient) -> None:
+    resp = client.get("/api/v1/devcontainers/nope")
+    assert resp.status_code == 404
+
+
+def test_status_running_when_docker_reports_folder(client: TestClient, fake_cli) -> None:
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "r", "local_path": "/tmp/r"}
+    ).json()
+    fake_cli.running = {"/tmp/r"}
+    row = next(
+        r for r in client.get("/api/v1/devcontainers").json()["items"] if r["id"] == created["id"]
+    )
+    assert row["status"] == "running"
+
+
+def test_delete_manual_removes_container_and_record(client: TestClient, fake_cli) -> None:
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "d", "local_path": "/tmp/d"}
+    ).json()
+    resp = client.delete(f"/api/v1/devcontainers/{created['id']}")
+    assert resp.status_code == 204
+    assert "/tmp/d" in fake_cli.removed
+    assert client.get(f"/api/v1/devcontainers/{created['id']}").status_code == 404
+
+
+def test_delete_unknown_404(client: TestClient, fake_cli) -> None:
+    assert client.delete("/api/v1/devcontainers/nope").status_code == 404
+
+
 def test_old_workspaces_path_returns_404(client: TestClient) -> None:
     assert client.get("/api/v1/workspaces").status_code == 404
     assert client.post("/api/v1/workspaces", json={}).status_code == 404
