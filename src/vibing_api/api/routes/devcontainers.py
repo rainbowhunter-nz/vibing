@@ -24,9 +24,12 @@ _START_ALLOWED_FROM = frozenset({DevcontainerStatus.STOPPED, DevcontainerStatus.
 _STOP_ALLOWED_FROM = frozenset({DevcontainerStatus.RUNNING, DevcontainerStatus.ERROR})
 
 
-async def _view(resolved: ResolvedDevcontainer, request: Request) -> DevcontainerView:
+async def _view(
+    resolved: ResolvedDevcontainer, request: Request, running: set[str] | None = None
+) -> DevcontainerView:
     live: LiveStateStore = request.app.state.live_state
-    running = await request.app.state.devcontainer_cli.running_local_folders()
+    if running is None:
+        running = await request.app.state.devcontainer_cli.running_local_folders()
     status_value = resolve_status(live.get_transient(resolved.id), running, resolved.local_path)
     runtime = RuntimeConnection(
         runtime_connected=request.app.state.runtime_manager.is_connected(resolved.id)
@@ -50,14 +53,15 @@ async def create_devcontainer(payload: DevcontainerCreateRequest, request: Reque
         conn.commit()
     catalog: DevcontainerCatalog = request.app.state.catalog
     resolved = catalog.get(record.id)
-    assert resolved is not None
+    assert resolved is not None  # catalog reads the same DB; a row just committed is always visible
     return await _view(resolved, request)
 
 
 @router.get("", response_model=DevcontainerViewList)
 async def list_devcontainers(request: Request) -> DevcontainerViewList:
     catalog: DevcontainerCatalog = request.app.state.catalog
-    views = [await _view(r, request) for r in catalog.list()]
+    running = await request.app.state.devcontainer_cli.running_local_folders()
+    views = [await _view(r, request, running) for r in catalog.list()]
     return DevcontainerViewList(items=views)
 
 
@@ -79,7 +83,7 @@ async def update_devcontainer(
     if updated is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     resolved = request.app.state.catalog.get(devcontainer_id)
-    assert resolved is not None
+    assert resolved is not None  # catalog reads the same DB; a row just committed is always visible
     return await _view(resolved, request)
 
 
