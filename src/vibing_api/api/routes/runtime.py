@@ -14,7 +14,7 @@ from vibing_protocol import DelegatedRunsEnvelope, HarnessStatusEnvelope, Regist
 
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.runtime_channel import RuntimeRegistry, WebSocketRuntimeConnection
-from vibing_api.core.runtime_intake import persist_delegated_runs, persist_harness_status
+from vibing_api.core.runtime_intake import persist_delegated_runs, record_harness_status
 
 router = APIRouter(tags=["runtime"], prefix="/runtime")
 
@@ -61,14 +61,9 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
                     envelope = HarnessStatusEnvelope.model_validate(message)
                 except ValidationError:
                     continue
+                live = websocket.app.state.live_state
                 broadcaster = getattr(websocket.app.state, "broadcaster", None)
-                try:
-                    persist_harness_status(envelope.devcontainer_id, envelope.items, broadcaster)
-                except Exception:
-                    logger.exception(
-                        "Failed to persist harness status (devcontainer=%s)",
-                        envelope.devcontainer_id,
-                    )
+                record_harness_status(live, envelope.devcontainer_id, envelope.items, broadcaster)
                 continue
 
             if msg_type == "delegated_runs":
@@ -113,6 +108,7 @@ async def agent_ws(websocket: WebSocket) -> None:
 
         def unregister() -> None:
             manager.unregister(devcontainer_id, connection)
+            websocket.app.state.live_state.evict_harness(devcontainer_id)
             _broadcast_connection(websocket, ids=[devcontainer_id])
 
         return unregister

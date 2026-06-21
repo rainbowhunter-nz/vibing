@@ -9,3 +9,4 @@ class HarnessStatusItem(BaseModel):
 
 class HarnessStatusList(BaseModel):
     items: list[HarnessStatusItem]
+    known: bool = False

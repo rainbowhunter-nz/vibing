@@ -9,25 +9,17 @@ from vibing_protocol import DelegatedRunItem, HarnessStatusItem
 
 from vibing_api.core.broadcaster import Broadcaster, SseEvent
 from vibing_api.core.database import get_connection
+from vibing_api.core.live_state import LiveStateStore
 from vibing_api.repositories.delegated_runs import DelegatedRunRepository
-from vibing_api.repositories.harness_status import HarnessStatusRepository
 
 
-def persist_harness_status(
+def record_harness_status(
+    live: LiveStateStore,
     devcontainer_id: str,
     items: list[HarnessStatusItem],
     broadcaster: Broadcaster | None = None,
 ) -> None:
-    with get_connection() as conn:
-        repo = HarnessStatusRepository(conn)
-        for item in items:
-            repo.upsert(
-                devcontainer_id,
-                item.name,
-                installed=item.installed,
-                authenticated=item.authenticated,
-            )
-        conn.commit()
+    live.set_harness(devcontainer_id, items)
     if broadcaster is not None:
         broadcaster.publish(SseEvent(scope="harnesses", ids=[devcontainer_id]))
 

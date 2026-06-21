@@ -3,27 +3,26 @@ from vibing_protocol import Command, CommandType
 
 from vibing_api.api.schemas.harnesses import HarnessStatusItem, HarnessStatusList
 from vibing_api.core.database import get_connection
-from vibing_api.core.errors import DevcontainerNotFoundError, RuntimeUnavailableError
+from vibing_api.core.errors import RuntimeUnavailableError
+from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
-from vibing_api.repositories.devcontainers import DevcontainerRepository
 from vibing_api.repositories.harness_credentials import HarnessCredentialRepository
-from vibing_api.repositories.harness_status import HarnessStatusRepository
 
 router = APIRouter(tags=["harnesses"], prefix="/devcontainers")
 
 
 @router.get("/{devcontainer_id}/harnesses", response_model=HarnessStatusList)
-def list_harnesses(devcontainer_id: str) -> HarnessStatusList:
-    with get_connection() as conn:
-        dc = DevcontainerRepository(conn).get(devcontainer_id)
-        if dc is None:
-            raise DevcontainerNotFoundError(devcontainer_id)
-        rows = HarnessStatusRepository(conn).list(devcontainer_id)
+def list_harnesses(devcontainer_id: str, request: Request) -> HarnessStatusList:
+    live: LiveStateStore = request.app.state.live_state
+    cached = live.get_harness(devcontainer_id)
+    if cached is None:
+        return HarnessStatusList(items=[], known=False)
     return HarnessStatusList(
         items=[
-            HarnessStatusItem(name=r.name, installed=r.installed, authenticated=r.authenticated)
-            for r in rows
-        ]
+            HarnessStatusItem(name=i.name, installed=i.installed, authenticated=i.authenticated)
+            for i in cached
+        ],
+        known=True,
     )
 
 
