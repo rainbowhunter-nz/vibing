@@ -144,6 +144,35 @@ class DevcontainerCliAdapter:
             return stopped
         return DevcontainerSuccess(operation="stop")
 
+    async def remove(self, local_path: str) -> DevcontainerResult:
+        if not Path(local_path).is_dir():
+            return _missing_dir("remove", local_path)
+        label = f"label=devcontainer.local_folder={local_path}"
+        listed = await self._exec("remove", [self._engine, "ps", "-aq", "--filter", label])
+        if isinstance(listed, DevcontainerFailure):
+            return listed
+        container_ids = listed.stdout.split()
+        if not container_ids:
+            return DevcontainerSuccess(operation="remove")
+        removed = await self._exec("remove", [self._engine, "rm", "-f", *container_ids])
+        if isinstance(removed, DevcontainerFailure):
+            return removed
+        return DevcontainerSuccess(operation="remove")
+
+    async def running_local_folders(self) -> set[str]:
+        command = [
+            self._engine,
+            "ps",
+            "--filter",
+            "label=devcontainer.local_folder",
+            "--format",
+            '{{index .Labels "devcontainer.local_folder"}}',
+        ]
+        result = await self._exec("running_local_folders", command)
+        if isinstance(result, DevcontainerFailure):
+            return set()
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
     async def _exec(self, operation: str, command: list[str]) -> RunResult | DevcontainerFailure:
         try:
             result = await self._runner(command)

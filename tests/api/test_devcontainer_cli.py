@@ -158,3 +158,45 @@ def test_local_path_that_is_a_file_fails_without_invoking_cli(tmp_path: Path) ->
     result = asyncio.run(adapter.start(str(file_path)))
     assert isinstance(result, DevcontainerFailure)
     assert runner.calls == []
+
+
+def test_remove_lists_by_label_then_force_removes(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    async def script(cmd: list[str]) -> RunResult:
+        calls.append(cmd)
+        if cmd[:2] == ["docker", "ps"]:
+            return _ok("abc123\n")
+        return _ok()
+
+    adapter = DevcontainerCliAdapter(engine="docker", runner=script)
+    result = asyncio.run(adapter.remove(str(tmp_path)))
+
+    assert isinstance(result, DevcontainerSuccess)
+    assert ["docker", "rm", "-f", "abc123"] in calls
+    assert any(
+        c[:2] == ["docker", "ps"] and f"label=devcontainer.local_folder={tmp_path}" in c
+        for c in calls
+    )
+
+
+def test_remove_no_container_is_success(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    async def script(cmd: list[str]) -> RunResult:
+        calls.append(cmd)
+        return _ok("")
+
+    adapter = DevcontainerCliAdapter(engine="docker", runner=script)
+    result = asyncio.run(adapter.remove(str(tmp_path)))
+    assert isinstance(result, DevcontainerSuccess)
+    assert not any(c[:3] == ["docker", "rm", "-f"] for c in calls)
+
+
+def test_running_local_folders_parses_label_lines() -> None:
+    async def script(cmd: list[str]) -> RunResult:
+        return _ok("/a/x\n\n/a/y\n")
+
+    adapter = DevcontainerCliAdapter(engine="docker", runner=script)
+    folders = asyncio.run(adapter.running_local_folders())
+    assert folders == {"/a/x", "/a/y"}
