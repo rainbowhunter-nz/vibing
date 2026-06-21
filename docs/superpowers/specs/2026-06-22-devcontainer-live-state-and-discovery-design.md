@@ -148,7 +148,7 @@ broadcast SSE → run CLI → clear/`error` transient → broadcast SSE.
 - Filesystem watching / live re-scan beyond per-list-request scanning.
 - Recursive discovery; nested devcontainer folders.
 
-## Testing
+## Testing & verification
 - Live status resolver: transient precedence over Docker; running/stopped derivation;
   batched Docker query parsing.
 - Harness-status cache: push updates, eviction on disconnect, unknown rendering.
@@ -158,3 +158,15 @@ broadcast SSE → run CLI → clear/`error` transient → broadcast SSE.
   manual inject resolves container; start no longer auto-injects.
 - Frontend: icon buttons wired to correct endpoints; install spinner persists until SSE;
   `?` for unknown harness status.
+
+### UI mock + Playwright
+- Provide a **backend mock** for the UI so the detail view and list can be exercised
+  without a live Docker/runtime stack — covering all states (running/stopped/starting/
+  error, runtime connected/disconnected, harness known/unknown, manual vs discovered).
+- Use **Playwright** to verify the UI against the mock: icon buttons, Delete flow,
+  Inject-Runtime button, install spinner persistence, `?` unknown rendering, source labels.
+
+### Docs coherence (before finishing)
+- Update affected `CLAUDE.md` files (`src/vibing_api/CLAUDE.md` — removed `harness_status`
+  table/persist path, live status model, new endpoints; root/`src` notes if needed) and any
+  ADR/spec references so the repo stays coherent for future agents.
