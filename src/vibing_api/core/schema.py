@@ -52,10 +52,11 @@ _INDEX_STATEMENTS: tuple[str, ...] = (
 
 
 def _drop_legacy(conn: sqlite3.Connection) -> None:
-    conn.execute("DROP TABLE IF EXISTS harness_status")
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(devcontainers)")}
-    if "status" in cols:
-        conn.execute("ALTER TABLE devcontainers DROP COLUMN status")
+    with conn:
+        conn.execute("DROP TABLE IF EXISTS harness_status")
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(devcontainers)")}
+        if "status" in cols:
+            conn.execute("ALTER TABLE devcontainers DROP COLUMN status")
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
