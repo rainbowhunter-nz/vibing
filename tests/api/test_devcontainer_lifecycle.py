@@ -26,19 +26,17 @@ def _create(client: TestClient, status: str = "stopped", local_path: str = "/wor
     return dc_id
 
 
-def _fake_service() -> DevcontainerService:
-    """DevcontainerService with a no-op adapter."""
-    from vibing_api.core.live_state import LiveStateStore
-
+def _fake_service(live_state) -> DevcontainerService:  # type: ignore[no-untyped-def]
+    """DevcontainerService with a no-op adapter sharing the app's live_state."""
     adapter = MagicMock()
     adapter.start = AsyncMock(return_value=MagicMock(payload={}))
     adapter.stop = AsyncMock(return_value=MagicMock())
-    return DevcontainerService(adapter, live_state=LiveStateStore())
+    return DevcontainerService(adapter, live_state=live_state)
 
 
 def test_start_returns_202(client: TestClient) -> None:
     dc_id = _create(client, local_path="/work/repo")
-    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
+    client.app.state.devcontainer_service = _fake_service(client.app.state.live_state)  # type: ignore[union-attr]
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/start")
     assert resp.status_code == 202
     body = resp.json()
@@ -48,7 +46,7 @@ def test_start_returns_202(client: TestClient) -> None:
 
 def test_stop_returns_202(client: TestClient) -> None:
     dc_id = _create(client, status="running", local_path="/work/repo")
-    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
+    client.app.state.devcontainer_service = _fake_service(client.app.state.live_state)  # type: ignore[union-attr]
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/stop")
     assert resp.status_code == 202
     body = resp.json()
@@ -99,7 +97,7 @@ def test_stop_rejected_from_invalid_states(client: TestClient, status: str) -> N
 @pytest.mark.parametrize("status", ["stopped", "error"])
 def test_start_allowed_states(client: TestClient, status: str) -> None:
     dc_id = _create(client, status=status)
-    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
+    client.app.state.devcontainer_service = _fake_service(client.app.state.live_state)  # type: ignore[union-attr]
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/start")
     assert resp.status_code == 202
 
@@ -107,7 +105,7 @@ def test_start_allowed_states(client: TestClient, status: str) -> None:
 @pytest.mark.parametrize("status", ["running", "error"])
 def test_stop_allowed_states(client: TestClient, status: str) -> None:
     dc_id = _create(client, status=status)
-    client.app.state.devcontainer_service = _fake_service()  # type: ignore[union-attr]
+    client.app.state.devcontainer_service = _fake_service(client.app.state.live_state)  # type: ignore[union-attr]
     resp = client.post(f"/api/v1/devcontainers/{dc_id}/stop")
     assert resp.status_code == 202
 

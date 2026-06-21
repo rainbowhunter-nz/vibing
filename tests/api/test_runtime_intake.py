@@ -25,6 +25,7 @@ def test_record_harness_status_sets_live_state() -> None:
     assert stored is not None
     by_name = {i.name: i for i in stored}
     assert by_name["claude"].installed is True
+    assert by_name["claude"].authenticated is False
     assert by_name["gh"].installed is False
 
 
