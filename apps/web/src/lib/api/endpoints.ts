@@ -42,6 +42,8 @@ export const startDevcontainer = (id: string): Promise<Devcontainer> =>
 export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
   sendJson<Devcontainer>(`/devcontainers/${encodeURIComponent(id)}/stop`, 'POST') as Promise<Devcontainer>
 
+export const injectRuntime = (id: string): Promise<void> =>
+  sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/inject-runtime`, 'POST')
 
 export const fetchHarnesses = (devcontainerId: string): Promise<HarnessStatusList> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses`)

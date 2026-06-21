@@ -16,15 +16,17 @@ export interface ConfigResponse {
   api_v1_prefix: string
 }
 
-export type DevcontainerStatus = 'created' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
+export type DevcontainerStatus = 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
+export type DevcontainerSource = 'manual' | 'discovered'
 
 export interface Devcontainer {
   id: string
   name: string
   local_path: string
   status: DevcontainerStatus
-  created_at: string
-  updated_at: string
+  source: DevcontainerSource
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface RuntimeConnection {
@@ -42,7 +44,6 @@ export interface DevcontainerCreateBody {
 
 export interface DevcontainerUpdateBody {
   name?: string
-  status?: DevcontainerStatus
 }
 
 export interface DevcontainerList {
@@ -88,6 +89,7 @@ export interface HarnessStatus {
 
 export interface HarnessStatusList {
   items: HarnessStatus[]
+  known: boolean
 }
 
 // Delegated runs (runtime DelegatedRunManager, ADR-0013).
