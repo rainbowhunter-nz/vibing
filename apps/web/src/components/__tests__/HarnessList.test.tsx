@@ -12,7 +12,7 @@ const harnesses: HarnessStatus[] = [
 afterEach(cleanup)
 
 function setup() {
-  render(<HarnessList devcontainerId="dc-seed-0001" harnesses={harnesses} onChange={() => {}} />)
+  render(<HarnessList devcontainerId="dc-seed-0001" harnesses={harnesses} known onChange={() => {}} />)
 }
 
 describe('HarnessList', () => {

@@ -183,7 +183,7 @@ function ControlPanel({ dc }: { dc: DevcontainerView }) {
       <section>
         <SectionTitle>Coding harnesses</SectionTitle>
         {harnessState.kind === 'ready' ? (
-          <HarnessList devcontainerId={dc.id} harnesses={harnessState.data.items} onChange={refetchHarnesses} />
+          <HarnessList devcontainerId={dc.id} harnesses={harnessState.data.items} known={harnessState.data.known} onChange={refetchHarnesses} />
         ) : harnessState.kind === 'error' ? (
           <ErrorState {...loadError('harnesses')} />
         ) : (

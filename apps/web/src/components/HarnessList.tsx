@@ -25,9 +25,14 @@ const loginIcon = (
   </svg>
 )
 
-const spinner = (
-  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent" />
-)
+function SpinnerEl({ testId }: { testId: string }) {
+  return (
+    <span
+      data-testid={testId}
+      className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent"
+    />
+  )
+}
 
 function Tick({ label }: { label: string }) {
   return (
@@ -37,10 +42,11 @@ function Tick({ label }: { label: string }) {
   )
 }
 
-function ActionIcon({ title, disabled, busy, onClick, children }: {
+function ActionIcon({ title, disabled, busy, busyTestId, onClick, children }: {
   title: string
   disabled?: boolean
   busy?: boolean
+  busyTestId?: string
   onClick?: () => void
   children: React.ReactNode
 }) {
@@ -57,26 +63,24 @@ function ActionIcon({ title, disabled, busy, onClick, children }: {
           : 'cursor-pointer border-border text-text hover:bg-surface-muted',
       )}
     >
-      {busy ? spinner : children}
+      {busy ? <SpinnerEl testId={busyTestId ?? 'spinner'} /> : children}
     </button>
   )
 }
 
-export function HarnessList({ devcontainerId, harnesses, onChange }: {
+export function HarnessList({ devcontainerId, harnesses, known, onChange }: {
   devcontainerId: string
   harnesses: HarnessStatus[]
+  known: boolean
   onChange: () => void
 }) {
-  const [busy, setBusy] = useState<string | null>(null)
+  const [pending, setPending] = useState<Set<string>>(new Set())
 
-  async function run(key: string, fn: () => Promise<unknown>) {
-    setBusy(key)
-    try {
-      await fn()
-      onChange()
-    } finally {
-      setBusy(null)
-    }
+  const run = (key: string, fn: () => Promise<unknown>) => {
+    setPending((p) => new Set(p).add(key))
+    void fn()
+      .then(() => onChange())
+      .catch(() => setPending((p) => { const n = new Set(p); n.delete(key); return n }))
   }
 
   return (
@@ -86,7 +90,14 @@ export function HarnessList({ devcontainerId, harnesses, onChange }: {
         <span className="text-center">Installed</span>
         <span className="text-center">Authenticated</span>
       </div>
-      {harnesses.length === 0 ? (
+      {!known ? (
+        <div
+          title="Runtime disconnected — status unknown"
+          className="px-3 py-4 text-[13px] text-text-muted"
+        >
+          ?
+        </div>
+      ) : harnesses.length === 0 ? (
         <p className="px-3 py-4 text-[13px] text-text-muted">No harnesses reported.</p>
       ) : (
         harnesses.map((h) => (
@@ -98,7 +109,8 @@ export function HarnessList({ devcontainerId, harnesses, onChange }: {
               ) : (
                 <ActionIcon
                   title={`Install ${h.name}`}
-                  busy={busy === `install:${h.name}`}
+                  busy={pending.has('install:' + h.name)}
+                  busyTestId={`spinner-install-${h.name}`}
                   onClick={() => run(`install:${h.name}`, () => installHarness(devcontainerId, h.name))}
                 >
                   {installIcon}
@@ -112,7 +124,8 @@ export function HarnessList({ devcontainerId, harnesses, onChange }: {
                 <ActionIcon
                   title={h.installed ? `Authenticate ${h.name}` : `Install ${h.name} first`}
                   disabled={!h.installed}
-                  busy={busy === `auth:${h.name}`}
+                  busy={pending.has('auth:' + h.name)}
+                  busyTestId={`spinner-auth-${h.name}`}
                   onClick={() => run(`auth:${h.name}`, () => authenticateHarness(devcontainerId, h.name))}
                 >
                   {loginIcon}
