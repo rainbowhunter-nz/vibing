@@ -14,6 +14,7 @@ In-container companion process. Reduces friction of using coding harnesses — i
 
 ## Context
 
+- Launched detached by the Control Plane's injector; its stdout/stderr (and the preceding `uv tool install`) are teed to `/tmp/vibing-runtime.log`, and its PID recorded in `/tmp/vibing-runtime.pid` for `stop-runtime`.
 - Connects out to Control Plane `/runtime/agent/ws` as the Devcontainer Runtime.
 - On connect: sends `register`, then immediately sends `harness_status` for each managed harness.
 - On `install_harness`/`authenticate_harness` Command: installs/authenticates the harness, then reports the **full** `harness_status` list (not just the touched harness — the Control Plane cache replaces wholesale, so a single-item report would drop the others).
