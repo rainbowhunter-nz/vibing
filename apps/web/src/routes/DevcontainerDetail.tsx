@@ -97,6 +97,7 @@ export function LifecycleHeader({
 }) {
   const [showDetails, setShowDetails] = useState(false)
   const running = dc.status === 'running'
+  const transitioning = dc.status === 'starting' || dc.status === 'stopping'
 
   return (
     <div className="border-b border-border bg-surface-rail px-4 py-3">
@@ -121,7 +122,7 @@ export function LifecycleHeader({
               <StopIcon />
             </IconButton>
           ) : (
-            <IconButton title="Start" busy={busy} onClick={() => onAction('start')}>
+            <IconButton title="Start" busy={busy || transitioning} onClick={() => onAction('start')}>
               <PlayIcon />
             </IconButton>
           )}
@@ -134,7 +135,7 @@ export function LifecycleHeader({
             title="Delete"
             danger
             busy={busy}
-            onClick={() => { if (confirm(`Delete ${dc.name}?`)) onAction('delete') }}
+            onClick={() => { if (!busy && confirm(`Delete ${dc.name}?`)) onAction('delete') }}
           >
             <TrashIcon />
           </IconButton>

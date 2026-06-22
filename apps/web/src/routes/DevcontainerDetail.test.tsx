@@ -22,4 +22,9 @@ describe('LifecycleHeader actions', () => {
     render(<LifecycleHeader dc={{ ...base, status: 'stopped' }} busy={false} onAction={() => {}} />)
     expect(screen.getByTitle('Start')).toBeTruthy()
   })
+
+  it('Start is disabled when status is starting', () => {
+    render(<LifecycleHeader dc={{ ...base, status: 'starting' }} busy={false} onAction={() => {}} />)
+    expect((screen.getByTitle('Start') as HTMLButtonElement).disabled).toBeTruthy()
+  })
 })
