@@ -1,10 +1,13 @@
-"""Injects the Devcontainer Runtime into a running container.
+"""Injects the Devcontainer Runtime into a running container, and controls it.
 
-Copies uv + vibing wheel via docker cp, then runs a single devcontainer exec
-that installs the runtime with uv and detaches it.
+Copies uv + vibing wheel via docker cp, then runs a single devcontainer exec that
+installs the runtime synchronously (so bootstrap failures surface via the exec's
+exit code and are teed into the unified log), then detaches ONLY the long-running
+runtime and records its PID. `stop_runtime` and `read_log` drive the container via
+`<engine> exec`.
 
-Best-effort: any FileNotFoundError OR non-zero exit on ANY step logs a WARNING
-and returns without raising; later steps are skipped after a failure.
+inject()/inject_by_path() return True when the runtime was launched (bootstrap ok),
+False when any step failed (the failure is logged and lives in the unified log).
 """
 
 from pathlib import Path
@@ -18,6 +21,9 @@ _DEFAULT_UV_BINARY = "/usr/local/bin/uv"
 _DEFAULT_WHEEL_DIR = "/opt/vibing/wheels"
 _CONTAINER_UV_DEST = "/usr/local/bin/uv"
 _CONTAINER_WHEEL_DIR = "/tmp"
+
+CONTAINER_LOG_PATH = "/tmp/vibing-runtime.log"
+CONTAINER_PID_PATH = "/tmp/vibing-runtime.pid"
 
 
 class RuntimeInjector:
@@ -38,12 +44,12 @@ class RuntimeInjector:
         self._wheel_dir = wheel_dir
         self._runner = runner or _default_runner
 
-    async def inject(self, devcontainer_id: str, container_id: str, local_path: str) -> None:
+    async def inject(self, devcontainer_id: str, container_id: str, local_path: str) -> bool:
         logger.info("runtime injection: %s into container %s", devcontainer_id, container_id)
         wheel = self._find_wheel()
         if wheel is None:
             logger.warning("Runtime injection skipped: no .whl found in %s", self._wheel_dir)
-            return
+            return False
 
         container_wheel_path = f"{_CONTAINER_WHEEL_DIR}/{wheel.name}"
 
@@ -52,23 +58,26 @@ class RuntimeInjector:
             "cp uv binary",
             devcontainer_id,
         ):
-            return
+            return False
 
         if not await self._run(
             [self._engine, "cp", str(wheel), f"{container_id}:{container_wheel_path}"],
             "cp wheel",
             devcontainer_id,
         ):
-            return
+            return False
 
         agent_url = resolve_runtime_control_plane_url(self._runtime_url)
         bash_payload = (
+            "set -e -o pipefail\n"
             f"{_CONTAINER_UV_DEST} tool install --python 3.13 --from {container_wheel_path} vibing"
-            f' && export PATH="$HOME/.local/bin:$PATH"'
-            f" && nohup vibing runtime devcontainer"
+            f" 2>&1 | tee {CONTAINER_LOG_PATH}\n"
+            'export PATH="$HOME/.local/bin:$PATH"\n'
+            f"nohup vibing runtime devcontainer"
             f" --control-plane-url {agent_url}"
             f" --devcontainer-id {devcontainer_id}"
-            f" >/tmp/vibing-agent.log 2>&1 &"
+            f" >>{CONTAINER_LOG_PATH} 2>&1 &\n"
+            f"echo $! >{CONTAINER_PID_PATH}\n"
         )
         if await self._run(
             [
@@ -84,7 +93,9 @@ class RuntimeInjector:
             "devcontainer exec",
             devcontainer_id,
         ):
-            logger.info("runtime injection started: %s (waiting for WS connect)", devcontainer_id)
+            logger.info("runtime injection launched: %s (waiting for WS connect)", devcontainer_id)
+            return True
+        return False
 
     async def resolve_container_id(self, local_path: str) -> str | None:
         label = f"label=devcontainer.local_folder={local_path}"
@@ -97,12 +108,37 @@ class RuntimeInjector:
         ids = result.stdout.split()
         return ids[0] if ids else None
 
-    async def inject_by_path(self, devcontainer_id: str, local_path: str) -> None:
+    async def inject_by_path(self, devcontainer_id: str, local_path: str) -> bool:
         container_id = await self.resolve_container_id(local_path)
         if container_id is None:
             logger.warning("inject: no running container for %s (%s)", devcontainer_id, local_path)
-            return
-        await self.inject(devcontainer_id, container_id, local_path)
+            return False
+        return await self.inject(devcontainer_id, container_id, local_path)
+
+    async def stop_runtime(self, local_path: str) -> bool:
+        container_id = await self.resolve_container_id(local_path)
+        if container_id is None:
+            return False
+        kill = f'kill "$(cat {CONTAINER_PID_PATH})" 2>/dev/null || true'
+        return await self._run(
+            [self._engine, "exec", container_id, "bash", "-lc", kill],
+            "stop runtime",
+            local_path,
+        )
+
+    async def read_log(self, local_path: str) -> str | None:
+        container_id = await self.resolve_container_id(local_path)
+        if container_id is None:
+            return None
+        try:
+            result = await self._runner(
+                [self._engine, "exec", container_id, "cat", CONTAINER_LOG_PATH]
+            )
+        except FileNotFoundError:
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout
 
     def _find_wheel(self) -> Path | None:
         wheels = sorted(Path(self._wheel_dir).glob("*.whl"))
@@ -121,10 +157,11 @@ class RuntimeInjector:
             return False
         if result.returncode != 0:
             logger.warning(
-                "Runtime injection failed at '%s' for %s (exit %d): %s",
+                "Runtime injection failed at '%s' for %s (exit %d):\nstdout: %s\nstderr: %s",
                 step,
                 devcontainer_id,
                 result.returncode,
+                result.stdout[-2000:],
                 result.stderr[-2000:],
             )
             return False
