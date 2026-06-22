@@ -4,7 +4,10 @@ A separate client over the Control Plane's `/api/v1`, not part of it. Always cal
 via the relative `/api/v1/...` path (Vite proxies it in dev; same-origin in the container) —
 never hardcode `http://localhost:8000`. Read the root `CONTEXT.md` for domain terms.
 
-`pnpm install`; `pnpm dev` (`:5173`); `pnpm test` (vitest); `pnpm build` (tsc + vite).
+`pnpm install`; `pnpm dev` (`:5173`); `pnpm test` (vitest); `pnpm build` (tsc + vite);
+`pnpm e2e` (Playwright, specs in `e2e/`, runs against `pnpm dev:mock`).
+
+Devcontainer `status` and harness install/auth status are **live** (computed by the backend, never persisted): the status union has no `created` (a never-started devcontainer is `stopped`). The harness panel shows `?` when the runtime is disconnected (`HarnessStatusList.known === false`). Devcontainers carry a `source` (`manual` | `discovered`). The detail view uses icon controls (Start/Stop, plus Inject-Runtime when running, and Delete with confirm); the install/authenticate spinner persists until the SSE-driven status update flips the flag.
 
 ## Where things live
 
