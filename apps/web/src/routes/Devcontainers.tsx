@@ -18,32 +18,11 @@ import { useSseInvalidation } from '../lib/events'
 import { loadError } from '../lib/copy'
 import { cn } from '../lib/cn'
 import { formatRelativeTime } from '../lib/time'
+import { PlayIcon, StopIcon, TrashIcon, SpinnerIcon } from '../components/icons'
 
 const folderIcon = (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-)
-
-const playIcon = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="5 3 19 12 5 21 5 3" />
-  </svg>
-)
-
-const stopIcon = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-  </svg>
-)
-
-const trashIcon = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="3 6 5 6 21 6" />
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-    <path d="M10 11v6" />
-    <path d="M14 11v6" />
-    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
   </svg>
 )
 
@@ -52,10 +31,6 @@ const editIcon = (
     <path d="M12 20h9" />
     <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
   </svg>
-)
-
-const spinnerIcon = (
-  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent" />
 )
 
 const RUNNING_STATUSES = new Set(['running', 'starting', 'stopping'])
@@ -178,7 +153,7 @@ function DevcontainerTable({
                     : 'cursor-pointer text-text-muted hover:bg-surface-muted',
                 )}
               >
-                {isBusy && pending?.action === 'start' ? spinnerIcon : playIcon}
+                {isBusy && pending?.action === 'start' ? <SpinnerIcon /> : <PlayIcon />}
               </button>
               <button
                 title="Stop"
@@ -191,7 +166,7 @@ function DevcontainerTable({
                     : 'cursor-pointer text-text-muted hover:bg-surface-muted',
                 )}
               >
-                {isBusy && pending?.action === 'stop' ? spinnerIcon : stopIcon}
+                {isBusy && pending?.action === 'stop' ? <SpinnerIcon /> : <StopIcon />}
               </button>
               <button
                 title="Delete"
@@ -204,7 +179,7 @@ function DevcontainerTable({
                     : 'cursor-pointer text-bad hover:bg-surface-muted',
                 )}
               >
-                {isBusy && pending?.action === 'delete' ? spinnerIcon : trashIcon}
+                {isBusy && pending?.action === 'delete' ? <SpinnerIcon /> : <TrashIcon />}
               </button>
             </div>
           </div>

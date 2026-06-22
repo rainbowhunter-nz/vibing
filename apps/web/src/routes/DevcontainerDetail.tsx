@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
 import { HarnessList } from '../components/HarnessList'
 import { Dialog } from '../components/Dialog'
+import { PlayIcon, StopIcon, TrashIcon, SpinnerIcon, InjectIcon } from '../components/icons'
 import {
   fetchDevcontainer,
   startDevcontainer,
   stopDevcontainer,
+  deleteDevcontainer,
+  injectRuntime,
   fetchHarnesses,
   useApiQuery,
   ApiError,
@@ -22,7 +25,6 @@ import { cn } from '../lib/cn'
 function statusBadgeClass(status: string): string {
   switch (status) {
     case 'running':
-      return 'bg-accent/15 text-accent'
     case 'starting':
     case 'stopping':
       return 'bg-accent/15 text-accent'
@@ -33,14 +35,113 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-const RUNNING = new Set(['running', 'starting', 'stopping'])
-
-function ConnDot({ label, ok }: { label: string; ok: boolean }) {
+function StatusBadge({ status }: { status: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
-      <span className={cn('h-2 w-2 rounded-full', ok ? 'bg-ok' : 'bg-text-subtle')} />
-      {label}
+    <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(status))}>
+      {status}
     </span>
+  )
+}
+
+function SourceBadge({ source }: { source: string }) {
+  return (
+    <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-text-muted">
+      {source}
+    </span>
+  )
+}
+
+function IconButton({
+  title,
+  busy,
+  danger,
+  onClick,
+  children,
+}: {
+  title: string
+  busy: boolean
+  danger?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={busy}
+      onClick={onClick}
+      className={cn(
+        'flex h-7 w-7 items-center justify-center rounded-[5px]',
+        busy
+          ? 'cursor-not-allowed opacity-40'
+          : danger
+            ? 'cursor-pointer text-bad hover:bg-surface-muted'
+            : 'cursor-pointer text-text-muted hover:bg-surface-muted',
+      )}
+    >
+      {busy ? <SpinnerIcon /> : children}
+    </button>
+  )
+}
+
+type ActionKind = 'start' | 'stop' | 'inject' | 'delete'
+
+export function LifecycleHeader({
+  dc,
+  busy,
+  onAction,
+}: {
+  dc: DevcontainerView
+  busy: boolean
+  onAction: (kind: ActionKind) => void
+}) {
+  const [showDetails, setShowDetails] = useState(false)
+  const running = dc.status === 'running'
+
+  return (
+    <div className="border-b border-border bg-surface-rail px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <button
+          type="button"
+          onClick={() => setShowDetails(true)}
+          className="text-[15px] font-semibold text-text hover:text-accent"
+          title="View details"
+        >
+          {dc.name}
+        </button>
+        <StatusBadge status={dc.status} />
+        <SourceBadge source={dc.source} />
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+          <span className={cn('h-2 w-2 rounded-full', dc.runtime.runtime_connected ? 'bg-ok' : 'bg-text-subtle')} />
+          {dc.runtime.runtime_connected ? 'runtime' : 'runtime not connected'}
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          {running ? (
+            <IconButton title="Stop" busy={busy} onClick={() => onAction('stop')}>
+              <StopIcon />
+            </IconButton>
+          ) : (
+            <IconButton title="Start" busy={busy} onClick={() => onAction('start')}>
+              <PlayIcon />
+            </IconButton>
+          )}
+          {running && (
+            <IconButton title="Inject runtime" busy={busy} onClick={() => onAction('inject')}>
+              <InjectIcon />
+            </IconButton>
+          )}
+          <IconButton
+            title="Delete"
+            danger
+            busy={busy}
+            onClick={() => { if (confirm(`Delete ${dc.name}?`)) onAction('delete') }}
+          >
+            <TrashIcon />
+          </IconButton>
+        </div>
+      </div>
+      {showDetails && <DetailsDialog dc={dc} onClose={() => setShowDetails(false)} />}
+    </div>
   )
 }
 
@@ -63,66 +164,6 @@ function DetailsDialog({ dc, onClose }: { dc: DevcontainerView; onClose: () => v
         <DetailRow label="Updated" value={dc.updated_at ? formatRelativeTime(dc.updated_at) : '—'} />
       </div>
     </Dialog>
-  )
-}
-
-function LifecycleHeader({ dc, onChange }: { dc: DevcontainerView; onChange: () => void }) {
-  const [busy, setBusy] = useState(false)
-  const [showDetails, setShowDetails] = useState(false)
-  const running = RUNNING.has(dc.status)
-
-  async function act(fn: () => Promise<unknown>) {
-    setBusy(true)
-    try {
-      await fn()
-      onChange()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="border-b border-border bg-surface-rail px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <button
-          type="button"
-          onClick={() => setShowDetails(true)}
-          className="text-[15px] font-semibold text-text hover:text-accent"
-          title="View details"
-        >
-          {dc.name}
-        </button>
-        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadgeClass(dc.status))}>
-          {dc.status}
-        </span>
-        <ConnDot
-          label={dc.runtime.runtime_connected ? 'runtime' : 'runtime not connected'}
-          ok={dc.runtime.runtime_connected}
-        />
-        <div className="ml-auto flex items-center gap-2">
-          {dc.status === 'running' ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => act(() => stopDevcontainer(dc.id))}
-              className="rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-text hover:bg-surface-muted disabled:opacity-40"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={busy || running}
-              onClick={() => act(() => startDevcontainer(dc.id))}
-              className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-bg hover:bg-accent/90 disabled:opacity-40"
-            >
-              Start
-            </button>
-          )}
-        </div>
-      </div>
-      {showDetails && <DetailsDialog dc={dc} onClose={() => setShowDetails(false)} />}
-    </div>
   )
 }
 
@@ -161,11 +202,34 @@ function errorElement(error: unknown) {
 
 export function DevcontainerDetail() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { register } = useSseInvalidation()
   const { state, refetch } = useApiQuery(() => fetchDevcontainer(id!), [id])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => register('devcontainers', refetch), [register, refetch])
   useEffect(() => register('runtime', refetch), [register, refetch])
+
+  async function act(kind: ActionKind, dc: DevcontainerView) {
+    setBusy(true)
+    setError(null)
+    try {
+      if (kind === 'start') await startDevcontainer(dc.id)
+      else if (kind === 'stop') await stopDevcontainer(dc.id)
+      else if (kind === 'inject') await injectRuntime(dc.id)
+      else if (kind === 'delete') {
+        await deleteDevcontainer(dc.id)
+        navigate('/devcontainers')
+        return
+      }
+      refetch()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -175,7 +239,12 @@ export function DevcontainerDetail() {
       <QueryBoundary state={state} error={errorElement(state.kind === 'error' ? state.error : null)}>
         {(dc) => (
           <div className="min-h-0 flex-1 overflow-auto">
-            <LifecycleHeader dc={dc} onChange={refetch} />
+            {error && (
+              <div className="px-4 pt-3">
+                <ErrorState title="Action failed" helper={error} />
+              </div>
+            )}
+            <LifecycleHeader dc={dc} busy={busy} onAction={(kind) => act(kind, dc)} />
             <ControlPanel dc={dc} />
           </div>
         )}
