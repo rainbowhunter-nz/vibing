@@ -63,7 +63,7 @@ describe('RuntimeSection', () => {
     expect(screen.getByText('Disconnected')).toBeTruthy()
   })
 
-  it('opens the runtime logs dialog with a live indicator', async () => {
+  it('opens the runtime logs dialog', async () => {
     renderDetail(base)
     fireEvent.click(screen.getByTitle('View runtime logs'))
     expect(await screen.findByText('Runtime logs')).toBeTruthy()

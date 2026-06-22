@@ -64,6 +64,8 @@ export async function streamRuntimeLogs(
     if (done) break
     onChunk(decoder.decode(value, { stream: true }))
   }
+  const tail = decoder.decode()
+  if (tail) onChunk(tail)
 }
 
 export const removeContainer = (id: string): Promise<void> =>
