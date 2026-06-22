@@ -1,5 +1,6 @@
 import type { Devcontainer, DevcontainerCreateBody, DevcontainerUpdateBody, DevcontainerView, DevcontainerViewList, RuntimeConnection } from '../../lib/api/types'
 import { seedDevcontainers } from './seeds'
+import { ensureHarnessEntry } from './harnesses'
 
 // Runtime connection per seed devcontainer; my-webapp is connected for inspection.
 const SEED_RUNTIME: Record<string, RuntimeConnection> = {
@@ -101,6 +102,7 @@ export function deleteDevcontainer(id: string): void {
 }
 
 export function injectRuntime(id: string): void {
-  const dc = store.find((d) => d.id === id)
-  if (!dc) throw new NotFoundError(id)
+  const idx = findIdx(id)
+  store[idx] = { ...store[idx], runtime: { runtime_connected: true }, updated_at: now() }
+  ensureHarnessEntry(id)
 }

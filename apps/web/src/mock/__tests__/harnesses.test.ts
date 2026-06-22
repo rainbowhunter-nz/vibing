@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { listHarnesses, authenticateHarness, resetHarnesses, NotFoundError } from '../state/harnesses'
+import { listHarnesses, installHarness, authenticateHarness, resetHarnesses, NotFoundError } from '../state/harnesses'
 
 beforeEach(() => resetHarnesses())
 
@@ -26,5 +26,15 @@ describe('harness mock state', () => {
     authenticateHarness('dc-seed-0001', 'codex')
     resetHarnesses()
     expect(listHarnesses('dc-seed-0001').items.find((h) => h.name === 'codex')!.authenticated).toBe(false)
+  })
+
+  it('install on unseeded devcontainer throws and leaves known:false (Fix-1 regression)', () => {
+    expect(() => installHarness('dc-seed-0002', 'claude-code')).toThrow(NotFoundError)
+    expect(listHarnesses('dc-seed-0002').known).toBe(false)
+  })
+
+  it('authenticate on unseeded devcontainer throws and leaves known:false (Fix-1 regression)', () => {
+    expect(() => authenticateHarness('dc-seed-0002', 'claude-code')).toThrow(NotFoundError)
+    expect(listHarnesses('dc-seed-0002').known).toBe(false)
   })
 })

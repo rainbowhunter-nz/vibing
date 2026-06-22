@@ -23,15 +23,19 @@ export function listHarnesses(devcontainerId: string): HarnessStatusList {
   return items ? { items: items.map((h) => ({ ...h })), known: true } : { items: [], known: false }
 }
 
-function ensureEntry(devcontainerId: string): HarnessStatus[] {
-  if (!store[devcontainerId]) store[devcontainerId] = []
-  return store[devcontainerId]
-}
-
 function find(devcontainerId: string, name: string): HarnessStatus {
-  const h = ensureEntry(devcontainerId).find((x) => x.name === name)
+  const entry = store[devcontainerId]
+  const h = entry?.find((x) => x.name === name)
   if (!h) throw new NotFoundError(name)
   return h
+}
+
+// Ensures a harness entry exists for devcontainerId, seeding a default list if absent.
+// Called by injectRuntime so the harness panel becomes known after runtime injection.
+export function ensureHarnessEntry(devcontainerId: string): void {
+  if (!store[devcontainerId]) {
+    store[devcontainerId] = [{ name: 'claude-code', installed: false, authenticated: false }]
+  }
 }
 
 export function installHarness(devcontainerId: string, name: string): HarnessStatus {

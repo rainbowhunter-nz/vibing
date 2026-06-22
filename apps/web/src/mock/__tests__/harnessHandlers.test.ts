@@ -2,12 +2,13 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from
 import { setupServer } from 'msw/node'
 import { handlers } from '../handlers'
 import { resetScenario } from '../scenario'
+import { resetDevcontainers } from '../state/devcontainers'
 import { resetHarnesses } from '../state/harnesses'
 import { resetDelegatedRuns } from '../state/delegatedRuns'
 
 const server = setupServer(...handlers)
 beforeAll(() => server.listen())
-beforeEach(() => { resetScenario(); resetHarnesses(); resetDelegatedRuns() })
+beforeEach(() => { resetScenario(); resetDevcontainers(); resetHarnesses(); resetDelegatedRuns() })
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -32,6 +33,19 @@ describe('harness handlers', () => {
 
   it('POST install flips installed', async () => {
     expect((await (await post('/api/v1/devcontainers/dc-seed-0001/harnesses/cursor/install')).json()).installed).toBe(true)
+  })
+})
+
+describe('inject-runtime handler', () => {
+  it('POST /inject-runtime returns 202 for known devcontainer', async () => {
+    const res = await post('/api/v1/devcontainers/dc-seed-0002/inject-runtime')
+    expect(res.status).toBe(202)
+  })
+
+  it('POST /inject-runtime 404s for unknown devcontainer', async () => {
+    const res = await post('/api/v1/devcontainers/nope/inject-runtime')
+    expect(res.status).toBe(404)
+    expect((await res.json()).error.code).toBe('DEVCONTAINER_NOT_FOUND')
   })
 })
 

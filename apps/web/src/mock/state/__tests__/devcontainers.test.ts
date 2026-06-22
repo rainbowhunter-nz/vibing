@@ -8,10 +8,12 @@ import {
   startDevcontainer,
   stopDevcontainer,
   deleteDevcontainer,
+  injectRuntime,
   NotFoundError,
 } from '../devcontainers'
+import { listHarnesses, resetHarnesses } from '../harnesses'
 
-beforeEach(() => resetDevcontainers())
+beforeEach(() => { resetDevcontainers(); resetHarnesses() })
 
 describe('listDevcontainers', () => {
   it('returns seeded items in happy state', () => {
@@ -146,5 +148,23 @@ describe('resetDevcontainers', () => {
     resetDevcontainers()
     expect(listDevcontainers().items.length).toBeGreaterThanOrEqual(4)
     expect(getDevcontainer('dc-seed-0001').name).toBe('my-webapp')
+  })
+})
+
+describe('injectRuntime', () => {
+  it('throws NotFoundError for unknown id', () => {
+    expect(() => injectRuntime('nonexistent')).toThrow(NotFoundError)
+  })
+
+  it('sets runtime_connected to true on a known devcontainer', () => {
+    injectRuntime('dc-seed-0002')
+    expect(getDevcontainer('dc-seed-0002').runtime.runtime_connected).toBe(true)
+  })
+
+  it('makes listHarnesses return known:true after inject', () => {
+    // dc-seed-0002 has no harness seed → known:false before inject
+    expect(listHarnesses('dc-seed-0002').known).toBe(false)
+    injectRuntime('dc-seed-0002')
+    expect(listHarnesses('dc-seed-0002').known).toBe(true)
   })
 })
