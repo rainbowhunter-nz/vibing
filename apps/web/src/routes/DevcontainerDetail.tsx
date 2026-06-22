@@ -12,6 +12,8 @@ import {
   stopDevcontainer,
   removeContainer,
   injectRuntime,
+  stopRuntime,
+  fetchRuntimeLogs,
   fetchHarnesses,
   useApiQuery,
   ApiError,
@@ -87,7 +89,7 @@ function IconButton({
   )
 }
 
-type ActionKind = 'start' | 'stop' | 'inject' | 'remove'
+type ActionKind = 'start' | 'stop' | 'inject' | 'remove' | 'stop-runtime'
 
 export function LifecycleHeader({
   dc,
@@ -166,6 +168,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">{children}</h3>
 }
 
+const RUNTIME_LABEL: Record<string, string> = {
+  connected: 'Connected',
+  launching: 'Launching…',
+  disconnected: 'Disconnected',
+}
+
 export function RuntimeSection({
   dc,
   busy,
@@ -176,26 +184,58 @@ export function RuntimeSection({
   onAction: (kind: ActionKind) => void
 }) {
   const running = dc.status === 'running'
-  const connected = dc.runtime.runtime_connected
+  const state = dc.runtime.state
+  const connected = state === 'connected'
+  const launching = state === 'launching'
+  const [logs, setLogs] = useState<string | null>(null)
+  const [showLogs, setShowLogs] = useState(false)
+
+  async function viewLogs() {
+    setShowLogs(true)
+    const res = await fetchRuntimeLogs(dc.id)
+    setLogs(res.content ?? '(no runtime log found)')
+  }
+
   return (
     <section className="mb-5">
       <SectionTitle>Runtime</SectionTitle>
       <div className="flex items-center gap-2 text-[13px]">
-        <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-ok' : 'bg-text-subtle')} />
+        <span
+          className={cn(
+            'h-2 w-2 rounded-full',
+            connected ? 'bg-ok' : launching ? 'bg-accent' : 'bg-text-subtle',
+          )}
+        />
         <span className={connected ? 'text-text' : 'text-text-muted'}>
-          {connected ? 'Connected' : 'Not connected'}
+          {RUNTIME_LABEL[state]}
         </span>
-        <div className="ml-auto">
-          <IconButton
-            title={running ? 'Inject runtime' : 'Start the container to inject runtime'}
-            busy={busy && running}
-            disabled={!running}
-            onClick={() => onAction('inject')}
-          >
-            <InjectIcon />
+        <div className="ml-auto flex items-center gap-1">
+          <IconButton title="View runtime logs" busy={false} onClick={viewLogs}>
+            <span className="text-[11px] font-medium">Logs</span>
           </IconButton>
+          {connected ? (
+            <IconButton title="Stop runtime" busy={busy} onClick={() => onAction('stop-runtime')}>
+              <StopIcon />
+            </IconButton>
+          ) : (
+            <IconButton
+              title={running ? 'Inject runtime' : 'Start the container to inject runtime'}
+              busy={busy && running}
+              disabled={!running}
+              onClick={() => onAction('inject')}
+            >
+              <InjectIcon />
+            </IconButton>
+          )}
         </div>
       </div>
+      {showLogs && (
+        <Dialog title="Runtime logs" onClose={() => setShowLogs(false)}>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-[12px] text-text-muted">
+            {logs ?? 'Loading…'}
+          </pre>
+        </Dialog>
+      )}
     </section>
   )
 }
@@ -259,6 +299,7 @@ export function DevcontainerDetail() {
       else if (kind === 'stop') await stopDevcontainer(dc.id)
       else if (kind === 'inject') await injectRuntime(dc.id)
       else if (kind === 'remove') await removeContainer(dc.id)
+      else if (kind === 'stop-runtime') await stopRuntime(dc.id)
       refetch()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

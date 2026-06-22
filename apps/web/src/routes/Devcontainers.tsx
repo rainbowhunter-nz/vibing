@@ -124,7 +124,7 @@ function DevcontainerTable({
             </span>
             <span className="text-xs text-text-muted">
               {devcontainer.updated_at ? formatRelativeTime(devcontainer.updated_at) : '—'}
-              {devcontainer.runtime.runtime_connected && (
+              {devcontainer.runtime.state === 'connected' && (
                 <span title="Runtime connected" className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ok align-middle" />
               )}
             </span>

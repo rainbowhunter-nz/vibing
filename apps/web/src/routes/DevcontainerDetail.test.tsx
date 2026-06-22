@@ -1,13 +1,18 @@
 import { render, screen, cleanup } from '@testing-library/react'
 import { describe, expect, it, afterEach } from 'vitest'
+import type { DevcontainerView } from '../lib/api/types'
 import { LifecycleHeader, RuntimeSection } from './DevcontainerDetail'
 
 afterEach(cleanup)
 
-const base = {
-  id: 'dc-1', name: 'demo', local_path: '/x', status: 'running' as const,
-  source: 'manual' as const, created_at: null, updated_at: null,
-  runtime: { runtime_connected: true },
+const base: DevcontainerView = {
+  id: 'dc-1', name: 'demo', local_path: '/x', status: 'running',
+  source: 'manual', created_at: null, updated_at: null,
+  runtime: { state: 'connected' },
+}
+
+function renderDetail(dc: DevcontainerView) {
+  return render(<RuntimeSection dc={dc} busy={false} onAction={() => {}} />)
 }
 
 describe('LifecycleHeader actions', () => {
@@ -31,24 +36,36 @@ describe('LifecycleHeader actions', () => {
 })
 
 describe('RuntimeSection', () => {
-  it('shows Connected and an enabled Inject when running and connected', () => {
+  it('shows Connected and a Stop runtime button when running and connected', () => {
     const calls: string[] = []
     render(<RuntimeSection dc={base} busy={false} onAction={(k) => calls.push(k)} />)
     expect(screen.getByText('Connected')).toBeTruthy()
-    const inject = screen.getByTitle('Inject runtime') as HTMLButtonElement
-    expect(inject.disabled).toBe(false)
-    inject.click()
-    expect(calls).toEqual(['inject'])
+    expect(screen.getByTitle('Stop runtime')).toBeTruthy()
   })
 
-  it('shows Not connected and a disabled Inject when stopped', () => {
+  it('shows Start the container to inject runtime when stopped and disconnected', () => {
     const calls: string[] = []
-    const dc = { ...base, status: 'stopped' as const, runtime: { runtime_connected: false } }
+    const dc = { ...base, status: 'stopped' as const, runtime: { state: 'disconnected' as const } }
     render(<RuntimeSection dc={dc} busy={false} onAction={(k) => calls.push(k)} />)
-    expect(screen.getByText('Not connected')).toBeTruthy()
     const inject = screen.getByTitle('Start the container to inject runtime') as HTMLButtonElement
     expect(inject.disabled).toBe(true)
     inject.click()
     expect(calls).toEqual([])
+  })
+
+  it('shows Connected with a Stop runtime button when connected', () => {
+    renderDetail(base)
+    expect(screen.getByText('Connected')).toBeTruthy()
+    expect(screen.getByTitle('Stop runtime')).toBeTruthy()
+  })
+
+  it('shows Launching when state is launching', () => {
+    renderDetail({ ...base, runtime: { state: 'launching' as const } })
+    expect(screen.getByText('Launching…')).toBeTruthy()
+  })
+
+  it('shows Disconnected when not connected', () => {
+    renderDetail({ ...base, status: 'running' as const, runtime: { state: 'disconnected' as const } })
+    expect(screen.getByText('Disconnected')).toBeTruthy()
   })
 })

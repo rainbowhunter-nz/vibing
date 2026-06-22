@@ -93,7 +93,7 @@ const sample: DevcontainerView = {
   source: 'manual',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
-  runtime: { runtime_connected: false },
+  runtime: { state: 'disconnected' as const },
 }
 
 const runningDc: DevcontainerView = { ...sample, id: 'dc2', name: 'running-project', status: 'running' }
@@ -415,8 +415,8 @@ describe('Devcontainers SSE invalidation', () => {
     await waitFor(() => expect(mockFetch.mock.calls.length).toBe(callsBefore + 1))
   })
 
-  it('runtime invalidation triggers refetch (AC2: runtime_connected updates live)', async () => {
-    const runtimeConnected: DevcontainerView = { ...sample, runtime: { runtime_connected: true } }
+  it('runtime invalidation triggers refetch (AC2: runtime state updates live)', async () => {
+    const runtimeConnected: DevcontainerView = { ...sample, runtime: { state: 'connected' as const } }
     mockFetch
       .mockResolvedValueOnce({ items: [sample] })
       .mockResolvedValueOnce({ items: [runtimeConnected] })
