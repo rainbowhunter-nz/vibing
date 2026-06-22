@@ -15,7 +15,13 @@ test('running devcontainer shows Stop / Inject / Remove container icon controls'
 
 test('stopped devcontainer shows Start', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0002')
-  await expect(page.getByTitle('Start')).toBeVisible()
+  await expect(page.getByTitle('Start', { exact: true })).toBeVisible()
+})
+
+test('stopped devcontainer shows runtime as not connected with Inject disabled', async ({ page }) => {
+  await page.goto('/devcontainers/dc-seed-0002')
+  await expect(page.getByText('Not connected', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('Start the container to inject runtime')).toBeDisabled()
 })
 
 test('disconnected runtime shows a descriptive harness message', async ({ page }) => {
@@ -33,7 +39,7 @@ test('removing a container keeps the devcontainer and stays on the detail page',
   await page.goto('/devcontainers/dc-seed-0001') // running
   await page.getByTitle('Remove container').click()
   await expect(page).toHaveURL(/\/devcontainers\/dc-seed-0001$/)
-  await expect(page.getByTitle('Start')).toBeVisible() // back to stopped
+  await expect(page.getByTitle('Start', { exact: true })).toBeVisible() // back to stopped
 })
 
 // Spinner *persistence* (stays past POST resolve, clears only when the flag flips) is
