@@ -199,5 +199,6 @@ describe('stopRuntimeState', () => {
     expect(getDevcontainer('dc-seed-0002').runtime.state).toBe('connected')
     stopRuntimeState('dc-seed-0002')
     expect(getDevcontainer('dc-seed-0002').runtime.state).toBe('disconnected')
+    expect(listHarnesses('dc-seed-0002').known).toBe(false)
   })
 })

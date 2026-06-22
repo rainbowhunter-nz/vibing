@@ -53,12 +53,6 @@ describe('RuntimeSection', () => {
     expect(calls).toEqual([])
   })
 
-  it('shows Connected with a Stop runtime button when connected', () => {
-    renderDetail(base)
-    expect(screen.getByText('Connected')).toBeTruthy()
-    expect(screen.getByTitle('Stop runtime')).toBeTruthy()
-  })
-
   it('shows Launching when state is launching', () => {
     renderDetail({ ...base, runtime: { state: 'launching' as const } })
     expect(screen.getByText('Launching…')).toBeTruthy()

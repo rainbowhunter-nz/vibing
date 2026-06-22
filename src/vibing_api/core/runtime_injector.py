@@ -144,14 +144,14 @@ class RuntimeInjector:
         wheels = sorted(Path(self._wheel_dir).glob("*.whl"))
         return wheels[0] if wheels else None
 
-    async def _run(self, command: list[str], step: str, devcontainer_id: str) -> bool:
+    async def _run(self, command: list[str], step: str, context: str) -> bool:
         try:
             result = await self._runner(command)
         except FileNotFoundError:
             logger.warning(
                 "Runtime injection failed at '%s' for %s: binary not found: %s",
                 step,
-                devcontainer_id,
+                context,
                 command[0],
             )
             return False
@@ -159,7 +159,7 @@ class RuntimeInjector:
             logger.warning(
                 "Runtime injection failed at '%s' for %s (exit %d):\nstdout: %s\nstderr: %s",
                 step,
-                devcontainer_id,
+                context,
                 result.returncode,
                 result.stdout[-2000:],
                 result.stderr[-2000:],
