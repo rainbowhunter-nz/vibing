@@ -40,22 +40,37 @@ class DevcontainerService:
         self._publish(devcontainer_id)
 
     async def start(self, devcontainer_id: str, local_path: str) -> None:
+        logger.info("devcontainer start: %s (%s)", devcontainer_id, local_path)
         self._set(devcontainer_id, DevcontainerStatus.STARTING)
         result = await self._adapter.start(local_path)
         if isinstance(result, DevcontainerFailure):
-            logger.error("devcontainer start failed (%s): %s", devcontainer_id, result.message)
+            _log_failure(devcontainer_id, result)
             self._set(devcontainer_id, DevcontainerStatus.ERROR)
             return
+        logger.info("devcontainer started: %s", devcontainer_id)
         self._clear(devcontainer_id)
 
     async def stop(self, devcontainer_id: str, local_path: str) -> None:
+        logger.info("devcontainer stop: %s (%s)", devcontainer_id, local_path)
         self._set(devcontainer_id, DevcontainerStatus.STOPPING)
         result = await self._adapter.stop(local_path)
         if isinstance(result, DevcontainerFailure):
-            logger.error("devcontainer stop failed (%s): %s", devcontainer_id, result.message)
+            _log_failure(devcontainer_id, result)
             self._set(devcontainer_id, DevcontainerStatus.ERROR)
             return
+        logger.info("devcontainer stopped: %s", devcontainer_id)
         self._clear(devcontainer_id)
+
+
+def _log_failure(devcontainer_id: str, failure: DevcontainerFailure) -> None:
+    logger.error(
+        "devcontainer %s failed (%s): %s\ncommand: %s\nstderr:\n%s",
+        failure.operation,
+        devcontainer_id,
+        failure.message,
+        " ".join(failure.command),
+        failure.stderr_tail or "(empty)",
+    )
 
 
 _background_tasks: set[asyncio.Task[None]] = set()

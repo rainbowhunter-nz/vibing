@@ -39,6 +39,7 @@ class RuntimeInjector:
         self._runner = runner or _default_runner
 
     async def inject(self, devcontainer_id: str, container_id: str, local_path: str) -> None:
+        logger.info("runtime injection: %s into container %s", devcontainer_id, container_id)
         wheel = self._find_wheel()
         if wheel is None:
             logger.warning("Runtime injection skipped: no .whl found in %s", self._wheel_dir)
@@ -69,7 +70,7 @@ class RuntimeInjector:
             f" --devcontainer-id {devcontainer_id}"
             f" >/tmp/vibing-agent.log 2>&1 &"
         )
-        await self._run(
+        if await self._run(
             [
                 self._cli,
                 "exec",
@@ -82,7 +83,8 @@ class RuntimeInjector:
             ],
             "devcontainer exec",
             devcontainer_id,
-        )
+        ):
+            logger.info("runtime injection started: %s (waiting for WS connect)", devcontainer_id)
 
     async def resolve_container_id(self, local_path: str) -> str | None:
         label = f"label=devcontainer.local_folder={local_path}"
