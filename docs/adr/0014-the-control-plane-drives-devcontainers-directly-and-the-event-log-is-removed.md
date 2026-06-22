@@ -40,3 +40,5 @@ Status: accepted
 ---
 
 **Note (2026-06-22 — live-state refactor):** The phrase "the only remaining consumers (devcontainer status, harness status) are trivial direct writes" is no longer accurate. Both are now **live/in-memory**, not DB writes: devcontainer `status` is computed on each request (transient `LiveStateStore` map → Docker label), and harness status is cached in `LiveStateStore` and evicted on runtime disconnect. The `harness_status` table and `devcontainers.status` column have been removed (schema v8). `delegated_runs` remains a DB-backed projection per ADR-0016.
+
+**Note (2026-06-23 — explicit runtime injection):** "After a successful `up`, the Control Plane injects and launches the Devcontainer Runtime" is no longer automatic. Injection is now an **explicit, user-driven action** (`POST /{id}/inject-runtime`), never a post-`up` step — the devcontainer is the user's, and the Control Plane does not launch the runtime speculatively. The Devcontainer Runtime has its own user-controlled lifecycle separate from the container's; see the runtime-lifecycle ADR for its observable states and stop/restart controls.

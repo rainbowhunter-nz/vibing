@@ -79,7 +79,11 @@ _Avoid_: backendless mode, fake backend, mock server
 
 ## Lifecycle
 
-One lifecycle now — the Devcontainer's, owned by the **Control Plane**.
+Two lifecycles, both owned by the **Control Plane**: the Devcontainer's, and the Devcontainer
+Runtime's (nested — the Runtime only runs inside a running Devcontainer, but is started and stopped
+independently).
+
+### Devcontainer lifecycle
 
 - States: `created → starting → running → stopping → stopped`, plus `error`.
 - Commands map to the Dev Container CLI: start → `devcontainer up`, stop → stop the container by
@@ -87,9 +91,31 @@ One lifecycle now — the Devcontainer's, owned by the **Control Plane**.
 - Start and stop are long-running. The HTTP endpoint returns `202 Accepted` and the Control Plane
   runs the CLI in a background task, writing status (`starting → running`, or `error`) directly as it
   progresses. The browser sees changes via the SSE invalidation stream.
-- After a successful `up`, the Control Plane injects and launches the Devcontainer Runtime into the
-  container.
+- Injecting and launching the Devcontainer Runtime is a **separate, explicit, user-driven action**
+  (`POST /{id}/inject-runtime`), never an automatic post-`up` step — the devcontainer is the user's
+  and the Control Plane does not launch the runtime speculatively. The Runtime has its own
+  user-controlled lifecycle (start/stop/restart) independent of the container's.
 - "**Stop the devcontainer**" stops the container without deleting its reusable environment.
+
+### Runtime lifecycle
+
+The Devcontainer Runtime's state as the Control Plane observes it. Three resolved states:
+
+- `connected` — the runtime's WebSocket is registered. The **durable truth**: derived from the live
+  registry, so it survives a Control Plane restart (the runtime re-connects on its own).
+- `launching` — injection is in flight: set when inject starts, cleared by *whichever comes first*,
+  WS-connect (→ `connected`) or a ~30s timeout (→ `disconnected`). A `LiveStateStore` **transient**,
+  lost on Control Plane restart.
+- `disconnected` — the catch-all for *not connected*: never injected, stopped, crashed, or
+  failed-to-launch. The state label intentionally does **not** distinguish these; the runtime logs
+  do (fetched on demand).
+
+Control is explicit and user-driven: start (`inject-runtime`), stop (`stop-runtime` — `docker exec`
+kill via a PID file the runtime writes), restart (stop then start). Diagnosability splits two ways:
+**bootstrap failures** (`docker cp`, `uv tool install`) are reported **synchronously** at inject
+time; **post-launch failures** live in the in-container runtime log, fetched on demand
+(`runtime-logs`). There is no in-container supervisor and no auto-restart — failures surface to the
+user rather than being silently retried.
 
 ## Notes
 
