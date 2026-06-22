@@ -19,8 +19,12 @@ class FakeInjector:
         self.stopped.append(local_path)
         return True
 
-    async def read_log(self, local_path: str) -> str | None:
-        return self.log
+    def stream_log(self, local_path: str):
+        async def gen():
+            yield b"chunk1 "
+            yield b"chunk2"
+
+        return gen()
 
 
 class FakeConn:
@@ -75,6 +79,10 @@ def test_stop_kills_and_clears_transient() -> None:
     assert svc._live.get_runtime_transient("dc1") is None
 
 
-def test_read_log_delegates_to_injector() -> None:
+def test_stream_log_delegates_to_injector() -> None:
     svc = _service(FakeInjector())
-    assert asyncio.run(svc.read_log("/work/repo")) == "log contents"
+
+    async def collect():
+        return [chunk async for chunk in svc.stream_log("/work/repo")]
+
+    assert asyncio.run(collect()) == [b"chunk1 ", b"chunk2"]

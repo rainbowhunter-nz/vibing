@@ -50,15 +50,26 @@ def test_stop_runtime_endpoint_returns_202(client: TestClient) -> None:
     assert resp.status_code == 202
 
 
-def test_runtime_logs_endpoint_returns_content(client: TestClient) -> None:
+def test_runtime_logs_stream_endpoint_streams_content(client: TestClient) -> None:
     dc_id = _create(client)
 
-    async def fake_read_log(local_path: str) -> str | None:
-        return "hello from the runtime"
+    def fake_stream(local_path: str):
+        async def gen():
+            yield b"hello "
+            yield b"from the runtime"
 
-    client.app.state.runtime_service.read_log = fake_read_log  # type: ignore[union-attr]
-    body = client.get(f"/api/v1/devcontainers/{dc_id}/runtime-logs").json()
-    assert body == {"content": "hello from the runtime"}
+        return gen()
+
+    client.app.state.runtime_service.stream_log = fake_stream  # type: ignore[union-attr]
+    resp = client.get(f"/api/v1/devcontainers/{dc_id}/runtime-logs/stream")
+    assert resp.status_code == 200
+    assert resp.text == "hello from the runtime"
+
+
+def test_runtime_logs_stream_not_found(client: TestClient) -> None:
+    resp = client.get("/api/v1/devcontainers/nope/runtime-logs/stream")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
 
 
 def test_stop_runtime_not_found(client: TestClient) -> None:

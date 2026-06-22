@@ -37,10 +37,6 @@ class RuntimeConnection(BaseModel):
     state: RuntimeState
 
 
-class RuntimeLogs(BaseModel):
-    content: str | None
-
-
 class DevcontainerView(Devcontainer):
     runtime: RuntimeConnection
 

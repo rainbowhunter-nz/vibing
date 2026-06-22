@@ -3,13 +3,16 @@
 Copies uv + vibing wheel via docker cp, then runs a single devcontainer exec that
 installs the runtime synchronously (so bootstrap failures surface via the exec's
 exit code and are teed into the unified log), then detaches ONLY the long-running
-runtime and records its PID. `stop_runtime` and `read_log` drive the container via
-`<engine> exec`.
+runtime and records its PID. `stop_runtime` kills via the PID file and `stream_log`
+tail-follows the unified log, both via `<engine> exec`.
 
 inject()/inject_by_path() return True when the runtime was launched (bootstrap ok),
 False when any step failed (the failure is logged and lives in the unified log).
 """
 
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
 from logzero import logger
@@ -26,6 +29,32 @@ CONTAINER_LOG_PATH = "/tmp/vibing-runtime.log"
 CONTAINER_PID_PATH = "/tmp/vibing-runtime.pid"
 
 
+async def _default_log_streamer(engine: str, container_id: str) -> AsyncIterator[bytes]:
+    proc = await asyncio.create_subprocess_exec(
+        engine,
+        "exec",
+        container_id,
+        "tail",
+        "-n",
+        "+1",
+        "-f",
+        CONTAINER_LOG_PATH,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    assert proc.stdout is not None
+    try:
+        while True:
+            chunk = await proc.stdout.read(4096)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        await proc.wait()
+
+
 class RuntimeInjector:
     def __init__(
         self,
@@ -36,6 +65,7 @@ class RuntimeInjector:
         uv_binary: str = _DEFAULT_UV_BINARY,
         wheel_dir: str = _DEFAULT_WHEEL_DIR,
         runner: Runner | None = None,
+        log_streamer: Callable[[str, str], AsyncIterator[bytes]] | None = None,
     ) -> None:
         self._cli = devcontainer_cli
         self._runtime_url = runtime_control_plane_url
@@ -43,6 +73,7 @@ class RuntimeInjector:
         self._uv_binary = uv_binary
         self._wheel_dir = wheel_dir
         self._runner = runner or _default_runner
+        self._log_streamer = log_streamer or _default_log_streamer
 
     async def inject(self, devcontainer_id: str, container_id: str, local_path: str) -> bool:
         logger.info("runtime injection: %s into container %s", devcontainer_id, container_id)
@@ -126,19 +157,12 @@ class RuntimeInjector:
             local_path,
         )
 
-    async def read_log(self, local_path: str) -> str | None:
+    async def stream_log(self, local_path: str) -> AsyncIterator[bytes]:
         container_id = await self.resolve_container_id(local_path)
         if container_id is None:
-            return None
-        try:
-            result = await self._runner(
-                [self._engine, "exec", container_id, "cat", CONTAINER_LOG_PATH]
-            )
-        except FileNotFoundError:
-            return None
-        if result.returncode != 0:
-            return None
-        return result.stdout
+            return
+        async for chunk in self._log_streamer(self._engine, container_id):
+            yield chunk
 
     def _find_wheel(self) -> Path | None:
         wheels = sorted(Path(self._wheel_dir).glob("*.whl"))

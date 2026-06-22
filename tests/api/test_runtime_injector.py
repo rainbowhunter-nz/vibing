@@ -84,24 +84,36 @@ def test_stop_runtime_kills_via_pid_file(tmp_path: Path) -> None:
     assert exec_calls and CONTAINER_PID_PATH in exec_calls[0][-1]
 
 
-def test_read_log_returns_container_file_contents(tmp_path: Path) -> None:
+def test_stream_log_yields_streamer_chunks(tmp_path: Path) -> None:
     async def runner(command):
         if command[:3] == ["docker", "ps", "-q"]:
             return RunResult(0, "deadbeef\n", "")
-        if command[:2] == ["docker", "exec"]:
-            return RunResult(0, "install ok\nruntime started\n", "")
         return RunResult(0, "", "")
 
-    injector = RuntimeInjector(runner=runner)
-    log = asyncio.run(injector.read_log("/work/repo"))
-    assert log == "install ok\nruntime started\n"
+    async def fake_streamer(engine, container_id):
+        assert container_id == "deadbeef"
+        yield b"install ok\n"
+        yield b"runtime started\n"
+
+    injector = RuntimeInjector(runner=runner, log_streamer=fake_streamer)
+
+    async def collect():
+        return [chunk async for chunk in injector.stream_log("/work/repo")]
+
+    assert asyncio.run(collect()) == [b"install ok\n", b"runtime started\n"]
 
 
-def test_read_log_returns_none_when_no_container(tmp_path: Path) -> None:
+def test_stream_log_empty_when_no_container(tmp_path: Path) -> None:
     async def runner(command):
         if command[:3] == ["docker", "ps", "-q"]:
             return RunResult(0, "\n", "")  # no container id
-        return RunResult(0, "", "")
 
-    injector = RuntimeInjector(runner=runner)
-    assert asyncio.run(injector.read_log("/work/repo")) is None
+    async def fake_streamer(engine, container_id):
+        yield b"should not be reached"
+
+    injector = RuntimeInjector(runner=runner, log_streamer=fake_streamer)
+
+    async def collect():
+        return [chunk async for chunk in injector.stream_log("/work/repo")]
+
+    assert asyncio.run(collect()) == []

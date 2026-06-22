@@ -1,11 +1,12 @@
 """Runtime lifecycle orchestration (ADR-0017).
 
-Owns the `launching` transient and its timeout, runtime stop, and on-demand log
-retrieval. The WebSocket (RuntimeRegistry) is the durable liveness truth; this
-service only manages the transient launching window and the control actions.
+Owns the `launching` transient and its timeout, runtime stop, and live log streaming.
+The WebSocket (RuntimeRegistry) is the durable liveness truth; this service only
+manages the transient launching window and the control actions.
 """
 
 import asyncio
+from collections.abc import AsyncIterator
 
 from logzero import logger
 
@@ -61,5 +62,5 @@ class RuntimeService:
         self._live.clear_runtime_transient(devcontainer_id)
         self._publish(devcontainer_id)
 
-    async def read_log(self, local_path: str) -> str | None:
-        return await self._injector.read_log(local_path)
+    def stream_log(self, local_path: str) -> AsyncIterator[bytes]:
+        return self._injector.stream_log(local_path)

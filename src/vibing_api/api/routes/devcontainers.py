@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from vibing_api.api.schemas.devcontainers import (
     Devcontainer,
@@ -8,7 +9,6 @@ from vibing_api.api.schemas.devcontainers import (
     DevcontainerView,
     DevcontainerViewList,
     RuntimeConnection,
-    RuntimeLogs,
 )
 from vibing_api.core.catalog import DevcontainerCatalog, ResolvedDevcontainer
 from vibing_api.core.database import get_connection
@@ -174,10 +174,10 @@ async def stop_runtime(devcontainer_id: str, request: Request) -> dict:
     return {}
 
 
-@router.get("/{devcontainer_id}/runtime-logs", response_model=RuntimeLogs)
-async def runtime_logs(devcontainer_id: str, request: Request) -> RuntimeLogs:
+@router.get("/{devcontainer_id}/runtime-logs/stream")
+async def runtime_logs_stream(devcontainer_id: str, request: Request) -> StreamingResponse:
     resolved = request.app.state.catalog.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
-    content = await request.app.state.runtime_service.read_log(resolved.local_path)
-    return RuntimeLogs(content=content)
+    stream = request.app.state.runtime_service.stream_log(resolved.local_path)
+    return StreamingResponse(stream, media_type="text/plain")
