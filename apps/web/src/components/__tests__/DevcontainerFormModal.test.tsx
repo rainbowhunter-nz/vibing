@@ -14,6 +14,7 @@ const existing: Devcontainer = {
   name: 'api-service',
   local_path: '/home/me/projects/api',
   status: 'stopped',
+  source: 'manual',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 }

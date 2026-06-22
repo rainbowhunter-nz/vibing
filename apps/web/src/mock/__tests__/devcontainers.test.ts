@@ -117,7 +117,7 @@ describe('POST /api/v1/devcontainers', () => {
     expect(res.status).toBe(201)
     const created = await res.json()
     expect(created.name).toBe('new-dc')
-    expect(created.status).toBe('created')
+    expect(created.source).toBe('manual')
 
     const list = await (await get('/api/v1/devcontainers')).json()
     expect(list.items.some((d: { id: string }) => d.id === created.id)).toBe(true)
@@ -230,12 +230,22 @@ describe('PATCH /api/v1/devcontainers/:id', () => {
 // ---------------------------------------------------------------------------
 
 describe('DELETE /api/v1/devcontainers/:id', () => {
-  it('happy — 204 and GET list no longer includes the item', async () => {
+  it('happy manual — 204 and GET list no longer includes the item', async () => {
+    const res = await del('/api/v1/devcontainers/dc-seed-0004')
+    expect(res.status).toBe(204)
+
+    const list = await (await get('/api/v1/devcontainers')).json()
+    expect(list.items.find((d: { id: string }) => d.id === 'dc-seed-0004')).toBeUndefined()
+  })
+
+  it('happy discovered — 204 and item remains with status stopped', async () => {
     const res = await del('/api/v1/devcontainers/dc-seed-0003')
     expect(res.status).toBe(204)
 
     const list = await (await get('/api/v1/devcontainers')).json()
-    expect(list.items.find((d: { id: string }) => d.id === 'dc-seed-0003')).toBeUndefined()
+    const dc = list.items.find((d: { id: string }) => d.id === 'dc-seed-0003')
+    expect(dc).toBeDefined()
+    expect(dc.status).toBe('stopped')
   })
 
   it('api-error scenario — returns 500 (action-failure)', async () => {

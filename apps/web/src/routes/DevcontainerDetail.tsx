@@ -59,8 +59,8 @@ function DetailsDialog({ dc, onClose }: { dc: DevcontainerView; onClose: () => v
       <div className="space-y-3">
         <DetailRow label="Status" value={dc.status} />
         <DetailRow label="Local path" value={dc.local_path} />
-        <DetailRow label="Created" value={formatRelativeTime(dc.created_at)} />
-        <DetailRow label="Updated" value={formatRelativeTime(dc.updated_at)} />
+        <DetailRow label="Created" value={dc.created_at ? formatRelativeTime(dc.created_at) : '—'} />
+        <DetailRow label="Updated" value={dc.updated_at ? formatRelativeTime(dc.updated_at) : '—'} />
       </div>
     </Dialog>
   )

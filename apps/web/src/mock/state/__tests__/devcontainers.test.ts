@@ -19,7 +19,6 @@ describe('listDevcontainers', () => {
     expect(items.length).toBeGreaterThanOrEqual(4)
     expect(items.some((d) => d.status === 'running')).toBe(true)
     expect(items.some((d) => d.status === 'stopped')).toBe(true)
-    expect(items.some((d) => d.status === 'created')).toBe(true)
     expect(items.some((d) => d.status === 'error')).toBe(true)
   })
 
@@ -55,11 +54,12 @@ describe('createDevcontainer', () => {
     expect(listDevcontainers().items.length).toBe(before + 1)
   })
 
-  it('returns the created devcontainer with status "created"', () => {
+  it('returns the created devcontainer with source "manual" and status "stopped"', () => {
     const dc = createDevcontainer({ name: 'fresh', local_path: '/tmp/fresh' })
     expect(dc.name).toBe('fresh')
     expect(dc.local_path).toBe('/tmp/fresh')
-    expect(dc.status).toBe('created')
+    expect(dc.status).toBe('stopped')
+    expect(dc.source).toBe('manual')
     expect(dc.id).toBeTruthy()
   })
 
@@ -77,9 +77,9 @@ describe('updateDevcontainer', () => {
   })
 
   it('bumps updated_at on rename', () => {
-    const before = getDevcontainer('dc-seed-0002').updated_at
+    const before = getDevcontainer('dc-seed-0002').updated_at!
     updateDevcontainer('dc-seed-0002', { name: 'newname' })
-    const after = getDevcontainer('dc-seed-0002').updated_at
+    const after = getDevcontainer('dc-seed-0002').updated_at!
     expect(after > before).toBe(true)
   })
 
@@ -96,9 +96,9 @@ describe('startDevcontainer', () => {
   })
 
   it('bumps updated_at', () => {
-    const before = getDevcontainer('dc-seed-0002').updated_at
+    const before = getDevcontainer('dc-seed-0002').updated_at!
     startDevcontainer('dc-seed-0002')
-    const after = getDevcontainer('dc-seed-0002').updated_at
+    const after = getDevcontainer('dc-seed-0002').updated_at!
     expect(after >= before).toBe(true)
   })
 
@@ -120,11 +120,18 @@ describe('stopDevcontainer', () => {
 })
 
 describe('deleteDevcontainer', () => {
-  it('removes the devcontainer from the list', () => {
+  it('removes a manual devcontainer from the list', () => {
+    const before = listDevcontainers().items.length
+    deleteDevcontainer('dc-seed-0004')
+    expect(listDevcontainers().items.length).toBe(before - 1)
+    expect(listDevcontainers().items.find((d) => d.id === 'dc-seed-0004')).toBeUndefined()
+  })
+
+  it('keeps a discovered devcontainer in the list, resets status to stopped', () => {
     const before = listDevcontainers().items.length
     deleteDevcontainer('dc-seed-0003')
-    expect(listDevcontainers().items.length).toBe(before - 1)
-    expect(listDevcontainers().items.find((d) => d.id === 'dc-seed-0003')).toBeUndefined()
+    expect(listDevcontainers().items.length).toBe(before)
+    expect(listDevcontainers().items.find((d) => d.id === 'dc-seed-0003')?.status).toBe('stopped')
   })
 
   it('throws NotFoundError for unknown id', () => {

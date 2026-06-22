@@ -24,6 +24,7 @@ function toDevcontainer(view: DevcontainerView): Devcontainer {
     name: view.name,
     local_path: view.local_path,
     status: view.status,
+    source: view.source,
     created_at: view.created_at,
     updated_at: view.updated_at,
   }
@@ -61,7 +62,8 @@ export function createDevcontainer(body: DevcontainerCreateBody): Devcontainer {
     id: `dc-mock-${String(nextIdSeq++).padStart(4, '0')}`,
     name: body.name,
     local_path: body.local_path,
-    status: 'created',
+    status: 'stopped',
+    source: 'manual',
     created_at: ts,
     updated_at: ts,
     runtime: { runtime_connected: false },
@@ -89,6 +91,16 @@ export function stopDevcontainer(id: string): Devcontainer {
 }
 
 export function deleteDevcontainer(id: string): void {
-  const idx = findIdx(id)
-  store.splice(idx, 1)
+  const dc = store.find((d) => d.id === id)
+  if (!dc) throw new NotFoundError(id)
+  if (dc.source === 'discovered') {
+    dc.status = 'stopped'
+    return
+  }
+  store = store.filter((d) => d.id !== id)
+}
+
+export function injectRuntime(id: string): void {
+  const dc = store.find((d) => d.id === id)
+  if (!dc) throw new NotFoundError(id)
 }

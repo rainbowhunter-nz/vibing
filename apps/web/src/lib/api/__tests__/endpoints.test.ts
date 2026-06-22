@@ -62,12 +62,12 @@ describe('updateDevcontainer', () => {
     expect(result).toEqual({ ...devcontainer, name: 'renamed' })
   })
 
-  it('PATCHes with status field', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ...devcontainer, status: 'stopped' }))
+  it('PATCHes with name field only', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ...devcontainer, name: 'updated' }))
     vi.stubGlobal('fetch', fetchMock)
-    await updateDevcontainer('abc', { status: 'stopped' })
+    await updateDevcontainer('abc', { name: 'updated' })
     const [, init] = fetchMock.mock.calls[0]
-    expect((init as RequestInit).body).toBe(JSON.stringify({ status: 'stopped' }))
+    expect((init as RequestInit).body).toBe(JSON.stringify({ name: 'updated' }))
   })
 })
 

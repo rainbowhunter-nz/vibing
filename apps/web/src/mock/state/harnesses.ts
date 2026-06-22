@@ -19,11 +19,17 @@ export function resetHarnesses(): void {
 }
 
 export function listHarnesses(devcontainerId: string): HarnessStatusList {
-  return { items: (store[devcontainerId] ?? []).map((h) => ({ ...h })) }
+  const items = store[devcontainerId]
+  return items ? { items: items.map((h) => ({ ...h })), known: true } : { items: [], known: false }
+}
+
+function ensureEntry(devcontainerId: string): HarnessStatus[] {
+  if (!store[devcontainerId]) store[devcontainerId] = []
+  return store[devcontainerId]
 }
 
 function find(devcontainerId: string, name: string): HarnessStatus {
-  const h = (store[devcontainerId] ?? []).find((x) => x.name === name)
+  const h = ensureEntry(devcontainerId).find((x) => x.name === name)
   if (!h) throw new NotFoundError(name)
   return h
 }

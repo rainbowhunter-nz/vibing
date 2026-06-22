@@ -90,13 +90,14 @@ const sample: DevcontainerView = {
   name: 'my-project',
   local_path: '/home/me/my-project',
   status: 'stopped',
+  source: 'manual',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   runtime: { runtime_connected: false },
 }
 
 const runningDc: DevcontainerView = { ...sample, id: 'dc2', name: 'running-project', status: 'running' }
-const createdDc: DevcontainerView = { ...sample, id: 'dc3', name: 'created-project', status: 'created' }
+const startingDc: DevcontainerView = { ...sample, id: 'dc3', name: 'starting-project', status: 'starting' }
 const errorDc: DevcontainerView = { ...sample, id: 'dc4', name: 'error-project', status: 'error' }
 
 describe('Devcontainers', () => {
@@ -253,11 +254,11 @@ describe('Devcontainers lifecycle buttons', () => {
     expect(screen.getByTitle('Stop').hasAttribute('disabled')).toBe(true)
   })
 
-  it('Start is enabled for a created row', async () => {
-    mockFetch.mockResolvedValue({ items: [createdDc] })
+  it('Start is disabled for a starting row', async () => {
+    mockFetch.mockResolvedValue({ items: [startingDc] })
     renderPage()
-    await screen.findByText('created-project')
-    expect(screen.getByTitle('Start').hasAttribute('disabled')).toBe(false)
+    await screen.findByText('starting-project')
+    expect(screen.getByTitle('Start').hasAttribute('disabled')).toBe(true)
   })
 
   it('Start is enabled for an error row', async () => {
