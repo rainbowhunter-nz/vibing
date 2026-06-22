@@ -105,6 +105,7 @@ async def agent_ws(websocket: WebSocket) -> None:
             raise _Reject(_AGENT_ALREADY_CONNECTED)
         devcontainer_id = envelope.devcontainer_id
         _broadcast_connection(websocket, ids=[devcontainer_id])
+        websocket.app.state.live_state.clear_runtime_transient(devcontainer_id)
 
         def unregister() -> None:
             manager.unregister(devcontainer_id, connection)

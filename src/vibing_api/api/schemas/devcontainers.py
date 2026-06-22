@@ -2,7 +2,7 @@ from enum import StrEnum, auto
 
 from pydantic import BaseModel, Field
 
-from vibing_api.core.vocabularies import DevcontainerStatus
+from vibing_api.core.vocabularies import DevcontainerStatus, RuntimeState
 
 
 class DevcontainerSource(StrEnum):
@@ -34,7 +34,11 @@ class DevcontainerList(BaseModel):
 
 
 class RuntimeConnection(BaseModel):
-    runtime_connected: bool
+    state: RuntimeState
+
+
+class RuntimeLogs(BaseModel):
+    content: str | None
 
 
 class DevcontainerView(Devcontainer):

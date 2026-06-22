@@ -8,12 +8,14 @@ from vibing_api.api.schemas.devcontainers import (
     DevcontainerView,
     DevcontainerViewList,
     RuntimeConnection,
+    RuntimeLogs,
 )
 from vibing_api.core.catalog import DevcontainerCatalog, ResolvedDevcontainer
 from vibing_api.core.database import get_connection
 from vibing_api.core.devcontainer_service import DevcontainerService, run_in_background
 from vibing_api.core.errors import DevcontainerNotFoundError, InvalidDevcontainerStateError
 from vibing_api.core.live_state import LiveStateStore
+from vibing_api.core.runtime_status_resolver import resolve_runtime_state
 from vibing_api.core.status_resolver import resolve_status
 from vibing_api.core.vocabularies import DevcontainerStatus
 from vibing_api.repositories.devcontainers import DevcontainerRepository
@@ -32,7 +34,10 @@ async def _view(
         running = await request.app.state.devcontainer_cli.running_local_folders()
     status_value = resolve_status(live.get_transient(resolved.id), running, resolved.local_path)
     runtime = RuntimeConnection(
-        runtime_connected=request.app.state.runtime_manager.is_connected(resolved.id)
+        state=resolve_runtime_state(
+            live.get_runtime_transient(resolved.id),
+            request.app.state.runtime_manager.is_connected(resolved.id),
+        )
     )
     return DevcontainerView(
         id=resolved.id,
@@ -154,6 +159,25 @@ async def inject_runtime(devcontainer_id: str, request: Request) -> dict:
     resolved = request.app.state.catalog.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
-    injector = request.app.state.runtime_injector
-    run_in_background(injector.inject_by_path(resolved.id, resolved.local_path))
+    service = request.app.state.runtime_service
+    run_in_background(service.inject(resolved.id, resolved.local_path))
     return {}
+
+
+@router.post("/{devcontainer_id}/stop-runtime", status_code=202)
+async def stop_runtime(devcontainer_id: str, request: Request) -> dict:
+    resolved = request.app.state.catalog.get(devcontainer_id)
+    if resolved is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+    service = request.app.state.runtime_service
+    run_in_background(service.stop(resolved.id, resolved.local_path))
+    return {}
+
+
+@router.get("/{devcontainer_id}/runtime-logs", response_model=RuntimeLogs)
+async def runtime_logs(devcontainer_id: str, request: Request) -> RuntimeLogs:
+    resolved = request.app.state.catalog.get(devcontainer_id)
+    if resolved is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+    content = await request.app.state.runtime_service.read_log(resolved.local_path)
+    return RuntimeLogs(content=content)

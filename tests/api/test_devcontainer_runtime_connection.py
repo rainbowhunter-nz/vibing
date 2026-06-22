@@ -1,6 +1,6 @@
 """Tests for runtime connection state in Devcontainer list/detail responses (VIB-49).
 
-Updated for ADR-0014/0015: single per-devcontainer agent WS; `runtime_connected` field.
+Updated for ADR-0014/0015: single per-devcontainer agent WS; `runtime.state` field.
 """
 
 from fastapi.testclient import TestClient
@@ -33,7 +33,7 @@ def test_list_includes_runtime_field(client: TestClient) -> None:
 def test_list_disconnected_by_default(client: TestClient) -> None:
     _create(client)
     body = client.get("/api/v1/devcontainers").json()
-    assert body["items"][0]["runtime"]["runtime_connected"] is False
+    assert body["items"][0]["runtime"]["state"] == "disconnected"
 
 
 def test_list_connected_when_ws_open(client: TestClient) -> None:
@@ -42,7 +42,7 @@ def test_list_connected_when_ws_open(client: TestClient) -> None:
         ws.send_json(_agent_register(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         body = client.get("/api/v1/devcontainers").json()
-        assert body["items"][0]["runtime"]["runtime_connected"] is True
+        assert body["items"][0]["runtime"]["state"] == "connected"
 
 
 # --- detail includes runtime field ---
@@ -57,7 +57,7 @@ def test_detail_includes_runtime_field(client: TestClient) -> None:
 def test_detail_disconnected_by_default(client: TestClient) -> None:
     dc_id = _create(client)
     body = client.get(f"/api/v1/devcontainers/{dc_id}").json()
-    assert body["runtime"]["runtime_connected"] is False
+    assert body["runtime"]["state"] == "disconnected"
 
 
 def test_detail_connected_when_ws_open(client: TestClient) -> None:
@@ -66,7 +66,7 @@ def test_detail_connected_when_ws_open(client: TestClient) -> None:
         ws.send_json(_agent_register(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         body = client.get(f"/api/v1/devcontainers/{dc_id}").json()
-        assert body["runtime"]["runtime_connected"] is True
+        assert body["runtime"]["state"] == "connected"
 
 
 # --- state changes reflected ---
@@ -75,37 +75,30 @@ def test_detail_connected_when_ws_open(client: TestClient) -> None:
 def test_list_state_changes_after_connect_disconnect(client: TestClient) -> None:
     dc_id = _create(client)
     assert (
-        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["runtime_connected"]
-        is False
+        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["state"] == "disconnected"
     )
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         assert (
-            client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["runtime_connected"]
-            is True
+            client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["state"]
+            == "connected"
         )
     assert (
-        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["runtime_connected"]
-        is False
+        client.get("/api/v1/devcontainers").json()["items"][0]["runtime"]["state"] == "disconnected"
     )
 
 
 def test_detail_state_changes_after_connect_disconnect(client: TestClient) -> None:
     dc_id = _create(client)
-    assert (
-        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["runtime_connected"] is False
-    )
+    assert client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["state"] == "disconnected"
     with client.websocket_connect(AGENT_WS_URL) as ws:
         ws.send_json(_agent_register(dc_id))
         assert ws.receive_json() == {"type": "registered"}
         assert (
-            client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["runtime_connected"]
-            is True
+            client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["state"] == "connected"
         )
-    assert (
-        client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["runtime_connected"] is False
-    )
+    assert client.get(f"/api/v1/devcontainers/{dc_id}").json()["runtime"]["state"] == "disconnected"
 
 
 def test_connected_is_per_devcontainer(client: TestClient) -> None:
@@ -115,5 +108,5 @@ def test_connected_is_per_devcontainer(client: TestClient) -> None:
         ws.send_json(_agent_register(dc1))
         assert ws.receive_json() == {"type": "registered"}
         items = {i["id"]: i for i in client.get("/api/v1/devcontainers").json()["items"]}
-        assert items[dc1]["runtime"]["runtime_connected"] is True
-        assert items[dc2]["runtime"]["runtime_connected"] is False
+        assert items[dc1]["runtime"]["state"] == "connected"
+        assert items[dc2]["runtime"]["state"] == "disconnected"
