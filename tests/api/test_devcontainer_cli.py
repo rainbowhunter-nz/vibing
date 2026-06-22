@@ -194,9 +194,14 @@ def test_remove_no_container_is_success(tmp_path: Path) -> None:
 
 
 def test_running_local_folders_parses_label_lines() -> None:
+    calls: list[list[str]] = []
+
     async def script(cmd: list[str]) -> RunResult:
+        calls.append(cmd)
         return _ok("/a/x\n\n/a/y\n")
 
     adapter = DevcontainerCliAdapter(engine="docker", runner=script)
     folders = asyncio.run(adapter.running_local_folders())
     assert folders == {"/a/x", "/a/y"}
+    # `.Label "key"` works on both Docker and Podman; `index .Labels` is Docker-only.
+    assert '{{.Label "devcontainer.local_folder"}}' in calls[0]

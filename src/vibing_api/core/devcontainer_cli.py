@@ -166,7 +166,8 @@ class DevcontainerCliAdapter:
             "--filter",
             "label=devcontainer.local_folder",
             "--format",
-            '{{index .Labels "devcontainer.local_folder"}}',
+            # `.Label "key"` works on Docker and Podman; `index .Labels` is Docker-only.
+            '{{.Label "devcontainer.local_folder"}}',
         ]
         result = await self._exec("running_local_folders", command)
         if isinstance(result, DevcontainerFailure):
