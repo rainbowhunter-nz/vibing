@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
@@ -13,7 +13,7 @@ import {
   removeContainer,
   injectRuntime,
   stopRuntime,
-  fetchRuntimeLogs,
+  streamRuntimeLogs,
   fetchHarnesses,
   useApiQuery,
   ApiError,
@@ -187,14 +187,28 @@ export function RuntimeSection({
   const state = dc.runtime.state
   const connected = state === 'connected'
   const launching = state === 'launching'
-  const [logs, setLogs] = useState<string | null>(null)
+  const [logs, setLogs] = useState('')
   const [showLogs, setShowLogs] = useState(false)
+  const [streaming, setStreaming] = useState(false)
+  const preRef = useRef<HTMLPreElement>(null)
 
-  async function viewLogs() {
-    setShowLogs(true)
-    const res = await fetchRuntimeLogs(dc.id)
-    setLogs(res.content ?? '(no runtime log found)')
-  }
+  useEffect(() => {
+    if (!showLogs) return
+    const controller = new AbortController()
+    setLogs('')
+    setStreaming(true)
+    streamRuntimeLogs(dc.id, controller.signal, (text) => setLogs((prev) => prev + text))
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return
+        setLogs((prev) => prev + `\n[stream error: ${e instanceof Error ? e.message : String(e)}]`)
+      })
+      .finally(() => setStreaming(false))
+    return () => controller.abort()
+  }, [showLogs, dc.id])
+
+  useEffect(() => {
+    if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight
+  }, [logs])
 
   return (
     <section className="mb-5">
@@ -206,11 +220,9 @@ export function RuntimeSection({
             connected ? 'bg-ok' : launching ? 'bg-accent' : 'bg-text-subtle',
           )}
         />
-        <span className={connected ? 'text-text' : 'text-text-muted'}>
-          {RUNTIME_LABEL[state]}
-        </span>
+        <span className={connected ? 'text-text' : 'text-text-muted'}>{RUNTIME_LABEL[state]}</span>
         <div className="ml-auto flex items-center gap-1">
-          <IconButton title="View runtime logs" busy={false} onClick={viewLogs}>
+          <IconButton title="View runtime logs" busy={false} onClick={() => setShowLogs(true)}>
             <span className="text-[11px] font-medium">Logs</span>
           </IconButton>
           {connected ? (
@@ -231,8 +243,15 @@ export function RuntimeSection({
       </div>
       {showLogs && (
         <Dialog title="Runtime logs" onClose={() => setShowLogs(false)}>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-[12px] text-text-muted">
-            {logs ?? 'Loading…'}
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] text-text-muted">
+            <span className={cn('h-1.5 w-1.5 rounded-full', streaming ? 'bg-ok' : 'bg-text-subtle')} />
+            {streaming ? 'live' : 'ended'}
+          </div>
+          <pre
+            ref={preRef}
+            className="max-h-80 overflow-auto whitespace-pre-wrap text-[12px] text-text-muted"
+          >
+            {logs || 'Waiting for output…'}
           </pre>
         </Dialog>
       )}

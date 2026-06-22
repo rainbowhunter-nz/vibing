@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { describe, expect, it, afterEach } from 'vitest'
 import type { DevcontainerView } from '../lib/api/types'
 import { LifecycleHeader, RuntimeSection } from './DevcontainerDetail'
@@ -61,5 +61,11 @@ describe('RuntimeSection', () => {
   it('shows Disconnected when not connected', () => {
     renderDetail({ ...base, status: 'running' as const, runtime: { state: 'disconnected' as const } })
     expect(screen.getByText('Disconnected')).toBeTruthy()
+  })
+
+  it('opens the runtime logs dialog with a live indicator', async () => {
+    renderDetail(base)
+    fireEvent.click(screen.getByTitle('View runtime logs'))
+    expect(await screen.findByText('Runtime logs')).toBeTruthy()
   })
 })

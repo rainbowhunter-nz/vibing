@@ -1,4 +1,4 @@
-import { getJson, sendJson } from './client'
+import { ApiError, getJson, sendJson } from './client'
 import type {
   ConfigResponse,
   DelegatedRunList,
@@ -12,7 +12,6 @@ import type {
   HealthResponse,
   HarnessStatus,
   HarnessStatusList,
-  RuntimeLogs,
   SettingsResponse,
   StatusResponse,
 } from './types'
@@ -49,8 +48,23 @@ export const injectRuntime = (id: string): Promise<void> =>
 export const stopRuntime = (id: string): Promise<void> =>
   sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/stop-runtime`, 'POST')
 
-export const fetchRuntimeLogs = (id: string): Promise<RuntimeLogs> =>
-  getJson(`/devcontainers/${encodeURIComponent(id)}/runtime-logs`)
+export async function streamRuntimeLogs(
+  id: string,
+  signal: AbortSignal,
+  onChunk: (text: string) => void,
+): Promise<void> {
+  const res = await fetch(`/api/v1/devcontainers/${encodeURIComponent(id)}/runtime-logs/stream`, { signal })
+  if (!res.ok || !res.body) {
+    throw new ApiError(res.status, 'HTTP_ERROR', `runtime log stream failed (${res.status})`)
+  }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    onChunk(decoder.decode(value, { stream: true }))
+  }
+}
 
 export const removeContainer = (id: string): Promise<void> =>
   sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/remove-container`, 'POST')

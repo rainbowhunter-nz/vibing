@@ -35,10 +35,6 @@ export interface RuntimeConnection {
   state: RuntimeState
 }
 
-export interface RuntimeLogs {
-  content: string | null
-}
-
 export interface DevcontainerView extends Devcontainer {
   runtime: RuntimeConnection
 }

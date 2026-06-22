@@ -170,7 +170,7 @@ const devcontainerHandlers = [
     }
   }),
 
-  http.get('*/api/v1/devcontainers/:id/runtime-logs', ({ params }) => {
+  http.get('*/api/v1/devcontainers/:id/runtime-logs/stream', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
     try {
@@ -179,7 +179,15 @@ const devcontainerHandlers = [
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e
     }
-    return HttpResponse.json({ content: 'mock runtime log\ninstall ok\nruntime started\n' })
+    const chunks = ['mock runtime log\n', 'install ok\n', 'runtime started\n']
+    const stream = new ReadableStream({
+      start(controller) {
+        const enc = new TextEncoder()
+        for (const c of chunks) controller.enqueue(enc.encode(c))
+        controller.close()
+      },
+    })
+    return new HttpResponse(stream, { headers: { 'Content-Type': 'text/plain' } })
   }),
 
   http.post('*/api/v1/devcontainers/:id/start', ({ params }) => {
