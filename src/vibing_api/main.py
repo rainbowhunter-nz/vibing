@@ -31,6 +31,7 @@ from vibing_api.core.file_config import load_devcontainers_dir
 from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
 from vibing_api.core.runtime_injector import RuntimeInjector
+from vibing_api.core.runtime_service import RuntimeService
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 
@@ -80,6 +81,12 @@ def create_app() -> FastAPI:
     app.state.devcontainer_service = DevcontainerService(
         app.state.devcontainer_cli,
         live_state=app.state.live_state,
+        broadcaster=app.state.broadcaster,
+    )
+    app.state.runtime_service = RuntimeService(
+        app.state.runtime_injector,
+        live_state=app.state.live_state,
+        registry=app.state.runtime_manager,
         broadcaster=app.state.broadcaster,
     )
     register_error_handlers(app)
