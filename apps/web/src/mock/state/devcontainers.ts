@@ -101,6 +101,9 @@ export function deleteDevcontainer(id: string): void {
   store = store.filter((d) => d.id !== id)
 }
 
+// Mock divergence: the real backend returns 202 and injects in the background, so the
+// runtime connects (and harness status becomes known) only later via the runtime WS/SSE.
+// The mock flips synchronously so the reactive UI path (invalidation -> refetch) is testable.
 export function injectRuntime(id: string): void {
   const idx = findIdx(id)
   store[idx] = { ...store[idx], runtime: { runtime_connected: true }, updated_at: now() }

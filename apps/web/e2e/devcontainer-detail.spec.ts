@@ -35,9 +35,12 @@ test('deleting a manual devcontainer navigates back to the list', async ({ page 
   await expect(page).toHaveURL(/\/devcontainers\/?$/)
 })
 
-test('install spinner resolves to Installed via SSE refetch', async ({ page }) => {
+// Spinner *persistence* (stays past POST resolve, clears only when the flag flips) is
+// verified deterministically in the HarnessList unit test; the mock flips state
+// synchronously so the spinner frame isn't observable here. This e2e just confirms the
+// install action drives the harness to the Installed state through the SSE refetch path.
+test('install action drives harness to Installed via SSE refetch', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0003') // claude-code not installed
   await page.getByTitle('Install claude-code', { exact: true }).click()
-  // mock install handler flips state + emits harnesses invalidation -> refetch -> Tick
   await expect(page.getByTitle('Installed').first()).toBeVisible()
 })
