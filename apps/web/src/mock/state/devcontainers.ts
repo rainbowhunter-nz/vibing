@@ -1,6 +1,6 @@
 import type { Devcontainer, DevcontainerCreateBody, DevcontainerUpdateBody, DevcontainerView, DevcontainerViewList, RuntimeConnection } from '../../lib/api/types'
 import { seedDevcontainers } from './seeds'
-import { ensureHarnessEntry } from './harnesses'
+import { ensureHarnessEntry, evictHarnessEntry } from './harnesses'
 
 // Runtime connection per seed devcontainer; my-webapp is connected for inspection.
 const SEED_RUNTIME: Record<string, RuntimeConnection> = {
@@ -89,6 +89,19 @@ export function stopDevcontainer(id: string): Devcontainer {
   const idx = findIdx(id)
   store[idx] = { ...store[idx], status: 'stopped', updated_at: now() }
   return toDevcontainer(store[idx])
+}
+
+// Kill+remove the container but keep the record: status back to stopped,
+// runtime disconnected, harness cache evicted (mirrors backend remove-container).
+export function removeContainer(id: string): void {
+  const idx = findIdx(id)
+  store[idx] = {
+    ...store[idx],
+    status: 'stopped',
+    runtime: { runtime_connected: false },
+    updated_at: now(),
+  }
+  evictHarnessEntry(id)
 }
 
 export function deleteDevcontainer(id: string): void {

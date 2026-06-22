@@ -11,19 +11,24 @@ from vibing_protocol import Command, CommandType, HarnessStatusEnvelope
 class FakeHarnessManager:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
-        self._statuses: list[HarnessStatus] = []
         self.install_called: bool = False
+        self.statuses: dict[str, HarnessStatus] = {
+            "codex": HarnessStatus(name="codex", installed=False, authenticated=False),
+            "cursor": HarnessStatus(name="cursor", installed=False, authenticated=False),
+        }
 
     async def authenticate(self, harness: str, credentials: dict[str, Any]) -> HarnessStatus:
         self.calls.append((harness, credentials))
-        return HarnessStatus(name=harness, installed=True, authenticated=True)
+        self.statuses[harness] = HarnessStatus(name=harness, installed=True, authenticated=True)
+        return self.statuses[harness]
 
     async def install(self, harness: str) -> HarnessStatus:
         self.install_called = True
-        return HarnessStatus(name=harness, installed=True, authenticated=True)
+        self.statuses[harness] = HarnessStatus(name=harness, installed=True, authenticated=False)
+        return self.statuses[harness]
 
     async def list_statuses(self) -> list[HarnessStatus]:
-        return self._statuses
+        return list(self.statuses.values())
 
 
 async def _send_all(handler: HarnessCommandHandler, command: Command) -> list[BaseModel]:
@@ -54,14 +59,12 @@ def test_authenticate_harness_calls_manager_and_sends_envelope():
     env = sent[0]
     assert isinstance(env, HarnessStatusEnvelope)
     assert env.devcontainer_id == "dc-1"
-    assert len(env.items) == 1
-    item = env.items[0]
-    assert item.name == "codex"
-    assert item.installed is True
-    assert item.authenticated is True
+    # Reports the FULL list so other harnesses aren't dropped from the cache.
+    reported = {i.name: (i.installed, i.authenticated) for i in env.items}
+    assert reported == {"codex": (True, True), "cursor": (False, False)}
 
 
-def test_install_command_installs_and_reports():
+def test_install_command_installs_and_reports_full_list():
     manager = FakeHarnessManager()
     handler = _make_handler(manager)
     cmd = Command(
@@ -74,8 +77,9 @@ def test_install_command_installs_and_reports():
     assert len(sent) == 1
     env = sent[0]
     assert isinstance(env, HarnessStatusEnvelope)
-    assert env.items[0].name == "codex"
-    assert env.items[0].installed is True
+    # Other harnesses survive: install reports the whole list, not just the one.
+    reported = {i.name: i.installed for i in env.items}
+    assert reported == {"codex": True, "cursor": False}
 
 
 def test_non_authenticate_command_is_ignored():
@@ -90,10 +94,10 @@ def test_non_authenticate_command_is_ignored():
 
 def test_report_all_sends_full_list():
     manager = FakeHarnessManager()
-    manager._statuses = [
-        HarnessStatus(name="codex", installed=True, authenticated=False),
-        HarnessStatus(name="cursor", installed=False, authenticated=False),
-    ]
+    manager.statuses = {
+        "codex": HarnessStatus(name="codex", installed=True, authenticated=False),
+        "cursor": HarnessStatus(name="cursor", installed=False, authenticated=False),
+    }
     handler = _make_handler(manager)
     sent: list[BaseModel] = []
 

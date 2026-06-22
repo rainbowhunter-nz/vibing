@@ -119,24 +119,34 @@ async def _dispatch_lifecycle(
     return view
 
 
-async def _delete_impl(devcontainer_id: str, request: Request) -> Response:
-    resolved = request.app.state.catalog.get(devcontainer_id)
-    if resolved is None:
-        raise DevcontainerNotFoundError(devcontainer_id)
+async def _teardown_container(resolved: ResolvedDevcontainer, request: Request) -> None:
+    """Kill+remove the container and clear its live state, keeping the record."""
     await request.app.state.devcontainer_cli.remove(resolved.local_path)
     live: LiveStateStore = request.app.state.live_state
     live.clear_transient(resolved.id)
     live.evict_harness(resolved.id)
-    if resolved.source == DevcontainerSource.MANUAL:
-        with get_connection() as conn:
-            DevcontainerRepository(conn).delete(resolved.id)
-            conn.commit()
+
+
+@router.post("/{devcontainer_id}/remove-container", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_container(devcontainer_id: str, request: Request) -> Response:
+    resolved = request.app.state.catalog.get(devcontainer_id)
+    if resolved is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+    await _teardown_container(resolved, request)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/{devcontainer_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_devcontainer(devcontainer_id: str, request: Request) -> Response:
-    return await _delete_impl(devcontainer_id, request)
+    resolved = request.app.state.catalog.get(devcontainer_id)
+    if resolved is None:
+        raise DevcontainerNotFoundError(devcontainer_id)
+    await _teardown_container(resolved, request)
+    if resolved.source == DevcontainerSource.MANUAL:
+        with get_connection() as conn:
+            DevcontainerRepository(conn).delete(resolved.id)
+            conn.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{devcontainer_id}/inject-runtime", status_code=202)

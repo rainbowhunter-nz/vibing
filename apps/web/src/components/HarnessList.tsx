@@ -91,12 +91,9 @@ export function HarnessList({ devcontainerId, harnesses, known, onChange }: {
         <span className="text-center">Authenticated</span>
       </div>
       {!known ? (
-        <div
-          title="Runtime disconnected — status unknown"
-          className="px-3 py-4 text-[13px] text-text-muted"
-        >
-          ?
-        </div>
+        <p className="px-3 py-4 text-[13px] text-text-muted">
+          Runtime not connected — harness status unavailable.
+        </p>
       ) : harnesses.length === 0 ? (
         <p className="px-3 py-4 text-[13px] text-text-muted">No harnesses reported.</p>
       ) : (

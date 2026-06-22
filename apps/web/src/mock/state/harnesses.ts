@@ -38,6 +38,11 @@ export function ensureHarnessEntry(devcontainerId: string): void {
   }
 }
 
+// Mirrors the backend evicting the harness cache when a container is removed.
+export function evictHarnessEntry(devcontainerId: string): void {
+  delete store[devcontainerId]
+}
+
 export function installHarness(devcontainerId: string, name: string): HarnessStatus {
   const h = find(devcontainerId, name)
   h.installed = true

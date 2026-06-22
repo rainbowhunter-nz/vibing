@@ -127,6 +127,21 @@ const devcontainerHandlers = [
     }
   }),
 
+  http.post('*/api/v1/devcontainers/:id/remove-container', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
+    if (failure) return failure
+    try {
+      dc.removeContainer(params.id as string)
+      emitInvalidation('devcontainers')
+      emitInvalidation('runtime')
+      emitInvalidation('harnesses')
+      return new HttpResponse(null, { status: 204 })
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.id as string)
+      throw e
+    }
+  }),
+
   http.post('*/api/v1/devcontainers/:id/inject-runtime', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure

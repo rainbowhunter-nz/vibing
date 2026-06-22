@@ -258,6 +258,23 @@ def test_delete_unknown_404(client: TestClient, fake_cli) -> None:
     assert client.delete("/api/v1/devcontainers/nope").status_code == 404
 
 
+def test_remove_container_kills_but_keeps_record(client: TestClient, fake_cli) -> None:
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "rc", "local_path": "/tmp/rc"}
+    ).json()
+    resp = client.post(f"/api/v1/devcontainers/{created['id']}/remove-container")
+    assert resp.status_code == 204
+    assert "/tmp/rc" in fake_cli.removed
+    # Entry survives: still resolvable, status back to stopped.
+    got = client.get(f"/api/v1/devcontainers/{created['id']}")
+    assert got.status_code == 200
+    assert got.json()["status"] == "stopped"
+
+
+def test_remove_container_unknown_404(client: TestClient, fake_cli) -> None:
+    assert client.post("/api/v1/devcontainers/nope/remove-container").status_code == 404
+
+
 def test_old_workspaces_path_returns_404(client: TestClient) -> None:
     assert client.get("/api/v1/workspaces").status_code == 404
     assert client.post("/api/v1/workspaces", json={}).status_code == 404

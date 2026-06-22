@@ -8,10 +8,9 @@ vi.mock('../lib/api/endpoints', () => ({
 }))
 
 describe('HarnessList', () => {
-  it('renders ? when status unknown', () => {
+  it('shows a descriptive message when runtime not connected', () => {
     render(<HarnessList devcontainerId="dc-1" harnesses={[]} known={false} onChange={() => {}} />)
-    // getByText throws if absent — presence asserted by not throwing
-    expect(screen.getByText('?')).toBeTruthy()
+    expect(screen.getByText(/runtime not connected/i)).toBeTruthy()
   })
 
   it('keeps spinner after install click until prop flips installed', async () => {

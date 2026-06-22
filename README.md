@@ -148,4 +148,41 @@ Common settings:
 - `VIBING_STATIC_DIR`: built frontend directory for single-container serving
 - `VIBING_API_V1_PREFIX`: default `/api/v1`
 
+### `vibing.yaml` (folder discovery)
+
+An optional YAML file that enables **folder discovery** — auto-listing devcontainers found on
+disk without adding them manually.
+
+**Location** (first match wins):
+
+1. `$VIBING_CONFIG_FILE`, if set.
+2. A sibling of the database file — `<vibing.db dir>/vibing.yaml` (so `./vibing.yaml` by default).
+
+The file is optional. If it's absent, or the key is missing, discovery is simply off — no error.
+
+**Schema** — a YAML mapping with a single key today:
+
+```yaml
+# Directory to scan for devcontainers.
+devcontainers_dir: /home/dev/projects
+```
+
+**Behavior** — `devcontainers_dir` is scanned **non-recursively**; each immediate subdirectory
+that contains a `.devcontainer/` folder becomes one discovered devcontainer (named after the
+subfolder). Given:
+
+```yaml
+devcontainers_dir: /home/dev/projects
+```
+
+```
+/home/dev/projects/
+├── webapp/   .devcontainer/      ✓ discovered as "webapp"
+├── api/      .devcontainer/      ✓ discovered as "api"
+└── notes/    (no .devcontainer)  ✗ skipped
+```
+
+Discovered devcontainers are virtual (`source: discovered`), never written to the database, and
+reappear on each scan. A manually-added devcontainer at the same path takes precedence.
+
 See [`docs/overview.md`](docs/overview.md) for more context.

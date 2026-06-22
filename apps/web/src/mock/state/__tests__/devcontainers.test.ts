@@ -8,6 +8,7 @@ import {
   startDevcontainer,
   stopDevcontainer,
   deleteDevcontainer,
+  removeContainer,
   injectRuntime,
   NotFoundError,
 } from '../devcontainers'
@@ -138,6 +139,22 @@ describe('deleteDevcontainer', () => {
 
   it('throws NotFoundError for unknown id', () => {
     expect(() => deleteDevcontainer('nope')).toThrow(NotFoundError)
+  })
+})
+
+describe('removeContainer', () => {
+  it('keeps the devcontainer but resets status, disconnects runtime, evicts harnesses', () => {
+    const before = listDevcontainers().items.length
+    removeContainer('dc-seed-0001') // running, runtime connected, harnesses known
+    expect(listDevcontainers().items.length).toBe(before)
+    const dc = getDevcontainer('dc-seed-0001')
+    expect(dc.status).toBe('stopped')
+    expect(dc.runtime.runtime_connected).toBe(false)
+    expect(listHarnesses('dc-seed-0001').known).toBe(false)
+  })
+
+  it('throws NotFoundError for unknown id', () => {
+    expect(() => removeContainer('nope')).toThrow(NotFoundError)
   })
 })
 

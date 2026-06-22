@@ -45,6 +45,9 @@ export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
 export const injectRuntime = (id: string): Promise<void> =>
   sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/inject-runtime`, 'POST')
 
+export const removeContainer = (id: string): Promise<void> =>
+  sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/remove-container`, 'POST')
+
 export const fetchHarnesses = (devcontainerId: string): Promise<HarnessStatusList> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses`)
 

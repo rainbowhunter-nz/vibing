@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useParams } from 'react-router'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/ErrorState'
 import { QueryBoundary } from '../components/QueryBoundary'
@@ -10,7 +10,7 @@ import {
   fetchDevcontainer,
   startDevcontainer,
   stopDevcontainer,
-  deleteDevcontainer,
+  removeContainer,
   injectRuntime,
   fetchHarnesses,
   useApiQuery,
@@ -84,7 +84,7 @@ function IconButton({
   )
 }
 
-type ActionKind = 'start' | 'stop' | 'inject' | 'delete'
+type ActionKind = 'start' | 'stop' | 'inject' | 'remove'
 
 export function LifecycleHeader({
   dc,
@@ -132,10 +132,10 @@ export function LifecycleHeader({
             </IconButton>
           )}
           <IconButton
-            title="Delete"
+            title="Remove container"
             danger
             busy={busy}
-            onClick={() => { if (!busy && confirm(`Delete ${dc.name}?`)) onAction('delete') }}
+            onClick={() => { if (!busy && confirm(`Remove the container for ${dc.name}? The devcontainer stays in the list.`)) onAction('remove') }}
           >
             <TrashIcon />
           </IconButton>
@@ -203,7 +203,6 @@ function errorElement(error: unknown) {
 
 export function DevcontainerDetail() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const { register } = useSseInvalidation()
   const { state, refetch } = useApiQuery(() => fetchDevcontainer(id!), [id])
   const [busy, setBusy] = useState(false)
@@ -219,11 +218,7 @@ export function DevcontainerDetail() {
       if (kind === 'start') await startDevcontainer(dc.id)
       else if (kind === 'stop') await stopDevcontainer(dc.id)
       else if (kind === 'inject') await injectRuntime(dc.id)
-      else if (kind === 'delete') {
-        await deleteDevcontainer(dc.id)
-        navigate('/devcontainers')
-        return
-      }
+      else if (kind === 'remove') await removeContainer(dc.id)
       refetch()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

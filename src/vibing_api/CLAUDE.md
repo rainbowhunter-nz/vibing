@@ -6,7 +6,7 @@ FastAPI Control Plane. Owns API routes, SQLite state, runtime WS intake. Drives 
 
 - `main.py`: app factory, router mounting, static frontend serving.
 - `api/routes/`: HTTP + WebSocket routes. Key routes:
-  - `devcontainers.py`: CRUD + `start`/`stop`/`delete` lifecycle endpoints. `DELETE` kills+removes the container (manual also removes the DB row; discovered reappears). `POST /{id}/inject-runtime`: explicit runtime injection (202, background task). `GET` endpoints compute `status` live and include a `source` field (`manual` | `discovered`).
+  - `devcontainers.py`: CRUD + `start`/`stop`/`delete` lifecycle endpoints. `POST /{id}/remove-container` kills+removes the container (`devcontainer_cli.remove`) and clears live state but keeps the record. `DELETE` does the same teardown and additionally removes the DB row for manual (discovered reappears). `POST /{id}/inject-runtime`: explicit runtime injection (202, background task). `GET` endpoints compute `status` live and include a `source` field (`manual` | `discovered`).
   - `harnesses.py`: harness credential capture, `authenticate` and `install` endpoints.
   - `delegated_runs.py`: frontend-facing `delegated-runs` list (stores snapshots; not yet served to the UI).
   - `runtime.py`: `/runtime/agent/ws` — one Devcontainer Runtime per `devcontainer_id`; dispatches `harness_status` (→ `record_harness_status`) and `delegated_runs` (→ `persist_delegated_runs`); evicts harness cache on disconnect.

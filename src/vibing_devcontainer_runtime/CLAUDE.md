@@ -16,7 +16,7 @@ In-container companion process. Reduces friction of using coding harnesses — i
 
 - Connects out to Control Plane `/runtime/agent/ws` as the Devcontainer Runtime.
 - On connect: sends `register`, then immediately sends `harness_status` for each managed harness.
-- On `authenticate_harness` Command: installs + authenticates harness, sends updated `harness_status`.
+- On `install_harness`/`authenticate_harness` Command: installs/authenticates the harness, then reports the **full** `harness_status` list (not just the touched harness — the Control Plane cache replaces wholesale, so a single-item report would drop the others).
 - No agent sessions, no Claude runner, no transcript/stream normalizer.
 - MCP server default: `127.0.0.1:8848`. Main harness (Claude Code) is the MCP client.
 - Tests: `tests/devcontainer_runtime`.

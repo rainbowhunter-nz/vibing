@@ -11,11 +11,11 @@ const base = {
 }
 
 describe('LifecycleHeader actions', () => {
-  it('shows Stop, Inject, Delete when running', () => {
+  it('shows Stop, Inject, Remove container when running', () => {
     render(<LifecycleHeader dc={base} busy={false} onAction={() => {}} />)
     expect(screen.getByTitle('Stop')).toBeTruthy()
     expect(screen.getByTitle('Inject runtime')).toBeTruthy()
-    expect(screen.getByTitle('Delete')).toBeTruthy()
+    expect(screen.getByTitle('Remove container')).toBeTruthy()
   })
 
   it('shows Start when stopped', () => {

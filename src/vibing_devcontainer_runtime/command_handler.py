@@ -20,13 +20,15 @@ class HarnessCommandHandler:
         payload = command.payload or {}
         harness = payload.get("harness", "")
         if command.type == CommandType.AUTHENTICATE_HARNESS:
-            status = await self._harness.authenticate(harness, payload.get("credentials") or {})
+            await self._harness.authenticate(harness, payload.get("credentials") or {})
         elif command.type == CommandType.INSTALL_HARNESS:
-            status = await self._harness.install(harness)
+            await self._harness.install(harness)
         else:
             logger.info("Ignoring unsupported command: %s", command.type)
             return
-        await send(self._envelope([status]))
+        # Report the full list, not just this harness: the Control Plane cache
+        # replaces wholesale, so a single-item report would drop the others.
+        await self.report_all(send)
 
     def _envelope(self, statuses) -> HarnessStatusEnvelope:
         return HarnessStatusEnvelope(
