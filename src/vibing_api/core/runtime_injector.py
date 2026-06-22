@@ -1,13 +1,14 @@
 """Injects the Devcontainer Runtime into a running container, and controls it.
 
-Copies uv + vibing wheel via docker cp, then runs a single devcontainer exec that
-installs the runtime synchronously (so bootstrap failures surface via the exec's
-exit code and are teed into the unified log), then detaches ONLY the long-running
-runtime and records its PID. `stop_runtime` kills via the PID file and `stream_log`
-tail-follows the unified log, both via `<engine> exec`.
+Two-phase inject: `_bootstrap` (docker cp uv + wheel, synchronous `uv tool install`
+teed to the unified log, then `vibing runtime preflight` HTTP probe) gates `_spawn`
+(detached `nohup` launch recording the PID). Each phase is a separate `devcontainer
+exec`; the same resolved control-plane URL is passed to both preflight and launch.
+Bootstrap failures (install OR preflight) surface via the exec exit code at inject
+time and live in `/tmp/vibing-runtime.log`. `stop_runtime` kills via the PID file;
+`stream_log` tail-follows the unified log — both via `<engine> exec`.
 
-inject()/inject_by_path() return True when the runtime was launched (bootstrap ok),
-False when any step failed (the failure is logged and lives in the unified log).
+inject()/inject_by_path() return True when both phases succeed, False otherwise.
 """
 
 import asyncio

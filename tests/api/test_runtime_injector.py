@@ -54,7 +54,8 @@ def test_inject_runs_bootstrap_then_spawn_with_same_url(tmp_path: Path) -> None:
 
     # half 1: install synchronously + preflight, NOT the runtime
     assert "set -e" in bootstrap and "pipefail" in bootstrap
-    assert f"tee {CONTAINER_LOG_PATH}" in bootstrap
+    assert f"| tee {CONTAINER_LOG_PATH}\n" in bootstrap  # install truncates the log
+    assert f"| tee -a {CONTAINER_LOG_PATH}\n" in bootstrap  # preflight appends
     assert (
         "vibing runtime preflight --control-plane-url ws://cp:8080/api/v1/runtime/agent/ws"
         in bootstrap
