@@ -77,6 +77,14 @@ class RuntimeInjector:
 
     async def inject(self, devcontainer_id: str, container_id: str, local_path: str) -> bool:
         logger.info("runtime injection: %s into container %s", devcontainer_id, container_id)
+        agent_url = resolve_runtime_control_plane_url(self._runtime_url)
+        if not await self._bootstrap(devcontainer_id, container_id, local_path, agent_url):
+            return False
+        return await self._spawn(devcontainer_id, local_path, agent_url)
+
+    async def _bootstrap(
+        self, devcontainer_id: str, container_id: str, local_path: str, agent_url: str
+    ) -> bool:
         wheel = self._find_wheel()
         if wheel is None:
             logger.warning("Runtime injection skipped: no .whl found in %s", self._wheel_dir)
@@ -98,11 +106,18 @@ class RuntimeInjector:
         ):
             return False
 
-        agent_url = resolve_runtime_control_plane_url(self._runtime_url)
-        bash_payload = (
+        payload = (
             "set -e -o pipefail\n"
             f"{_CONTAINER_UV_DEST} tool install --python 3.13 --from {container_wheel_path} vibing"
             f" 2>&1 | tee {CONTAINER_LOG_PATH}\n"
+            'export PATH="$HOME/.local/bin:$PATH"\n'
+            f"vibing runtime preflight --control-plane-url {agent_url}"
+            f" 2>&1 | tee -a {CONTAINER_LOG_PATH}\n"
+        )
+        return await self._exec(local_path, payload, "bootstrap", devcontainer_id)
+
+    async def _spawn(self, devcontainer_id: str, local_path: str, agent_url: str) -> bool:
+        payload = (
             'export PATH="$HOME/.local/bin:$PATH"\n'
             f"nohup vibing runtime devcontainer"
             f" --control-plane-url {agent_url}"
@@ -110,23 +125,17 @@ class RuntimeInjector:
             f" >>{CONTAINER_LOG_PATH} 2>&1 &\n"
             f"echo $! >{CONTAINER_PID_PATH}\n"
         )
-        if await self._run(
-            [
-                self._cli,
-                "exec",
-                "--workspace-folder",
-                local_path,
-                "--",
-                "bash",
-                "-lc",
-                bash_payload,
-            ],
-            "devcontainer exec",
-            devcontainer_id,
-        ):
+        if await self._exec(local_path, payload, "spawn", devcontainer_id):
             logger.info("runtime injection launched: %s (waiting for WS connect)", devcontainer_id)
             return True
         return False
+
+    async def _exec(self, local_path: str, payload: str, step: str, context: str) -> bool:
+        return await self._run(
+            [self._cli, "exec", "--workspace-folder", local_path, "--", "bash", "-lc", payload],
+            f"devcontainer exec ({step})",
+            context,
+        )
 
     async def resolve_container_id(self, local_path: str) -> str | None:
         label = f"label=devcontainer.local_folder={local_path}"

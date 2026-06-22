@@ -32,7 +32,7 @@ def test_inject_by_path_resolves_container_then_injects(tmp_path: Path) -> None:
     )
 
 
-def test_inject_payload_installs_synchronously_and_detaches_only_runtime(tmp_path: Path) -> None:
+def test_inject_runs_bootstrap_then_spawn_with_same_url(tmp_path: Path) -> None:
     payloads = []
 
     async def runner(command):
@@ -42,18 +42,49 @@ def test_inject_payload_installs_synchronously_and_detaches_only_runtime(tmp_pat
             payloads.append(command[-1])
         return RunResult(0, "", "")
 
+    injector = RuntimeInjector(
+        runner=runner,
+        wheel_dir=_wheel_dir(tmp_path),
+        runtime_control_plane_url="ws://cp:8080/api/v1/runtime/agent/ws",
+    )
+    assert asyncio.run(injector.inject_by_path("dc1", "/work/repo")) is True
+
+    assert len(payloads) == 2
+    bootstrap, spawn = payloads
+
+    # half 1: install synchronously + preflight, NOT the runtime
+    assert "set -e" in bootstrap and "pipefail" in bootstrap
+    assert f"tee {CONTAINER_LOG_PATH}" in bootstrap
+    assert (
+        "vibing runtime preflight --control-plane-url ws://cp:8080/api/v1/runtime/agent/ws"
+        in bootstrap
+    )
+    assert "nohup" not in bootstrap
+
+    # half 2: detached runtime + PID, same resolved url
+    assert "nohup vibing runtime devcontainer" in spawn
+    assert "--control-plane-url ws://cp:8080/api/v1/runtime/agent/ws" in spawn
+    assert f"echo $! >{CONTAINER_PID_PATH}" in spawn
+
+
+def test_inject_skips_spawn_when_bootstrap_fails(tmp_path: Path) -> None:
+    payloads = []
+
+    async def runner(command):
+        if command[:3] == ["docker", "ps", "-q"]:
+            return RunResult(0, "deadbeef\n", "")
+        if command[:2] == ["devcontainer", "exec"]:
+            payloads.append(command[-1])
+            if "preflight" in command[-1]:
+                return RunResult(1, "", "PREFLIGHT FAILED: control plane unreachable")
+        return RunResult(0, "", "")
+
     injector = RuntimeInjector(runner=runner, wheel_dir=_wheel_dir(tmp_path))
-    asyncio.run(injector.inject_by_path("dc1", "/work/repo"))
+    assert asyncio.run(injector.inject_by_path("dc1", "/work/repo")) is False
+
+    # only the bootstrap exec ran; spawn was skipped
     assert len(payloads) == 1
-    payload = payloads[0]
-    # install runs synchronously (not backgrounded) and tees into the unified log
-    assert "set -e" in payload and "pipefail" in payload
-    assert f"tee {CONTAINER_LOG_PATH}" in payload
-    # only the long-running runtime is detached, and its PID is recorded
-    assert "nohup vibing runtime devcontainer" in payload
-    assert f"echo $! >{CONTAINER_PID_PATH}" in payload
-    # the whole chain is NOT backgrounded (no trailing "&" on the install/export)
-    assert "vibing &" not in payload
+    assert "nohup" not in payloads[0]
 
 
 def test_inject_returns_false_when_a_step_fails(tmp_path: Path) -> None:
