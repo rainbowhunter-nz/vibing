@@ -212,7 +212,10 @@ function ControlPanel({
   const { register } = useSseInvalidation()
   const { state: harnessState, refetch: refetchHarnesses } = useApiQuery(() => fetchHarnesses(dc.id), [dc.id])
 
+  // Harness status depends on the runtime: a runtime connect/disconnect changes
+  // whether it is known, so refetch on both scopes.
   useEffect(() => register('harnesses', refetchHarnesses), [register, refetchHarnesses])
+  useEffect(() => register('runtime', refetchHarnesses), [register, refetchHarnesses])
 
   return (
     <div className="p-4">

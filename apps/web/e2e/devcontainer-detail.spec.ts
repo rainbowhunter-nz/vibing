@@ -24,6 +24,14 @@ test('stopped devcontainer shows runtime as not connected with Inject disabled',
   await expect(page.getByTitle('Start the container to inject runtime')).toBeDisabled()
 })
 
+test('stopping a running devcontainer reverts runtime and harness panel to unknown', async ({ page }) => {
+  await page.goto('/devcontainers/dc-seed-0001') // running, runtime connected, harnesses known
+  await expect(page.getByRole('main').getByText('Connected', { exact: true })).toBeVisible()
+  await page.getByTitle('Stop').click()
+  await expect(page.getByText('Not connected', { exact: true })).toBeVisible()
+  await expect(page.getByText(/runtime not connected/i).first()).toBeVisible()
+})
+
 test('disconnected runtime shows a descriptive harness message', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0002')
   await expect(page.getByText(/runtime not connected/i).first()).toBeVisible()

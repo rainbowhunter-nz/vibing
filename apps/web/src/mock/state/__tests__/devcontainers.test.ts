@@ -117,6 +117,12 @@ describe('stopDevcontainer', () => {
     expect(getDevcontainer('dc-seed-0001').status).toBe('stopped')
   })
 
+  it('disconnects runtime and evicts harnesses (runtime stops with the container)', () => {
+    stopDevcontainer('dc-seed-0001') // running, runtime connected, harnesses known
+    expect(getDevcontainer('dc-seed-0001').runtime.runtime_connected).toBe(false)
+    expect(listHarnesses('dc-seed-0001').known).toBe(false)
+  })
+
   it('throws NotFoundError for unknown id', () => {
     expect(() => stopDevcontainer('nope')).toThrow(NotFoundError)
   })

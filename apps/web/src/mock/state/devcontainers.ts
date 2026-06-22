@@ -85,9 +85,17 @@ export function startDevcontainer(id: string): Devcontainer {
   return toDevcontainer(store[idx])
 }
 
+// Stopping the container tears down the runtime: disconnect it and evict the
+// harness cache so runtime-dependent status reverts to unknown.
 export function stopDevcontainer(id: string): Devcontainer {
   const idx = findIdx(id)
-  store[idx] = { ...store[idx], status: 'stopped', updated_at: now() }
+  store[idx] = {
+    ...store[idx],
+    status: 'stopped',
+    runtime: { runtime_connected: false },
+    updated_at: now(),
+  }
+  evictHarnessEntry(id)
   return toDevcontainer(store[idx])
 }
 

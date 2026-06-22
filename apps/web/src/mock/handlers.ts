@@ -171,7 +171,12 @@ const devcontainerHandlers = [
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
     try {
-      return HttpResponse.json(dc.stopDevcontainer(params.id as string))
+      // Stop tears down the runtime; the real backend broadcasts devcontainers
+      // (status) then runtime (on WS disconnect). Harness refetch rides the runtime scope.
+      const result = dc.stopDevcontainer(params.id as string)
+      emitInvalidation('devcontainers')
+      emitInvalidation('runtime')
+      return HttpResponse.json(result)
     } catch (e) {
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e
