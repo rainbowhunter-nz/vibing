@@ -19,8 +19,8 @@ FastAPI Control Plane. Owns API routes, SQLite state, runtime WS intake. Drives 
 - `core/catalog.py`: `DevcontainerCatalog` — merges manual (DB) + discovered, deduped by `local_path`. Manual record hides a discovered one at the same path. Backs all lifecycle routes so discovered ids resolve instead of 404ing.
 - `core/devcontainer_service.py`: orchestrates `devcontainer up`/stop; reflects in-flight status in `LiveStateStore` (no DB status writes). Runtime injection is now an explicit endpoint, not an automatic post-start step.
 - `core/runtime_injector.py`: `docker cp` + synchronous `uv tool install` (teed to one in-container log `/tmp/vibing-runtime.log`) + detached launch of the runtime with its PID in `/tmp/vibing-runtime.pid`. `inject*` return `bool` (bootstrap ok). Also `stop_runtime` (`<engine> exec` kill via PID file) and `read_log` (`<engine> exec cat`, on demand).
-  - `core/runtime_service.py`: `RuntimeService` — owns the `launching` transient + ~30s timeout, runtime `stop`, and on-demand `read_log`. WS connect is the durable truth; timeout/disconnect resolve to `disconnected`.
-  - `core/runtime_status_resolver.py`: `resolve_runtime_state` — connected (WS) wins, else `launching` transient, else `disconnected`.
+- `core/runtime_service.py`: `RuntimeService` — owns the `launching` transient + ~30s timeout, runtime `stop`, and on-demand `read_log`. WS connect is the durable truth; timeout/disconnect resolve to `disconnected`.
+- `core/runtime_status_resolver.py`: `resolve_runtime_state` — connected (WS) wins, else `launching` transient, else `disconnected`.
 - `core/runtime_channel.py`: `RuntimeRegistry` holds one `RuntimeConnection` per `devcontainer_id` and sends `command`s to it; `WebSocketRuntimeConnection` is the real adapter and owns the command wire format (via `vibing_protocol.encode`).
 - `core/runtime_intake.py`: `record_harness_status` caches items in `LiveStateStore` (no DB write); `persist_delegated_runs` writes to `delegated_runs` table.
 - `core/broadcaster.py`: SSE invalidation fan-out.
