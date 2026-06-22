@@ -108,13 +108,12 @@ The Devcontainer Runtime's state as the Control Plane observes it. Three resolve
   lost on Control Plane restart.
 - `disconnected` — the catch-all for *not connected*: never injected, stopped, crashed, or
   failed-to-launch. The state label intentionally does **not** distinguish these; the runtime logs
-  do (fetched on demand).
+  do (streamed live via `runtime-logs/stream`).
 
 Control is explicit and user-driven: start (`inject-runtime`), stop (`stop-runtime` — `docker exec`
 kill via a PID file the runtime writes), restart (stop then start). Diagnosability splits two ways:
 **bootstrap failures** (`docker cp`, `uv tool install`) are reported **synchronously** at inject
-time; **post-launch failures** live in the in-container runtime log, fetched on demand
-(`runtime-logs`). There is no in-container supervisor and no auto-restart — failures surface to the
+time; **post-launch output** lives in the in-container runtime log, **streamed live** (`tail -f`) over a chunked-HTTP `runtime-logs/stream` endpoint while the Logs view is open. There is no in-container supervisor and no auto-restart — failures surface to the
 user rather than being silently retried.
 
 ## Notes

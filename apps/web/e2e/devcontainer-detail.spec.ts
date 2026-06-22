@@ -32,12 +32,13 @@ test('stopping a running devcontainer reverts runtime and harness panel to unkno
   await expect(page.getByText(/runtime not connected/i).first()).toBeVisible()
 })
 
-test('runtime section: connected shows Stop and logs dialog', async ({ page }) => {
+test('runtime section: connected shows Stop and live logs dialog', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0001')
   await expect(page.getByRole('main').getByText('Connected', { exact: true })).toBeVisible()
   await expect(page.getByTitle('Stop runtime')).toBeVisible()
   await page.getByTitle('View runtime logs').click()
   await expect(page.getByRole('dialog').getByText('Runtime logs')).toBeVisible()
+  await expect(page.getByRole('dialog').getByText(/runtime started/)).toBeVisible()
 })
 
 test('disconnected runtime shows a descriptive harness message', async ({ page }) => {
