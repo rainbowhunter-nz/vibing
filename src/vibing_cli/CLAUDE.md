@@ -18,6 +18,7 @@ Root Typer command aggregator. Public command: `vibing`.
 
 - `vibing dev ...`: from `vibing_api.cli`.
 - `vibing runtime devcontainer ...`: agent runtime worker (`vibing_devcontainer_runtime.cli`).
+- `vibing runtime preflight --control-plane-url ...`: in-container reachability probe of the control-plane health endpoint (`vibing_devcontainer_runtime.preflight`); exit 0/1.
 - `vibing devcontainer ...`: devcontainer CRUD + lifecycle.
 - `vibing harness ls <id>` / `vibing harness authenticate <id> <name>` / `vibing harness creds set <name>`.
 - `vibing system ...`: read endpoints.

@@ -112,9 +112,13 @@ The Devcontainer Runtime's state as the Control Plane observes it. Three resolve
 
 Control is explicit and user-driven: start (`inject-runtime`), stop (`stop-runtime` — `docker exec`
 kill via a PID file the runtime writes), restart (stop then start). Diagnosability splits two ways:
-**bootstrap failures** (`docker cp`, `uv tool install`) are reported **synchronously** at inject
-time; **post-launch output** lives in the in-container runtime log, **streamed live** (`tail -f`) over a chunked-HTTP `runtime-logs/stream` endpoint while the Logs view is open. There is no in-container supervisor and no auto-restart — failures surface to the
-user rather than being silently retried.
+**bootstrap + preflight** (`docker cp`, `uv tool install`, then
+a `vibing runtime preflight` HTTP probe of the control-plane `/api/v1/health`) runs first and is
+reported **synchronously** at inject time; the runtime is **spawned only if that half passes**, so
+an unreachable control plane fails before any process starts. **Post-launch output** lives in the
+in-container runtime log, **streamed live** (`tail -f`) over a chunked-HTTP `runtime-logs/stream`
+endpoint while the Logs view is open. There is no in-container supervisor and no auto-restart —
+failures (including a failed preflight) surface to the user rather than being silently retried.
 
 ## Notes
 

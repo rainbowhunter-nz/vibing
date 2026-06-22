@@ -5,6 +5,7 @@ In-container companion process. Reduces friction of using coding harnesses — i
 ## Files
 
 - `cli.py`: `vibing devcontainer-runtime --devcontainer-id ...`. Starts runtime_client + MCP server concurrently.
+- `preflight.py`: `vibing runtime preflight --control-plane-url <ws-url>` — HTTP `GET` of the control-plane health endpoint (derived from the WS URL: `ws`→`http`, `/runtime/agent/ws`→`/api/v1/health`). Exit 0 if reachable, else exit 1 with a `PREFLIGHT FAILED:` line. Run inside the container during inject's bootstrap half, before the runtime is spawned.
 - `runtime_client.py`: WebSocket client that connects to `/runtime/agent/ws`, sends `register` + `harness_status`, and receives `command` envelopes.
 - `command_handler.py`: dispatches incoming Commands; routes `authenticate_harness` to `harness_manager`.
 - `harness_manager.py`: drives harness adapters for `authenticate_harness` and status reporting (ADR-0012).
@@ -14,7 +15,7 @@ In-container companion process. Reduces friction of using coding harnesses — i
 
 ## Context
 
-- Launched detached by the Control Plane's injector; its stdout/stderr (and the preceding `uv tool install`) are teed to `/tmp/vibing-runtime.log`, and its PID recorded in `/tmp/vibing-runtime.pid` for `stop-runtime`.
+- Launched detached by the Control Plane's injector **only after** its bootstrap half (`uv tool install` + a `vibing runtime preflight` reachability probe) succeeds; the install, the preflight result, and the runtime's stdout/stderr are all teed to `/tmp/vibing-runtime.log`, and its PID recorded in `/tmp/vibing-runtime.pid` for `stop-runtime`.
 - Connects out to Control Plane `/runtime/agent/ws` as the Devcontainer Runtime.
 - On connect: sends `register`, then immediately sends `harness_status` for each managed harness.
 - On `install_harness`/`authenticate_harness` Command: installs/authenticates the harness, then reports the **full** `harness_status` list (not just the touched harness — the Control Plane cache replaces wholesale, so a single-item report would drop the others).

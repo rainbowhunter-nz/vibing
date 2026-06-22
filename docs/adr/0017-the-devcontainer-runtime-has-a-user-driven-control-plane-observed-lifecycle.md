@@ -49,4 +49,14 @@ into one in-container log** fetched **on demand** via a new `runtime-logs` endpo
 
 Re-scopes ADR-0014 (explicit injection, runtime lifecycle) and extends ADR-0004/0011 (runtime model).
 
+**Amendment (2026-06-23): inject is two-phase, preflight gates spawn.** `inject()` now runs
+in two halves: **bootstrap+preflight** (`docker cp` uv + wheel, `uv tool install`, then a
+`vibing runtime preflight` HTTP `GET` of the control-plane `/api/v1/health` derived from the
+*same resolved WS URL* the runtime will use) and **spawn** (the detached `nohup` launch),
+issued as two separate `devcontainer exec` calls. The runtime is spawned **only if
+bootstrap+preflight succeeds**, so an unreachable control plane (a wrong resolved IP — the
+most common silent failure) fails before any process is launched. Surfacing stays log-only
+and the resolved state stays coarse `disconnected`: the `PREFLIGHT FAILED:` line lands in the
+unified log, streamed by [0018].
+
 Status: accepted
