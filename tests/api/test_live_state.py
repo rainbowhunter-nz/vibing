@@ -26,3 +26,15 @@ def test_harness_cache_set_get_evict() -> None:
     assert store.get_harness("dc1") == items
     store.evict_harness("dc1")
     assert store.get_harness("dc1") is None
+
+
+def test_runtime_transient_set_get_clear() -> None:
+    from vibing_api.core.live_state import LiveStateStore
+    from vibing_api.core.vocabularies import RuntimeState
+
+    store = LiveStateStore()
+    assert store.get_runtime_transient("dc1") is None
+    store.set_runtime_transient("dc1", RuntimeState.LAUNCHING)
+    assert store.get_runtime_transient("dc1") == RuntimeState.LAUNCHING
+    store.clear_runtime_transient("dc1")
+    assert store.get_runtime_transient("dc1") is None

@@ -7,3 +7,9 @@ class DevcontainerStatus(StrEnum):
     STOPPING = auto()
     STOPPED = auto()
     ERROR = auto()
+
+
+class RuntimeState(StrEnum):
+    CONNECTED = auto()
+    LAUNCHING = auto()
+    DISCONNECTED = auto()

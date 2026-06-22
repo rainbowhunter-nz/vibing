@@ -14,13 +14,14 @@ of devcontainer ids is bounded.
 
 from vibing_protocol import HarnessStatusItem
 
-from vibing_api.core.vocabularies import DevcontainerStatus
+from vibing_api.core.vocabularies import DevcontainerStatus, RuntimeState
 
 
 class LiveStateStore:
     def __init__(self) -> None:
         self._transient: dict[str, DevcontainerStatus] = {}
         self._harness: dict[str, list[HarnessStatusItem]] = {}
+        self._runtime_transient: dict[str, RuntimeState] = {}
 
     def set_transient(self, devcontainer_id: str, status: DevcontainerStatus) -> None:
         self._transient[devcontainer_id] = status
@@ -30,6 +31,15 @@ class LiveStateStore:
 
     def get_transient(self, devcontainer_id: str) -> DevcontainerStatus | None:
         return self._transient.get(devcontainer_id)
+
+    def set_runtime_transient(self, devcontainer_id: str, state: RuntimeState) -> None:
+        self._runtime_transient[devcontainer_id] = state
+
+    def clear_runtime_transient(self, devcontainer_id: str) -> None:
+        self._runtime_transient.pop(devcontainer_id, None)
+
+    def get_runtime_transient(self, devcontainer_id: str) -> RuntimeState | None:
+        return self._runtime_transient.get(devcontainer_id)
 
     def set_harness(self, devcontainer_id: str, items: list[HarnessStatusItem]) -> None:
         self._harness[devcontainer_id] = items
