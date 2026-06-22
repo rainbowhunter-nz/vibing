@@ -166,7 +166,49 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted">{children}</h3>
 }
 
-function ControlPanel({ dc }: { dc: DevcontainerView }) {
+export function RuntimeSection({
+  dc,
+  busy,
+  onAction,
+}: {
+  dc: DevcontainerView
+  busy: boolean
+  onAction: (kind: ActionKind) => void
+}) {
+  const running = dc.status === 'running'
+  const connected = dc.runtime.runtime_connected
+  return (
+    <section className="mb-5">
+      <SectionTitle>Runtime</SectionTitle>
+      <div className="flex items-center gap-2 text-[13px]">
+        <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-ok' : 'bg-text-subtle')} />
+        <span className={connected ? 'text-text' : 'text-text-muted'}>
+          {connected ? 'Connected' : 'Not connected'}
+        </span>
+        <div className="ml-auto">
+          <IconButton
+            title={running ? 'Inject runtime' : 'Start the container to inject runtime'}
+            busy={busy && running}
+            disabled={!running}
+            onClick={() => onAction('inject')}
+          >
+            <InjectIcon />
+          </IconButton>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ControlPanel({
+  dc,
+  busy,
+  onAction,
+}: {
+  dc: DevcontainerView
+  busy: boolean
+  onAction: (kind: ActionKind) => void
+}) {
   const { register } = useSseInvalidation()
   const { state: harnessState, refetch: refetchHarnesses } = useApiQuery(() => fetchHarnesses(dc.id), [dc.id])
 
@@ -174,6 +216,7 @@ function ControlPanel({ dc }: { dc: DevcontainerView }) {
 
   return (
     <div className="p-4">
+      <RuntimeSection dc={dc} busy={busy} onAction={onAction} />
       <section>
         <SectionTitle>Coding harnesses</SectionTitle>
         {harnessState.kind === 'ready' ? (
@@ -235,7 +278,7 @@ export function DevcontainerDetail() {
               </div>
             )}
             <LifecycleHeader dc={dc} busy={busy} onAction={(kind) => act(kind, dc)} />
-            <ControlPanel dc={dc} />
+            <ControlPanel dc={dc} busy={busy} onAction={(kind) => act(kind, dc)} />
           </div>
         )}
       </QueryBoundary>
