@@ -10,6 +10,7 @@ import {
   deleteDevcontainer,
   removeContainer,
   injectRuntime,
+  stopRuntimeState,
   NotFoundError,
 } from '../devcontainers'
 import { listHarnesses, resetHarnesses } from '../harnesses'
@@ -29,7 +30,7 @@ describe('listDevcontainers', () => {
     const { items } = listDevcontainers()
     for (const item of items) {
       expect(item).toHaveProperty('runtime')
-      expect(item.runtime).toHaveProperty('runtime_connected')
+      expect(item.runtime).toHaveProperty('state')
     }
   })
 })
@@ -39,7 +40,7 @@ describe('getDevcontainer', () => {
     const dc = getDevcontainer('dc-seed-0001')
     expect(dc.id).toBe('dc-seed-0001')
     expect(dc.name).toBe('my-webapp')
-    expect(dc.runtime).toEqual({ runtime_connected: true })
+    expect(dc.runtime).toEqual({ state: 'connected' })
   })
 
   it('throws NotFoundError for unknown id', () => {
@@ -119,7 +120,7 @@ describe('stopDevcontainer', () => {
 
   it('disconnects runtime and evicts harnesses (runtime stops with the container)', () => {
     stopDevcontainer('dc-seed-0001') // running, runtime connected, harnesses known
-    expect(getDevcontainer('dc-seed-0001').runtime.runtime_connected).toBe(false)
+    expect(getDevcontainer('dc-seed-0001').runtime.state).toBe('disconnected')
     expect(listHarnesses('dc-seed-0001').known).toBe(false)
   })
 
@@ -155,7 +156,7 @@ describe('removeContainer', () => {
     expect(listDevcontainers().items.length).toBe(before)
     const dc = getDevcontainer('dc-seed-0001')
     expect(dc.status).toBe('stopped')
-    expect(dc.runtime.runtime_connected).toBe(false)
+    expect(dc.runtime.state).toBe('disconnected')
     expect(listHarnesses('dc-seed-0001').known).toBe(false)
   })
 
@@ -179,9 +180,9 @@ describe('injectRuntime', () => {
     expect(() => injectRuntime('nonexistent')).toThrow(NotFoundError)
   })
 
-  it('sets runtime_connected to true on a known devcontainer', () => {
+  it('sets state to connected on a known devcontainer', () => {
     injectRuntime('dc-seed-0002')
-    expect(getDevcontainer('dc-seed-0002').runtime.runtime_connected).toBe(true)
+    expect(getDevcontainer('dc-seed-0002').runtime.state).toBe('connected')
   })
 
   it('makes listHarnesses return known:true after inject', () => {
@@ -189,5 +190,14 @@ describe('injectRuntime', () => {
     expect(listHarnesses('dc-seed-0002').known).toBe(false)
     injectRuntime('dc-seed-0002')
     expect(listHarnesses('dc-seed-0002').known).toBe(true)
+  })
+})
+
+describe('stopRuntimeState', () => {
+  it('stopRuntimeState disconnects the runtime and evicts harnesses', () => {
+    injectRuntime('dc-seed-0002')
+    expect(getDevcontainer('dc-seed-0002').runtime.state).toBe('connected')
+    stopRuntimeState('dc-seed-0002')
+    expect(getDevcontainer('dc-seed-0002').runtime.state).toBe('disconnected')
   })
 })

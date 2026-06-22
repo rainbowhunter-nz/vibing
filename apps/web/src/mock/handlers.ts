@@ -156,6 +156,32 @@ const devcontainerHandlers = [
     }
   }),
 
+  http.post('*/api/v1/devcontainers/:id/stop-runtime', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
+    if (failure) return failure
+    try {
+      dc.stopRuntimeState(params.id as string)
+      emitInvalidation('runtime')
+      emitInvalidation('harnesses')
+      return new HttpResponse(null, { status: 202 })
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.id as string)
+      throw e
+    }
+  }),
+
+  http.get('*/api/v1/devcontainers/:id/runtime-logs', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
+    if (failure) return failure
+    try {
+      dc.getDevcontainer(params.id as string)
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.id as string)
+      throw e
+    }
+    return HttpResponse.json({ content: 'mock runtime log\ninstall ok\nruntime started\n' })
+  }),
+
   http.post('*/api/v1/devcontainers/:id/start', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure

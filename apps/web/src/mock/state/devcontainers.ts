@@ -4,10 +4,10 @@ import { ensureHarnessEntry, evictHarnessEntry } from './harnesses'
 
 // Runtime connection per seed devcontainer; my-webapp is connected for inspection.
 const SEED_RUNTIME: Record<string, RuntimeConnection> = {
-  'dc-seed-0001': { runtime_connected: true },
-  'dc-seed-0002': { runtime_connected: false },
-  'dc-seed-0003': { runtime_connected: false },
-  'dc-seed-0004': { runtime_connected: false },
+  'dc-seed-0001': { state: 'connected' },
+  'dc-seed-0002': { state: 'disconnected' },
+  'dc-seed-0003': { state: 'disconnected' },
+  'dc-seed-0004': { state: 'disconnected' },
 }
 
 const SEED: DevcontainerView[] = seedDevcontainers.map((d) => ({ ...d, runtime: SEED_RUNTIME[d.id] }))
@@ -67,7 +67,7 @@ export function createDevcontainer(body: DevcontainerCreateBody): Devcontainer {
     source: 'manual',
     created_at: ts,
     updated_at: ts,
-    runtime: { runtime_connected: false },
+    runtime: { state: 'disconnected' },
   }
   store.push(view)
   return toDevcontainer(view)
@@ -92,7 +92,7 @@ export function stopDevcontainer(id: string): Devcontainer {
   store[idx] = {
     ...store[idx],
     status: 'stopped',
-    runtime: { runtime_connected: false },
+    runtime: { state: 'disconnected' },
     updated_at: now(),
   }
   evictHarnessEntry(id)
@@ -106,7 +106,7 @@ export function removeContainer(id: string): void {
   store[idx] = {
     ...store[idx],
     status: 'stopped',
-    runtime: { runtime_connected: false },
+    runtime: { state: 'disconnected' },
     updated_at: now(),
   }
   evictHarnessEntry(id)
@@ -127,6 +127,13 @@ export function deleteDevcontainer(id: string): void {
 // The mock flips synchronously so the reactive UI path (invalidation -> refetch) is testable.
 export function injectRuntime(id: string): void {
   const idx = findIdx(id)
-  store[idx] = { ...store[idx], runtime: { runtime_connected: true }, updated_at: now() }
+  store[idx] = { ...store[idx], runtime: { state: 'connected' }, updated_at: now() }
   ensureHarnessEntry(id)
+}
+
+// Stop the runtime: disconnect it and evict harness cache (mirrors backend stop-runtime).
+export function stopRuntimeState(id: string): void {
+  const idx = findIdx(id)
+  store[idx] = { ...store[idx], runtime: { state: 'disconnected' }, updated_at: now() }
+  evictHarnessEntry(id)
 }
