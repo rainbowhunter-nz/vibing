@@ -12,6 +12,7 @@ import type {
   HealthResponse,
   HarnessStatus,
   HarnessStatusList,
+  RuntimeLogs,
   SettingsResponse,
   StatusResponse,
 } from './types'
@@ -44,6 +45,12 @@ export const stopDevcontainer = (id: string): Promise<Devcontainer> =>
 
 export const injectRuntime = (id: string): Promise<void> =>
   sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/inject-runtime`, 'POST')
+
+export const stopRuntime = (id: string): Promise<void> =>
+  sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/stop-runtime`, 'POST')
+
+export const fetchRuntimeLogs = (id: string): Promise<RuntimeLogs> =>
+  getJson(`/devcontainers/${encodeURIComponent(id)}/runtime-logs`)
 
 export const removeContainer = (id: string): Promise<void> =>
   sendJson<void>(`/devcontainers/${encodeURIComponent(id)}/remove-container`, 'POST')

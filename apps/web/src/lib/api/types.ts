@@ -29,8 +29,14 @@ export interface Devcontainer {
   updated_at: string | null
 }
 
+export type RuntimeState = 'connected' | 'launching' | 'disconnected'
+
 export interface RuntimeConnection {
-  runtime_connected: boolean
+  state: RuntimeState
+}
+
+export interface RuntimeLogs {
+  content: string | null
 }
 
 export interface DevcontainerView extends Devcontainer {
