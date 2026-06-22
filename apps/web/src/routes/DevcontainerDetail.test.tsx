@@ -11,11 +11,12 @@ const base = {
 }
 
 describe('LifecycleHeader actions', () => {
-  it('shows Stop, Inject, Remove container when running', () => {
+  it('shows Stop and Remove container when running, without runtime controls', () => {
     render(<LifecycleHeader dc={base} busy={false} onAction={() => {}} />)
     expect(screen.getByTitle('Stop')).toBeTruthy()
-    expect(screen.getByTitle('Inject runtime')).toBeTruthy()
     expect(screen.getByTitle('Remove container')).toBeTruthy()
+    expect(screen.queryByTitle('Inject runtime')).toBeNull()
+    expect(screen.queryByText('Connected')).toBeNull()
   })
 
   it('shows Start when stopped', () => {

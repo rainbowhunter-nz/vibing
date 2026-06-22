@@ -54,25 +54,28 @@ function SourceBadge({ source }: { source: string }) {
 function IconButton({
   title,
   busy,
+  disabled,
   danger,
   onClick,
   children,
 }: {
   title: string
   busy: boolean
+  disabled?: boolean
   danger?: boolean
   onClick: () => void
   children: React.ReactNode
 }) {
+  const inactive = busy || disabled
   return (
     <button
       type="button"
       title={title}
-      disabled={busy}
+      disabled={inactive}
       onClick={onClick}
       className={cn(
         'flex h-7 w-7 items-center justify-center rounded-[5px]',
-        busy
+        inactive
           ? 'cursor-not-allowed opacity-40'
           : danger
             ? 'cursor-pointer text-bad hover:bg-surface-muted'
@@ -112,10 +115,6 @@ export function LifecycleHeader({
         </button>
         <StatusBadge status={dc.status} />
         <SourceBadge source={dc.source} />
-        <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
-          <span className={cn('h-2 w-2 rounded-full', dc.runtime.runtime_connected ? 'bg-ok' : 'bg-text-subtle')} />
-          {dc.runtime.runtime_connected ? 'runtime' : 'runtime not connected'}
-        </span>
         <div className="ml-auto flex items-center gap-1">
           {running ? (
             <IconButton title="Stop" busy={busy} onClick={() => onAction('stop')}>
@@ -124,11 +123,6 @@ export function LifecycleHeader({
           ) : (
             <IconButton title="Start" busy={busy || transitioning} onClick={() => onAction('start')}>
               <PlayIcon />
-            </IconButton>
-          )}
-          {running && (
-            <IconButton title="Inject runtime" busy={busy} onClick={() => onAction('inject')}>
-              <InjectIcon />
             </IconButton>
           )}
           <IconButton
