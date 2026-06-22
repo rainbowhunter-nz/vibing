@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test'
 
 // Seeds (src/mock/state/seeds.ts):
-//  dc-seed-0001 running  manual     harnesses known
-//  dc-seed-0002 stopped  manual     NO harness entry -> known:false -> "not connected" message
+//  dc-seed-0001 running  manual     harnesses known  runtime connected
+//  dc-seed-0002 stopped  manual     NO harness entry -> known:false -> "not connected" message  runtime disconnected
 //  dc-seed-0003 stopped  discovered claude-code not installed
 //  dc-seed-0004 error    manual
 
-test('running devcontainer shows Stop / Inject / Remove container icon controls', async ({ page }) => {
+test('running devcontainer shows Stop / Stop-runtime / Remove container icon controls', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0001')
-  await expect(page.getByTitle('Stop')).toBeVisible()
-  await expect(page.getByTitle('Inject runtime')).toBeVisible()
+  await expect(page.getByTitle('Stop', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('Stop runtime')).toBeVisible()
   await expect(page.getByTitle('Remove container')).toBeVisible()
 })
 
@@ -18,18 +18,26 @@ test('stopped devcontainer shows Start', async ({ page }) => {
   await expect(page.getByTitle('Start', { exact: true })).toBeVisible()
 })
 
-test('stopped devcontainer shows runtime as not connected with Inject disabled', async ({ page }) => {
+test('stopped devcontainer shows runtime as disconnected with Inject disabled', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0002')
-  await expect(page.getByText('Not connected', { exact: true })).toBeVisible()
+  await expect(page.getByRole('main').getByText('Disconnected', { exact: true })).toBeVisible()
   await expect(page.getByTitle('Start the container to inject runtime')).toBeDisabled()
 })
 
 test('stopping a running devcontainer reverts runtime and harness panel to unknown', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0001') // running, runtime connected, harnesses known
   await expect(page.getByRole('main').getByText('Connected', { exact: true })).toBeVisible()
-  await page.getByTitle('Stop').click()
-  await expect(page.getByText('Not connected', { exact: true })).toBeVisible()
+  await page.getByTitle('Stop', { exact: true }).click()
+  await expect(page.getByRole('main').getByText('Disconnected', { exact: true })).toBeVisible()
   await expect(page.getByText(/runtime not connected/i).first()).toBeVisible()
+})
+
+test('runtime section: connected shows Stop and logs dialog', async ({ page }) => {
+  await page.goto('/devcontainers/dc-seed-0001')
+  await expect(page.getByRole('main').getByText('Connected', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('Stop runtime')).toBeVisible()
+  await page.getByTitle('View runtime logs').click()
+  await expect(page.getByRole('dialog').getByText('Runtime logs')).toBeVisible()
 })
 
 test('disconnected runtime shows a descriptive harness message', async ({ page }) => {
