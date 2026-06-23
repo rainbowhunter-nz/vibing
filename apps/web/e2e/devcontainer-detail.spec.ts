@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 // Seeds (src/mock/state/seeds.ts):
 //  dc-seed-0001 running  manual     harnesses known  runtime connected
-//  dc-seed-0002 stopped  manual     NO harness entry -> known:false -> "not connected" message  runtime disconnected
+//  dc-seed-0002 stopped  manual     NO harness entry -> known:false -> "container not running" message  runtime disconnected
 //  dc-seed-0003 stopped  discovered claude-code not installed
 //  dc-seed-0004 error    manual
 
@@ -29,7 +29,8 @@ test('stopping a running devcontainer reverts runtime and harness panel to unkno
   await expect(page.getByRole('main').getByText('Connected', { exact: true })).toBeVisible()
   await page.getByTitle('Stop', { exact: true }).click()
   await expect(page.getByRole('main').getByText('Disconnected', { exact: true })).toBeVisible()
-  await expect(page.getByText(/runtime not connected/i).first()).toBeVisible()
+  // Container is now stopped → harness status is container-scoped, not runtime-scoped
+  await expect(page.getByText(/container not running/i).first()).toBeVisible()
 })
 
 test('runtime section: connected shows Stop and live logs dialog', async ({ page }) => {
@@ -41,9 +42,10 @@ test('runtime section: connected shows Stop and live logs dialog', async ({ page
   await expect(page.getByRole('dialog').getByText(/runtime started/)).toBeVisible()
 })
 
-test('disconnected runtime shows a descriptive harness message', async ({ page }) => {
+test('stopped container shows a descriptive harness message', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0002')
-  await expect(page.getByText(/runtime not connected/i).first()).toBeVisible()
+  // dc-seed-0002 is stopped → no harness entry → known:false → container-scoped message
+  await expect(page.getByText(/container not running/i).first()).toBeVisible()
 })
 
 test('discovered source is shown', async ({ page }) => {

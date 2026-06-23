@@ -27,12 +27,37 @@ describe('harness handlers', () => {
     expect((await res.json()).error.code).toBe('DEVCONTAINER_NOT_FOUND')
   })
 
-  it('POST authenticate flips authenticated', async () => {
-    expect((await (await post('/api/v1/devcontainers/dc-seed-0001/harnesses/codex/authenticate')).json()).authenticated).toBe(true)
+  it('POST authenticate returns text stream and flips authenticated in store', async () => {
+    const res = await post('/api/v1/devcontainers/dc-seed-0001/harnesses/codex/authenticate')
+    expect(res.ok).toBe(true)
+    expect(res.headers.get('content-type')).toContain('text/plain')
+    // Confirm store mutation: subsequent GET reflects the change
+    const list = await (await get('/api/v1/devcontainers/dc-seed-0001/harnesses')).json()
+    const codex = list.items.find((h: { name: string }) => h.name === 'codex')
+    expect(codex?.authenticated).toBe(true)
   })
 
-  it('POST install flips installed', async () => {
-    expect((await (await post('/api/v1/devcontainers/dc-seed-0001/harnesses/cursor/install')).json()).installed).toBe(true)
+  it('POST install returns text stream and flips installed in store', async () => {
+    const res = await post('/api/v1/devcontainers/dc-seed-0001/harnesses/cursor/install')
+    expect(res.ok).toBe(true)
+    expect(res.headers.get('content-type')).toContain('text/plain')
+    // Confirm store mutation: subsequent GET reflects the change
+    const list = await (await get('/api/v1/devcontainers/dc-seed-0001/harnesses')).json()
+    const cursor = list.items.find((h: { name: string }) => h.name === 'cursor')
+    expect(cursor?.installed).toBe(true)
+  })
+
+  it('POST /harnesses/refresh returns current HarnessStatusList', async () => {
+    const res = await post('/api/v1/devcontainers/dc-seed-0001/harnesses/refresh')
+    expect(res.ok).toBe(true)
+    const body = await res.json()
+    expect(body.known).toBe(true)
+    expect(body.items.map((h: { name: string }) => h.name)).toContain('claude-code')
+  })
+
+  it('POST /harnesses/refresh 404s for unknown devcontainer', async () => {
+    const res = await post('/api/v1/devcontainers/nope/harnesses/refresh')
+    expect(res.status).toBe(404)
   })
 })
 

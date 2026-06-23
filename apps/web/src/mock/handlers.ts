@@ -205,11 +205,11 @@ const devcontainerHandlers = [
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
     try {
-      // Stop tears down the runtime; the real backend broadcasts devcontainers
-      // (status) then runtime (on WS disconnect). Harness refetch rides the runtime scope.
+      // Stop tears down the runtime; harness status is container-scoped so also invalidate.
       const result = dc.stopDevcontainer(params.id as string)
       emitInvalidation('devcontainers')
       emitInvalidation('runtime')
+      emitInvalidation('harnesses')
       return HttpResponse.json(result)
     } catch (e) {
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
@@ -234,9 +234,15 @@ const devcontainerHandlers = [
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'HARNESS_NOT_FOUND')
     if (failure) return failure
     try {
-      const status = hn.installHarness(params.id as string, params.name as string)
+      hn.installHarness(params.id as string, params.name as string)
       emitInvalidation('harnesses')
-      return HttpResponse.json(status)
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(`Installing ${params.name as string}...\nDone.\n`))
+          controller.close()
+        },
+      })
+      return new HttpResponse(stream, { headers: { 'Content-Type': 'text/plain' } })
     } catch (e) {
       if (e instanceof hn.NotFoundError) {
         return HttpResponse.json(errorEnvelope('HARNESS_NOT_FOUND', e.message), { status: 404 })
@@ -249,15 +255,33 @@ const devcontainerHandlers = [
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND', 'HARNESS_NOT_FOUND')
     if (failure) return failure
     try {
-      const status = hn.authenticateHarness(params.id as string, params.name as string)
+      hn.authenticateHarness(params.id as string, params.name as string)
       emitInvalidation('harnesses')
-      return HttpResponse.json(status)
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(`Authenticating ${params.name as string}...\nDone.\n`))
+          controller.close()
+        },
+      })
+      return new HttpResponse(stream, { headers: { 'Content-Type': 'text/plain' } })
     } catch (e) {
       if (e instanceof hn.NotFoundError) {
         return HttpResponse.json(errorEnvelope('HARNESS_NOT_FOUND', e.message), { status: 404 })
       }
       throw e
     }
+  }),
+
+  http.post('*/api/v1/devcontainers/:id/harnesses/refresh', ({ params }) => {
+    const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
+    if (failure) return failure
+    try {
+      dc.getDevcontainer(params.id as string)
+    } catch (e) {
+      if (e instanceof dc.NotFoundError) return notFound(params.id as string)
+      throw e
+    }
+    return HttpResponse.json(hn.listHarnesses(params.id as string))
   }),
 
   http.get('*/api/v1/devcontainers/:id/delegated-runs', ({ params }) => {

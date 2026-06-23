@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { HarnessList } from '../HarnessList'
 import type { HarnessStatus } from '../../lib/api/types'
 
@@ -46,5 +46,32 @@ describe('HarnessList', () => {
   it('shows a tick for installed harnesses', () => {
     setup()
     expect(screen.getAllByTitle('Installed').length).toBe(2)
+  })
+
+  it('shows container-scoped message when known is false', () => {
+    render(<HarnessList devcontainerId="dc-seed-0002" harnesses={[]} known={false} onChange={() => {}} />)
+    expect(screen.getByText(/container not running — harness status unavailable/i)).toBeTruthy()
+  })
+
+  it('renders a refresh button', () => {
+    setup()
+    expect(screen.getByTestId('harness-refresh')).toBeTruthy()
+  })
+
+  it('disables the refresh button while refreshing', () => {
+    const onChangeFn = vi.fn()
+    render(
+      <HarnessList
+        devcontainerId="dc-seed-0001"
+        harnesses={harnesses}
+        known
+        onChange={onChangeFn}
+      />,
+    )
+    const btn = screen.getByTestId('harness-refresh')
+    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(btn)
+    // Button should be busy immediately after click
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
 })

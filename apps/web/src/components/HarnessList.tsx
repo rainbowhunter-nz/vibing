@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { HarnessStatus } from '../lib/api/types'
-import { authenticateHarness, installHarness } from '../lib/api'
+import { authenticateHarness, installHarness, refreshHarnesses } from '../lib/api'
 import { cn } from '../lib/cn'
 
 const checkIcon = (
@@ -68,6 +68,13 @@ function ActionIcon({ title, disabled, busy, busyTestId, onClick, children }: {
   )
 }
 
+const refreshIcon = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="1 4 1 10 7 10" />
+    <path d="M3.51 15a9 9 0 1 0 .49-3" />
+  </svg>
+)
+
 export function HarnessList({ devcontainerId, harnesses, known, onChange }: {
   devcontainerId: string
   harnesses: HarnessStatus[]
@@ -75,6 +82,7 @@ export function HarnessList({ devcontainerId, harnesses, known, onChange }: {
   onChange: () => void
 }) {
   const [pending, setPending] = useState<Set<string>>(new Set())
+  const [refreshing, setRefreshing] = useState(false)
 
   const run = (key: string, fn: () => Promise<unknown>) => {
     setPending((p) => new Set(p).add(key))
@@ -83,16 +91,36 @@ export function HarnessList({ devcontainerId, harnesses, known, onChange }: {
       .catch(() => setPending((p) => { const n = new Set(p); n.delete(key); return n }))
   }
 
+  const handleRefresh = () => {
+    setRefreshing(true)
+    void refreshHarnesses(devcontainerId)
+      .then(() => onChange())
+      .catch(() => {})
+      .finally(() => setRefreshing(false))
+  }
+
   return (
     <div className="rounded-xl border border-border bg-surface-rail">
       <div className="grid grid-cols-[1fr_120px_120px] border-b border-border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.05em] text-text-subtle">
-        <span>Harness</span>
+        <span className="flex items-center gap-2">
+          Harness
+          <button
+            type="button"
+            data-testid="harness-refresh"
+            title="Refresh harness status"
+            disabled={refreshing}
+            onClick={handleRefresh}
+            className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-border text-text-subtle hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {refreshing ? <SpinnerEl testId="spinner-refresh" /> : refreshIcon}
+          </button>
+        </span>
         <span className="text-center">Installed</span>
         <span className="text-center">Authenticated</span>
       </div>
       {!known ? (
         <p className="px-3 py-4 text-[13px] text-text-muted">
-          Runtime not connected — harness status unavailable.
+          Container not running — harness status unavailable.
         </p>
       ) : harnesses.length === 0 ? (
         <p className="px-3 py-4 text-[13px] text-text-muted">No harnesses reported.</p>

@@ -5,12 +5,13 @@ import { HarnessList } from './HarnessList'
 vi.mock('../lib/api/endpoints', () => ({
   installHarness: vi.fn().mockResolvedValue(undefined),
   authenticateHarness: vi.fn().mockResolvedValue(undefined),
+  refreshHarnesses: vi.fn().mockResolvedValue({ items: [], known: true }),
 }))
 
 describe('HarnessList', () => {
-  it('shows a descriptive message when runtime not connected', () => {
+  it('shows container-scoped message when container is not running', () => {
     render(<HarnessList devcontainerId="dc-1" harnesses={[]} known={false} onChange={() => {}} />)
-    expect(screen.getByText(/runtime not connected/i)).toBeTruthy()
+    expect(screen.getByText(/container not running/i)).toBeTruthy()
   })
 
   it('keeps spinner after install click until prop flips installed', async () => {

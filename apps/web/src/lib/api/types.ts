@@ -82,7 +82,7 @@ export interface DiagnosticsResponse {
   checks: DiagnosticCheck[]
 }
 
-// Coding-harness status (runtime HarnessStatus, ADR-0012).
+// Coding-harness status (container-scoped, ADR-0019).
 export interface HarnessStatus {
   name: string
   installed: boolean

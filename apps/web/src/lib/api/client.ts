@@ -43,6 +43,17 @@ async function callFetch(path: string, init: RequestInit): Promise<Response> {
   }
 }
 
+export async function streamText(path: string): Promise<void> {
+  const res = await callFetch(path, { method: 'POST' })
+  if (!res.ok) throw await parseError(res)
+  if (!res.body) return
+  const reader = res.body.getReader()
+  for (;;) {
+    const { done } = await reader.read()
+    if (done) break
+  }
+}
+
 export async function getJson<T>(path: string): Promise<T> {
   const res = await callFetch(path, { headers: { Accept: 'application/json' } })
   if (!res.ok) throw await parseError(res)

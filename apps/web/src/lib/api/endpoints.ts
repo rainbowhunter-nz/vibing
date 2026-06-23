@@ -1,4 +1,4 @@
-import { ApiError, getJson, sendJson } from './client'
+import { ApiError, getJson, sendJson, streamText } from './client'
 import type {
   ConfigResponse,
   DelegatedRunList,
@@ -10,7 +10,6 @@ import type {
   DevcontainerViewList,
   DiagnosticsResponse,
   HealthResponse,
-  HarnessStatus,
   HarnessStatusList,
   SettingsResponse,
   StatusResponse,
@@ -74,11 +73,14 @@ export const removeContainer = (id: string): Promise<void> =>
 export const fetchHarnesses = (devcontainerId: string): Promise<HarnessStatusList> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses`)
 
-export const installHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
-  sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/install`, 'POST') as Promise<HarnessStatus>
+export const installHarness = (devcontainerId: string, name: string): Promise<void> =>
+  streamText(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/install`)
 
-export const authenticateHarness = (devcontainerId: string, name: string): Promise<HarnessStatus> =>
-  sendJson<HarnessStatus>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/authenticate`, 'POST') as Promise<HarnessStatus>
+export const authenticateHarness = (devcontainerId: string, name: string): Promise<void> =>
+  streamText(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/${encodeURIComponent(name)}/authenticate`)
+
+export const refreshHarnesses = (devcontainerId: string): Promise<HarnessStatusList> =>
+  sendJson<HarnessStatusList>(`/devcontainers/${encodeURIComponent(devcontainerId)}/harnesses/refresh`, 'POST') as Promise<HarnessStatusList>
 
 export const fetchDelegatedRuns = (devcontainerId: string): Promise<DelegatedRunList> =>
   getJson(`/devcontainers/${encodeURIComponent(devcontainerId)}/delegated-runs`)
