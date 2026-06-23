@@ -24,12 +24,13 @@ the Control Plane.
 _Avoid_: server, orchestrator, host runtime worker; do not include the frontend
 
 **Devcontainer Runtime**:
-The in-container companion process, one per running Devcontainer. Its purpose is to reduce the
-friction of using Coding Harnesses inside an ephemeral container and to add capability on top of
-them. Today it (1) checks/installs/authenticates *managed* harnesses from credentials the Control
-Plane delivers and reports their Harness Status, and (2) hosts an MCP server the main harness calls
-to start Delegated Runs. Designed to grow more capabilities (e.g. skills management). Connects out
-to the Control Plane over a WebSocket, routed by `devcontainer_id`.
+The in-container companion process, one per running Devcontainer. Its purpose is to add capability
+on top of Coding Harnesses inside an ephemeral container. It hosts an MCP server the main harness
+calls to start Delegated Runs (and locally checks managed-harness status for that server's
+`list_harnesses`). Harness install/authenticate/status-for-display is **not** its job — the
+Control Plane owns that directly via `devcontainer exec` (ADR-0019). Designed to grow more
+capabilities (e.g. skills management). Connects out to the Control Plane over a WebSocket, routed
+by `devcontainer_id`; the channel is **outbound-only** (it receives no Commands).
 _Avoid_: agent, runtime agent, worker, daemon; never call it "the agent" (the harness is the agent)
 
 **Coding Harness**:
@@ -47,15 +48,17 @@ A generic credential blob — API key or a captured subscription auth file — i
 either way. Captured once from a **host login** (a `vibing` command reads the harness's on-disk auth
 file) and stored plaintext in the Control Plane (single-user local tool; see
 [ADR-0012](docs/adr/0012-harness-credentials-are-host-captured-stored-plaintext-and-injected-per-container.md)).
-Delivered **on demand** to a Devcontainer Runtime via an `authenticate_harness` Command; the
-per-harness adapter installs the harness if missing and drops the credential into place.
+**Written into the container by the Control Plane** via `devcontainer exec` (install-if-missing,
+then the blob piped to the harness's credential path), not delivered over the runtime channel
+(ADR-0019).
 _Avoid_: secret, token (when ambiguous), api key (it is the api-key *or* file case)
 
 **Harness Status**:
-The Devcontainer Runtime's report of a managed harness's `installed`/`authenticated` state for its
-Devcontainer. Reported up over the runtime WebSocket on connect and after each authenticate, written
-directly to the read model by the Control Plane, and shown per-Devcontainer in the web. A plain
-status report, *not* an event in a log.
+A managed harness's `installed`/`authenticated` state for its Devcontainer. **Computed by the
+Control Plane** via `devcontainer exec` and cached, recomputed only on Control-Plane-observable
+triggers (container start, post-install/auth, manual refresh). Keyed to **container-running**, not
+runtime-connected — visible even with the runtime down (ADR-0019). Shown per-Devcontainer in the
+web. A plain status, *not* an event in a log.
 _Avoid_: runtime event, harness event
 
 **Delegated Run**:
@@ -65,11 +68,11 @@ result. Unattended and fully autonomous (runs in the harness's bypass mode — n
 approvals). Not durable or resumable — when it ends, it is done. Spawned and observed in-container via MCP (`get_status`/`get_result`); additionally reported to the Control Plane as a read-only snapshot projection over the runtime channel (ADR-0016). Non-durable — the CP projection is best-effort and may be empty after a runtime restart.
 _Avoid_: agent-session, subagent session, job, task (when ambiguous)
 
-**Command**:
-A message the Control Plane sends to a Devcontainer Runtime expressing intent. The extensible
-runtime channel; today `authenticate_harness` and `install_harness`. Flows Control Plane → Devcontainer Runtime.
-_Avoid_: action, request, message; not used for the Devcontainer lifecycle (the Control Plane drives
-that in-process, not via a Command)
+**Command** _(removed, ADR-0019)_:
+Formerly a Control Plane → Devcontainer Runtime message (`authenticate_harness`/`install_harness`).
+That direction no longer exists — harness setup is Control-Plane `devcontainer exec`, so the runtime
+channel is outbound-only (Runtime → Control Plane). Do not reintroduce a Command direction without
+an ADR superseding 0019.
 
 **Control Plane API Mocking**:
 A frontend development mode where the browser receives mock `/api/v1` Control Plane HTTP responses
@@ -129,5 +132,7 @@ failures (including a failed preflight) surface to the user rather than being si
 
 The Control Plane is the **single writer of derived state and mutates it directly** — there is no
 `runtime_events` log and no projection/reducer layer. When the Dev Container CLI advances the
-lifecycle, or a Devcontainer Runtime reports Harness Status, the Control Plane writes the read model
-and publishes an SSE invalidation in the same step. The runtime channel carries four message kinds: `register`, `command` (Control Plane → Runtime), `harness_status` and `delegated_runs` (Runtime → Control Plane).
+lifecycle, when the Control Plane (re)computes Harness Status via `devcontainer exec`, or when a
+Devcontainer Runtime reports Delegated Runs, the Control Plane writes the read model and publishes
+an SSE invalidation in the same step. The runtime channel is **outbound-only** and carries two
+message kinds, both Runtime → Control Plane: `register` and `delegated_runs` (ADR-0019).
