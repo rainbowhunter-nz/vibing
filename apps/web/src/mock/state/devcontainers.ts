@@ -5,7 +5,7 @@ import { ensureHarnessEntry, evictHarnessEntry } from './harnesses'
 // Runtime connection per seed devcontainer; my-webapp is connected for inspection.
 const SEED_RUNTIME: Record<string, RuntimeConnection> = {
   'dc-seed-0001': { state: 'connected' },
-  'dc-seed-0002': { state: 'disconnected' },
+  'dc-seed-0002': { state: 'error' },
   'dc-seed-0003': { state: 'disconnected' },
   'dc-seed-0004': { state: 'disconnected' },
 }

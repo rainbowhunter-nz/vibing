@@ -68,4 +68,15 @@ describe('RuntimeSection', () => {
     fireEvent.click(screen.getByTitle('View runtime logs'))
     expect(await screen.findByText('Runtime logs')).toBeTruthy()
   })
+
+  it('shows Error and a visible Inject button when state is error and running', () => {
+    const calls: string[] = []
+    const dc = { ...base, status: 'running' as const, runtime: { state: 'error' as const } }
+    render(<RuntimeSection dc={dc} busy={false} onAction={(k) => calls.push(k)} />)
+    expect(screen.getByText('Error')).toBeTruthy()
+    const inject = screen.getByTitle('Inject runtime') as HTMLButtonElement
+    expect(inject.disabled).toBe(false)
+    inject.click()
+    expect(calls).toEqual(['inject'])
+  })
 })

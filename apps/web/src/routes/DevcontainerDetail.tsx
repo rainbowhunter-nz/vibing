@@ -172,6 +172,7 @@ const RUNTIME_LABEL: Record<string, string> = {
   connected: 'Connected',
   launching: 'Launching…',
   disconnected: 'Disconnected',
+  error: 'Error',
 }
 
 export function RuntimeSection({
@@ -187,6 +188,7 @@ export function RuntimeSection({
   const state = dc.runtime.state
   const connected = state === 'connected'
   const launching = state === 'launching'
+  const error = state === 'error'
   const [logs, setLogs] = useState('')
   const [showLogs, setShowLogs] = useState(false)
   const [streaming, setStreaming] = useState(false)
@@ -217,7 +219,7 @@ export function RuntimeSection({
         <span
           className={cn(
             'h-2 w-2 rounded-full',
-            connected ? 'bg-ok' : launching ? 'bg-accent' : 'bg-text-subtle',
+            connected ? 'bg-ok' : launching ? 'bg-accent' : error ? 'bg-bad' : 'bg-text-subtle',
           )}
         />
         <span className={connected ? 'text-text' : 'text-text-muted'}>{RUNTIME_LABEL[state]}</span>
