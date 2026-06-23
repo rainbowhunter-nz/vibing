@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 // Seeds (src/mock/state/seeds.ts):
 //  dc-seed-0001 running  manual     harnesses known  runtime connected
-//  dc-seed-0002 stopped  manual     NO harness entry -> known:false -> "container not running" message  runtime disconnected
+//  dc-seed-0002 stopped  manual     NO harness entry -> known:false -> "container not running" message  runtime error (seeded)
 //  dc-seed-0003 stopped  discovered claude-code not installed
 //  dc-seed-0004 error    manual
 
@@ -18,9 +18,10 @@ test('stopped devcontainer shows Start', async ({ page }) => {
   await expect(page.getByTitle('Start', { exact: true })).toBeVisible()
 })
 
-test('stopped devcontainer shows runtime as disconnected with Inject disabled', async ({ page }) => {
+test('stopped devcontainer shows runtime state with Inject disabled', async ({ page }) => {
   await page.goto('/devcontainers/dc-seed-0002')
-  await expect(page.getByRole('main').getByText('Disconnected', { exact: true })).toBeVisible()
+  // dc-seed-0002 is seeded with runtime state 'error' (see SEED_RUNTIME)
+  await expect(page.getByRole('main').getByText('Error', { exact: true })).toBeVisible()
   await expect(page.getByTitle('Start the container to inject runtime')).toBeDisabled()
 })
 
