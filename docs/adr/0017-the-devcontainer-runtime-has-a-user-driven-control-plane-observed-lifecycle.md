@@ -59,4 +59,13 @@ most common silent failure) fails before any process is launched. Surfacing stay
 and the resolved state stays coarse `disconnected`: the `PREFLIGHT FAILED:` line lands in the
 unified log, streamed by [0018].
 
+**Amendment (2026-06-23): a synchronous inject failure resolves to `error`, not `disconnected`.**
+Refining the coarse-`disconnected` stance above: a failed inject (`inject() == False` — bootstrap
+install **or** the preflight from the first amendment) now sets a **sticky `error` transient** so the
+indicator distinguishes "tried to launch and the synchronous half failed" from a never-injected or
+stopped runtime. This adds exactly **one** state — `error` — retryable via the existing Inject button
+(which overwrites it with `launching`). The launch **timeout** (spawned but never connected) stays
+`disconnected`, and the *reason* still lives in the log (no DTO field): `error` is a coarse signal,
+not a message. Resolved runtime states are now `connected | launching | disconnected | error`.
+
 Status: accepted

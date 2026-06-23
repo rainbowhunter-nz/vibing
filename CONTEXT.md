@@ -99,13 +99,18 @@ independently).
 
 ### Runtime lifecycle
 
-The Devcontainer Runtime's state as the Control Plane observes it. Three resolved states:
+The Devcontainer Runtime's state as the Control Plane observes it. Four resolved states:
 
 - `connected` — the runtime's WebSocket is registered. The **durable truth**: derived from the live
   registry, so it survives a Control Plane restart (the runtime re-connects on its own).
 - `launching` — injection is in flight: set when inject starts, cleared by *whichever comes first*,
   WS-connect (→ `connected`) or a ~30s timeout (→ `disconnected`). A `LiveStateStore` **transient**,
   lost on Control Plane restart.
+- `error` — a synchronous inject failure (bootstrap install or preflight unreachable). A sticky
+  `LiveStateStore` transient set when `inject()` returns failure; distinguishes a failed launch
+  attempt from the `disconnected` catch-all. Cleared by a retry inject (→ `launching`), stop, or
+  WS-connect. The reason is in the runtime log, not the state. A launch **timeout** stays
+  `disconnected`.
 - `disconnected` — the catch-all for *not connected*: never injected, stopped, crashed, or
   failed-to-launch. The state label intentionally does **not** distinguish these; the runtime logs
   do (streamed live via `runtime-logs/stream`).
