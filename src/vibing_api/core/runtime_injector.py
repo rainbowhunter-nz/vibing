@@ -30,6 +30,23 @@ _CONTAINER_WHEEL_DIR = "/tmp"
 CONTAINER_LOG_PATH = "/tmp/vibing-runtime.log"
 CONTAINER_PID_PATH = "/tmp/vibing-runtime.pid"
 
+_RUNTIME_PATTERN = "vibing runtime devcontainer"
+
+
+def _reap_snippet() -> str:
+    """Kill any prior runtime (it would still hold the MCP port) and wait for it to die.
+
+    Excludes this shell ($$): `devcontainer exec` runs the payload as `bash -lc <payload>`,
+    so the launch command below puts the pattern in the shell's own argv -- a bare
+    `pkill -f` would then SIGTERM the spawn itself (exit 143).
+    """
+    return (
+        f'pgrep -f "{_RUNTIME_PATTERN}" | grep -vx "$$" | xargs -r kill 2>/dev/null || true\n'
+        "for _ in $(seq 1 20); do "
+        f'pgrep -f "{_RUNTIME_PATTERN}" | grep -qvx "$$" || break; sleep 0.1; '
+        "done\n"
+    )
+
 
 async def _default_log_streamer(engine: str, container_id: str) -> AsyncIterator[bytes]:
     command = [engine, "exec", container_id, "tail", "-n", "+1", "-f", CONTAINER_LOG_PATH]
@@ -114,17 +131,12 @@ class RuntimeInjector:
         return await self._exec(local_path, payload, "bootstrap", devcontainer_id)
 
     async def _spawn(self, devcontainer_id: str, local_path: str, agent_url: str) -> bool:
-        # Reap any prior runtime before launching: a survivor still holds the MCP
-        # port and would make the new process fail to bind (Errno 98). Match by
-        # process pattern, not the PID file -- repeated spawns overwrite it, orphaning
-        # earlier instances. Wait briefly for the port to release.
+        # Reap any prior runtime before launching: a survivor still holds the MCP port
+        # and would make the new process fail to bind (Errno 98). Match by process
+        # pattern, not the PID file -- repeated spawns overwrite it, orphaning earlier
+        # instances.
         payload = (
-            'export PATH="$HOME/.local/bin:$PATH"\n'
-            'pkill -f "vibing runtime devcontainer" 2>/dev/null || true\n'
-            "for _ in $(seq 1 20); do "
-            'pgrep -f "vibing runtime devcontainer" >/dev/null || break; sleep 0.1; '
-            "done\n"
-            f"nohup vibing runtime devcontainer"
+            'export PATH="$HOME/.local/bin:$PATH"\n' + _reap_snippet() + f"nohup {_RUNTIME_PATTERN}"
             f" --control-plane-url {agent_url}"
             f" --devcontainer-id {devcontainer_id}"
             f" >>{CONTAINER_LOG_PATH} 2>&1 &\n"

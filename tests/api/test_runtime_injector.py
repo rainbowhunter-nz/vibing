@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 from pathlib import Path
 
 from vibing_api.core.devcontainer_cli import RunResult
@@ -6,6 +7,7 @@ from vibing_api.core.runtime_injector import (
     CONTAINER_LOG_PATH,
     CONTAINER_PID_PATH,
     RuntimeInjector,
+    _reap_snippet,
 )
 
 
@@ -63,11 +65,22 @@ def test_inject_runs_bootstrap_then_spawn_with_same_url(tmp_path: Path) -> None:
     assert "nohup" not in bootstrap
 
     # half 2: reap any survivor (it would hold the MCP port), then detached runtime + PID
-    assert 'pkill -f "vibing runtime devcontainer"' in spawn
-    assert spawn.index("pkill") < spawn.index("nohup")
+    assert 'pgrep -f "vibing runtime devcontainer"' in spawn
+    assert 'grep -vx "$$"' in spawn  # exclude this shell -- its argv holds the launch cmd
+    assert spawn.index("pgrep") < spawn.index("nohup")
     assert "nohup vibing runtime devcontainer" in spawn
     assert "--control-plane-url ws://cp:8080/api/v1/runtime/agent/ws" in spawn
     assert f"echo $! >{CONTAINER_PID_PATH}" in spawn
+
+
+def test_reap_snippet_does_not_kill_launching_shell() -> None:
+    # Regression: `devcontainer exec` runs the payload as `bash -lc <payload>`, so the
+    # reap pattern is in the shell's own argv. A bare `pkill -f` SIGTERMs that shell
+    # (exit 143, the production symptom). The reap must exclude $$ and survive.
+    script = _reap_snippet() + "echo SURVIVED\n"
+    proc = subprocess.run(["bash", "-lc", script], capture_output=True, text=True, timeout=10)
+    assert proc.returncode == 0, f"shell killed itself (exit {proc.returncode})"
+    assert "SURVIVED" in proc.stdout
 
 
 def test_inject_skips_spawn_when_bootstrap_fails(tmp_path: Path) -> None:

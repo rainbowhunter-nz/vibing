@@ -10,12 +10,17 @@ import asyncio
 import shlex
 from collections.abc import AsyncIterator, Callable
 
+from logzero import logger
+
 from vibing_harness import CommandResult
 
 StreamRunner = Callable[[list[str], bytes | None], AsyncIterator[bytes]]
 
+_LOG_OUTPUT_TAIL_CHARS = 2000
+
 
 async def _default_runner(argv: list[str], stdin: bytes | None) -> AsyncIterator[bytes]:
+    logger.info("exec: %s", " ".join(argv))
     proc = await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
@@ -26,9 +31,18 @@ async def _default_runner(argv: list[str], stdin: bytes | None) -> AsyncIterator
     if stdin is not None and proc.stdin is not None:
         proc.stdin.write(stdin)
         proc.stdin.close()
+    output = bytearray()
     async for chunk in proc.stdout:
+        output.extend(chunk)
         yield chunk
     await proc.wait()
+    # stderr is merged into stdout; the in-container rc rides in the output via __rc=N__
+    logger.info(
+        "exec done (exit %d): %s\noutput: %s",
+        proc.returncode or 0,
+        " ".join(argv),
+        output[-_LOG_OUTPUT_TAIL_CHARS:].decode(errors="replace"),
+    )
 
 
 class DevcontainerExecutor:
