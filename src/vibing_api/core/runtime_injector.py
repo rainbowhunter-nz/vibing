@@ -2,7 +2,8 @@
 
 Two-phase inject: `_bootstrap` (docker cp uv + wheel, synchronous `uv tool install`
 teed to the unified log, then `vibing runtime preflight` HTTP probe) gates `_spawn`
-(detached `nohup` launch recording the PID). Each phase is a separate `devcontainer
+(reap any prior runtime that would hold the MCP port, then a detached `nohup` launch
+recording the PID). Each phase is a separate `devcontainer
 exec`; the same resolved control-plane URL is passed to both preflight and launch.
 Bootstrap failures (install OR preflight) surface via the exec exit code at inject
 time and live in `/tmp/vibing-runtime.log`. `stop_runtime` kills via the PID file;
@@ -113,8 +114,16 @@ class RuntimeInjector:
         return await self._exec(local_path, payload, "bootstrap", devcontainer_id)
 
     async def _spawn(self, devcontainer_id: str, local_path: str, agent_url: str) -> bool:
+        # Reap any prior runtime before launching: a survivor still holds the MCP
+        # port and would make the new process fail to bind (Errno 98). Match by
+        # process pattern, not the PID file -- repeated spawns overwrite it, orphaning
+        # earlier instances. Wait briefly for the port to release.
         payload = (
             'export PATH="$HOME/.local/bin:$PATH"\n'
+            'pkill -f "vibing runtime devcontainer" 2>/dev/null || true\n'
+            "for _ in $(seq 1 20); do "
+            'pgrep -f "vibing runtime devcontainer" >/dev/null || break; sleep 0.1; '
+            "done\n"
             f"nohup vibing runtime devcontainer"
             f" --control-plane-url {agent_url}"
             f" --devcontainer-id {devcontainer_id}"

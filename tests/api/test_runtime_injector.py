@@ -62,7 +62,9 @@ def test_inject_runs_bootstrap_then_spawn_with_same_url(tmp_path: Path) -> None:
     )
     assert "nohup" not in bootstrap
 
-    # half 2: detached runtime + PID, same resolved url
+    # half 2: reap any survivor (it would hold the MCP port), then detached runtime + PID
+    assert 'pkill -f "vibing runtime devcontainer"' in spawn
+    assert spawn.index("pkill") < spawn.index("nohup")
     assert "nohup vibing runtime devcontainer" in spawn
     assert "--control-plane-url ws://cp:8080/api/v1/runtime/agent/ws" in spawn
     assert f"echo $! >{CONTAINER_PID_PATH}" in spawn
