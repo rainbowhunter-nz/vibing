@@ -1,9 +1,8 @@
-"""Runtime-channel WebSocket client: reconnect loop and command queue.
+"""Runtime-channel WebSocket client: outbound-only reconnect loop.
 
-Connects to the Control Plane runtime WebSocket (ADR-0003), registers, and serially
-processes the Commands it receives. Connection failures and disconnects trigger
-reconnection with bounded exponential backoff. The command queue is in-memory and
-per-session, so in-flight Commands are never replayed after a disconnect or process exit.
+Connects to the Control Plane runtime WebSocket (ADR-0003), registers, and drains
+inbound frames (channel is outbound-only — no Commands). Connection failures and
+disconnects trigger reconnection with bounded exponential backoff.
 """
 
 import asyncio
@@ -14,11 +13,8 @@ from typing import Any
 
 import websockets
 from logzero import logger
-from pydantic import BaseModel, ValidationError
-from vibing_protocol import Command, CommandEnvelope, RegisterEnvelope, decode, encode
-
-SendFn = Callable[[BaseModel], Awaitable[None]]
-CommandHandler = Callable[[Command, SendFn], Awaitable[None]]
+from pydantic import BaseModel
+from vibing_protocol import RegisterEnvelope, encode
 
 
 class Backoff:
@@ -40,18 +36,16 @@ class Backoff:
 
 
 class RuntimeChannelClient:
-    """Connects to the Control Plane runtime channel and serially runs received Commands."""
+    """Connects to the Control Plane runtime channel and sends outbound envelopes."""
 
     def __init__(
         self,
         control_plane_url: str,
         register: RegisterEnvelope,
-        handler: CommandHandler,
         on_registered: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._url = control_plane_url
         self._register = register
-        self._handler = handler
         self._on_registered = on_registered
         self._backoff = Backoff()
         self._stopped = False
@@ -105,58 +99,18 @@ class RuntimeChannelClient:
         self._ws = ws
         try:
             await ws.send(encode(self._register))
-            logger.info("Registered with control plane; awaiting commands")
+            logger.info("Registered with control plane")
             if self._on_registered is not None:
                 await self._on_registered()
-            send = self._make_send(ws)
-            queue: asyncio.Queue[Command] = asyncio.Queue()
-            consumer = asyncio.create_task(self._consume(queue, send))
-            try:
-                while not self._stopped:
-                    message = decode(await ws.recv())
-                    if message is not None:
-                        await self._dispatch(message, queue, send)
-            finally:
-                consumer.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await consumer
+            while not self._stopped:
+                await ws.recv()  # drain; channel is outbound-only
         finally:
             self._ws = None
 
-    async def _dispatch(
-        self, message: dict[str, Any], queue: "asyncio.Queue[Command]", send: SendFn
-    ) -> None:
-        if message.get("type") != "command":
-            return
-        try:
-            command = CommandEnvelope.model_validate(message).command
-        except ValidationError:
-            return
-        logger.info(
-            "Received command %s (devcontainer=%s)",
-            command.type,
-            command.devcontainer_id,
-        )
-        queue.put_nowait(command)
-
-    async def _consume(self, queue: "asyncio.Queue[Command]", send: SendFn) -> None:
-        while True:
-            command = await queue.get()
-            try:
-                await self._handler(command, send)
-            finally:
-                queue.task_done()
-
     async def send_envelope(self, envelope: BaseModel) -> None:
-        """Send an envelope outside the command-handler path (e.g. Delegated Run events)."""
+        """Send an envelope to the control plane (e.g. Delegated Run events)."""
         ws = self._ws
         if ws is None:
             logger.warning("Dropping %s: runtime channel not connected", type(envelope).__name__)
             return
         await ws.send(encode(envelope))
-
-    def _make_send(self, ws: Any) -> SendFn:
-        async def send(envelope: BaseModel) -> None:
-            await ws.send(encode(envelope))
-
-        return send

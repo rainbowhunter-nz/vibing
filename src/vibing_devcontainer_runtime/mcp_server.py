@@ -1,20 +1,20 @@
 """build_mcp_server: the in-container MCP server the main harness calls (ADR-0011/0013).
 
-Streamable-HTTP, stateless, JSON responses. Tools delegate to HarnessManager (status)
-and DelegatedRunManager (spawn/status/result/stop). The runtime owns its lifecycle
-(cli.py runs it alongside the Control Plane WebSocket client).
+Streamable-HTTP, stateless, JSON responses. Tools delegate to vibing_harness descriptors
+(status) and DelegatedRunManager (spawn/status/result/stop).
 """
 
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from vibing_harness import Executor, HarnessDescriptor
 
 from vibing_devcontainer_runtime.delegated_runs import DelegatedRunManager
-from vibing_devcontainer_runtime.harness_manager import HarnessManager
 
 
 def build_mcp_server(
-    harness_manager: HarnessManager,
+    executor: Executor,
+    descriptors_map: dict[str, HarnessDescriptor],
     delegated_runs: DelegatedRunManager,
     *,
     host: str = "127.0.0.1",
@@ -25,11 +25,11 @@ def build_mcp_server(
     @mcp.tool()
     async def list_harnesses() -> list[dict[str, Any]]:
         """List managed coding harnesses with installed/authenticated status."""
-        statuses = await harness_manager.list_statuses()
-        return [
-            {"name": s.name, "installed": s.installed, "authenticated": s.authenticated}
-            for s in statuses
-        ]
+        out = []
+        for d in descriptors_map.values():
+            s = await d.status(executor)
+            out.append({"name": s.name, "installed": s.installed, "authenticated": s.authenticated})
+        return out
 
     @mcp.tool()
     async def spawn(

@@ -1,7 +1,7 @@
 import asyncio
 import sys
 
-from vibing_devcontainer_runtime.harness.process import (
+from vibing_devcontainer_runtime.process import (
     CompletedCommand,
     real_process_factory,
     run_to_completion,

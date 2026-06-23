@@ -4,30 +4,45 @@ from typing import Any
 
 import pytest
 
+from vibing_harness import CommandResult, Executor, HarnessDescriptor
 from vibing_devcontainer_runtime.delegated_runs import DelegatedRunManager
-from vibing_devcontainer_runtime.harness.base import HarnessAdapter
-from vibing_devcontainer_runtime.harness.process import CompletedCommand, HarnessProcess
+from vibing_devcontainer_runtime.process import CompletedCommand, HarnessProcess
 
 
-class FakeAdapter(HarnessAdapter):
+class FakeExecutor:
+    async def run(self, argv: list[str]) -> CommandResult:
+        return CommandResult(0, "", "")
+
+    async def read(self, path: str) -> bytes | None:
+        return None
+
+    async def write(self, path: str, data: bytes, mode: int = 0o600) -> None:
+        pass
+
+
+class FakeDescriptor(HarnessDescriptor):
+    name = "codex"
+
     def __init__(self, authed: bool = True) -> None:
-        self.name = "codex"
         self._authed = authed
 
-    async def is_installed(self) -> bool:
+    async def is_installed(self, ex: Executor) -> bool:
         return True
 
-    async def install(self) -> None: ...
+    def install_argv(self) -> list[str]:
+        return []
 
-    async def is_authenticated(self) -> bool:
+    async def install(self, ex: Executor) -> None: ...
+
+    async def is_authenticated(self, ex: Executor) -> bool:
         return self._authed
 
-    def write_credentials(self, blob: dict[str, Any]) -> None: ...
+    async def write_credentials(self, ex: Executor, blob: dict) -> None: ...
 
     def build_spawn_argv(self, model: str, prompt: str) -> list[str]:
         return ["codex", "exec", prompt]
 
-    def spawn_env(self) -> dict[str, str]:
+    async def spawn_env(self, ex: Executor) -> dict[str, str]:
         return {}
 
     def extract_result(self, stdout: str) -> str:
@@ -53,7 +68,8 @@ class ScriptedProcess(HarnessProcess):
 
 def _mgr(**kwargs: Any) -> DelegatedRunManager:
     return DelegatedRunManager(
-        kwargs.pop("adapters", {"codex": FakeAdapter()}),
+        kwargs.pop("descriptors_map", {"codex": FakeDescriptor()}),
+        kwargs.pop("executor", FakeExecutor()),
         kwargs.pop("factory", lambda *a: ScriptedProcess(CompletedCommand(0, "ok", ""))),
         devcontainer_id=kwargs.pop("devcontainer_id", "dc-1"),
         workspace=kwargs.pop("workspace", "/ws"),
@@ -94,7 +110,7 @@ def test_failed_run_status():
 
 
 def test_unauthenticated_harness_raises():
-    mgr = _mgr(adapters={"codex": FakeAdapter(authed=False)})
+    mgr = _mgr(descriptors_map={"codex": FakeDescriptor(authed=False)})
     with pytest.raises(RuntimeError, match="not authenticated"):
         asyncio.run(mgr.spawn("codex", "m", "p"))
 

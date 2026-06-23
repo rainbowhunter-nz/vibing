@@ -64,7 +64,7 @@ def test_register_envelope_shape() -> None:
 
 
 def test_serve_builds_managers_and_runs_both(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_serve_blocking wires HarnessCommandHandler + RuntimeChannelClient + MCP; reports status on connect."""
+    """_serve_blocking wires RuntimeChannelClient + MCP; reports delegated runs on connect."""
     built: dict[str, object] = {}
 
     class FakeClient:
@@ -72,10 +72,8 @@ def test_serve_builds_managers_and_runs_both(monkeypatch: pytest.MonkeyPatch) ->
             self,
             url: str,
             register: object,
-            handler: object,
             on_registered: object = None,
         ) -> None:
-            built["handler"] = handler
             built["on_registered"] = on_registered
 
         async def run(self) -> None:
@@ -100,5 +98,5 @@ def test_serve_builds_managers_and_runs_both(monkeypatch: pytest.MonkeyPatch) ->
     assert built["mcp_ran"] is True
     # on_registered hook was wired
     assert built["on_registered"] is not None
-    # calling on_registered invoked send_envelope (initial harness status report)
+    # calling on_registered invoked send_envelope (initial delegated runs report)
     assert built.get("sent_envelopes", 0) >= 1

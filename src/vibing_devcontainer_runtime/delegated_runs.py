@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from vibing_devcontainer_runtime.harness.base import HarnessAdapter
-from vibing_devcontainer_runtime.harness.process import HarnessProcess, HarnessProcessFactory
+from vibing_harness import Executor, HarnessDescriptor
+
+from vibing_devcontainer_runtime.process import HarnessProcess, HarnessProcessFactory
 
 ReportFn = Callable[[], Awaitable[None]]
 
@@ -37,7 +38,8 @@ class _Run:
 class DelegatedRunManager:
     def __init__(
         self,
-        adapters: dict[str, HarnessAdapter],
+        descriptors_map: dict[str, HarnessDescriptor],
+        executor: Executor,
         factory: HarnessProcessFactory,
         *,
         devcontainer_id: str,
@@ -45,7 +47,8 @@ class DelegatedRunManager:
         max_concurrent: int = 4,
         report: ReportFn | None = None,
     ) -> None:
-        self._adapters = adapters
+        self._descriptors = descriptors_map
+        self._executor = executor
         self._factory = factory
         self._devcontainer_id = devcontainer_id
         self._workspace = workspace
@@ -66,8 +69,8 @@ class DelegatedRunManager:
         cwd: str | None = None,
         detached: bool = False,
     ) -> dict[str, Any]:
-        adapter = self._adapters[harness]  # KeyError on unknown harness
-        if not await adapter.is_authenticated():
+        descriptor = self._descriptors[harness]  # KeyError on unknown harness
+        if not await descriptor.is_authenticated(self._executor):
             raise RuntimeError(f"harness {harness} is not authenticated")
         if self._active() >= self._max:
             raise RuntimeError("delegated runs at capacity")
@@ -76,19 +79,20 @@ class DelegatedRunManager:
         run = _Run(run_id=f"run-{self._counter}", harness=harness, model=model, started_at=_now())
         self._runs[run.run_id] = run
 
-        argv = adapter.build_spawn_argv(model, prompt)
-        run.process = self._factory(argv, cwd or self._workspace, adapter.spawn_env())
+        argv = descriptor.build_spawn_argv(model, prompt)
+        env = await descriptor.spawn_env(self._executor)
+        run.process = self._factory(argv, cwd or self._workspace, env)
 
         await self._emit()
         if detached:
-            run.task = asyncio.create_task(self._await_run(run, adapter))
+            run.task = asyncio.create_task(self._await_run(run, descriptor))
             return {"run_id": run.run_id, "status": "running"}
-        await self._await_run(run, adapter)
+        await self._await_run(run, descriptor)
         if run.status == "completed":
             return {"run_id": run.run_id, "status": "completed", "result": run.result}
         return {"run_id": run.run_id, "status": "failed", "error": run.error}
 
-    async def _await_run(self, run: _Run, adapter: HarnessAdapter) -> None:
+    async def _await_run(self, run: _Run, descriptor: HarnessDescriptor) -> None:
         assert run.process is not None
         try:
             result = await run.process.wait()
@@ -101,7 +105,7 @@ class DelegatedRunManager:
         else:
             if result.returncode == 0:
                 run.status = "completed"
-                run.result = adapter.extract_result(result.stdout)
+                run.result = descriptor.extract_result(result.stdout)
             else:
                 run.status = "failed"
                 run.error = {"exit_code": result.returncode, "stderr_tail": result.stderr[-4000:]}

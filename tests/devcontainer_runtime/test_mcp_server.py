@@ -1,13 +1,48 @@
 import asyncio
 from typing import Any
 
-from vibing_devcontainer_runtime.harness.base import HarnessStatus
+from vibing_harness import CommandResult, Executor, HarnessDescriptor
 from vibing_devcontainer_runtime.mcp_server import build_mcp_server
 
 
-class FakeHarnessManager:
-    async def list_statuses(self) -> list[HarnessStatus]:
-        return [HarnessStatus("codex", True, True), HarnessStatus("cursor", False, False)]
+class FakeExecutor:
+    async def run(self, argv: list[str]) -> CommandResult:
+        return CommandResult(0, "", "")
+
+    async def read(self, path: str) -> bytes | None:
+        return None
+
+    async def write(self, path: str, data: bytes, mode: int = 0o600) -> None:
+        pass
+
+
+class FakeDescriptor(HarnessDescriptor):
+    def __init__(self, name: str, installed: bool, authenticated: bool) -> None:
+        self.name = name
+        self._installed = installed
+        self._authenticated = authenticated
+
+    async def is_installed(self, ex: Executor) -> bool:
+        return self._installed
+
+    def install_argv(self) -> list[str]:
+        return []
+
+    async def install(self, ex: Executor) -> None: ...
+
+    async def is_authenticated(self, ex: Executor) -> bool:
+        return self._authenticated
+
+    async def write_credentials(self, ex: Executor, blob: dict) -> None: ...
+
+    def build_spawn_argv(self, model: str, prompt: str) -> list[str]:
+        return []
+
+    async def spawn_env(self, ex: Executor) -> dict[str, str]:
+        return {}
+
+    def extract_result(self, stdout: str) -> str:
+        return stdout.strip()
 
 
 class FakeDelegatedRuns:
@@ -28,16 +63,22 @@ class FakeDelegatedRuns:
         return {"run_id": run_id, "status": "stopped"}
 
 
+def _descriptors_map():
+    return {
+        "codex": FakeDescriptor("codex", installed=True, authenticated=True),
+        "cursor": FakeDescriptor("cursor", installed=False, authenticated=False),
+    }
+
+
 def test_tools_are_registered():
-    mcp = build_mcp_server(FakeHarnessManager(), FakeDelegatedRuns())
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
     names = {t.name for t in asyncio.run(mcp.list_tools())}
     assert {"list_harnesses", "spawn", "get_status", "get_result", "stop"} <= names
 
 
 def test_list_harnesses_returns_statuses():
-    mcp = build_mcp_server(FakeHarnessManager(), FakeDelegatedRuns())
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
     _content, result = asyncio.run(mcp.call_tool("list_harnesses", {}))
-    # structured tool output wraps a list under "result"
     harnesses = result["result"] if isinstance(result, dict) and "result" in result else result
     names = {h["name"] for h in harnesses}
     assert names == {"codex", "cursor"}
@@ -45,7 +86,7 @@ def test_list_harnesses_returns_statuses():
 
 def test_spawn_forwards_args_and_returns_outcome():
     runs = FakeDelegatedRuns()
-    mcp = build_mcp_server(FakeHarnessManager(), runs)
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), runs)
     _content, result = asyncio.run(
         mcp.call_tool("spawn", {"harness": "codex", "model": "gpt-5.4", "prompt": "go"})
     )

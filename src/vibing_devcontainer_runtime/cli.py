@@ -1,7 +1,7 @@
 """Command-line entry point for the Devcontainer Runtime.
 
-Connects to the Control Plane harness command channel, reports initial harness status on
-connect, and concurrently runs the MCP delegation server (ADR-0011, ADR-0015).
+Connects to the Control Plane runtime channel and concurrently runs the MCP delegation
+server (ADR-0011, ADR-0015). Outbound-only — sends register + delegated_runs snapshots.
 """
 
 import asyncio
@@ -10,35 +10,29 @@ from pathlib import Path
 import typer
 from logzero import logger
 from mcp.server.fastmcp import FastMCP
+from vibing_harness import descriptors as harness_descriptors
 from vibing_protocol import DelegatedRunItem, DelegatedRunsEnvelope, RegisterEnvelope
 
-from vibing_devcontainer_runtime.command_handler import HarnessCommandHandler
 from vibing_devcontainer_runtime.delegated_runs import DelegatedRunManager
-from vibing_devcontainer_runtime.harness.process import real_process_factory
-from vibing_devcontainer_runtime.harness.registry import build_adapters
-from vibing_devcontainer_runtime.harness_manager import HarnessManager
+from vibing_devcontainer_runtime.local_executor import LocalExecutor
 from vibing_devcontainer_runtime.mcp_server import build_mcp_server
+from vibing_devcontainer_runtime.process import real_process_factory
 from vibing_devcontainer_runtime.runtime_client import RuntimeChannelClient
 
 DEFAULT_CONTROL_PLANE_URL = "ws://host.docker.internal:8080/api/v1/runtime/agent/ws"
 
-cli = typer.Typer(
-    add_completion=False,
-    help="Devcontainer Runtime: harness management + MCP delegation server.",
-)
+cli = typer.Typer(add_completion=False, help="Devcontainer Runtime: MCP delegation server.")
 
 
 async def _serve_async(
     control_plane_url: str, devcontainer_id: str, mcp_host: str, mcp_port: int, workspace: str
 ) -> None:
-    adapters = build_adapters(real_process_factory, Path.home())
-    harness_manager = HarnessManager(adapters)
-
-    register = RegisterEnvelope(devcontainer_id=devcontainer_id)
-    handler = HarnessCommandHandler(harness_manager, devcontainer_id)
+    executor = LocalExecutor(Path.home())
+    descriptors_map = harness_descriptors()
 
     delegated_runs = DelegatedRunManager(
-        adapters,
+        descriptors_map,
+        executor,
         real_process_factory,
         devcontainer_id=devcontainer_id,
         workspace=workspace,
@@ -54,20 +48,16 @@ async def _serve_async(
             logger.exception("Failed to report delegated runs")
 
     async def _on_registered() -> None:
-        await handler.report_all(client.send_envelope)
         await _report_runs()
 
-    client = RuntimeChannelClient(
-        control_plane_url, register, handler.handle, on_registered=_on_registered
-    )
+    register = RegisterEnvelope(devcontainer_id=devcontainer_id)
+    client = RuntimeChannelClient(control_plane_url, register, on_registered=_on_registered)
     delegated_runs.report = _report_runs
 
-    mcp: FastMCP = build_mcp_server(harness_manager, delegated_runs, host=mcp_host, port=mcp_port)
-
-    await asyncio.gather(
-        client.run(),
-        mcp.run_streamable_http_async(),
+    mcp: FastMCP = build_mcp_server(
+        executor, descriptors_map, delegated_runs, host=mcp_host, port=mcp_port
     )
+    await asyncio.gather(client.run(), mcp.run_streamable_http_async())
 
 
 def _serve_blocking(
