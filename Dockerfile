@@ -50,4 +50,8 @@ VOLUME /data
 
 # Single process — run it as PID 1. Container exits when it does (fail-fast);
 # orphaned subprocess descendants are reaped by Docker's init (compose `init: true`).
-CMD ["uv", "run", "--no-dev", "--frozen", "uvicorn", "vibing_api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# --timeout-graceful-shutdown bounds the SIGTERM drain: long-lived streams (SSE
+# /events, runtime-logs tail -f, runtime WS) never close on their own, so without a
+# bound uvicorn waits forever and Docker escalates to SIGKILL.
+CMD ["uv", "run", "--no-dev", "--frozen", "uvicorn", "vibing_api.main:app", \
+     "--host", "0.0.0.0", "--port", "8080", "--timeout-graceful-shutdown", "3"]
