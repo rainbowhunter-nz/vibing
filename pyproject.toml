@@ -39,6 +39,7 @@ module-name = [
     "vibing_devcontainer_runtime",
     "vibing_cli",
     "vibing_protocol",
+    "vibing_harness",
 ]
 
 [tool.ruff]
