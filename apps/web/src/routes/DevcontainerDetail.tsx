@@ -197,16 +197,19 @@ export function RuntimeSection({
   useEffect(() => {
     if (!showLogs) return
     const controller = new AbortController()
-    void Promise.resolve().then(() => {
+    const run = async () => {
       setLogs('')
       setStreaming(true)
-      return streamRuntimeLogs(dc.id, controller.signal, (text) => setLogs((prev) => prev + text))
-    })
-      .catch((e) => {
+      try {
+        await streamRuntimeLogs(dc.id, controller.signal, (text) => setLogs((prev) => prev + text))
+      } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return
         setLogs((prev) => prev + `\n[stream error: ${e instanceof Error ? e.message : String(e)}]`)
-      })
-      .finally(() => setStreaming(false))
+      } finally {
+        setStreaming(false)
+      }
+    }
+    void run()
     return () => controller.abort()
   }, [showLogs, dc.id])
 

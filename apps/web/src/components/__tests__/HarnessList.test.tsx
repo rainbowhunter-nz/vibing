@@ -3,6 +3,12 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { HarnessList } from '../HarnessList'
 import type { HarnessStatus } from '../../lib/api/types'
 
+vi.mock('../../lib/api/endpoints', () => ({
+  installHarness: vi.fn().mockResolvedValue(undefined),
+  authenticateHarness: vi.fn().mockResolvedValue(undefined),
+  refreshHarnesses: vi.fn().mockResolvedValue({ items: [], known: true }),
+}))
+
 const harnesses: HarnessStatus[] = [
   { name: 'claude-code', installed: true, authenticated: true },
   { name: 'codex', installed: true, authenticated: false },
