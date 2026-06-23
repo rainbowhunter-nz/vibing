@@ -1,37 +1,36 @@
-from vibing_protocol import HarnessStatusItem
+"""Tests for GET /devcontainers/{id}/harnesses and POST .../refresh."""
 
-from vibing_api.core.live_state import LiveStateStore
-from vibing_api.core.runtime_intake import record_harness_status
+from __future__ import annotations
+
+import vibing_api.core.harness_service as harness_service
+from vibing_harness import HarnessStatus
 
 
-def test_list_harnesses_unknown_when_no_cache(client, devcontainer_id) -> None:
+def test_get_harnesses_unknown_when_no_cache(client, devcontainer_id) -> None:
     resp = client.get(f"/api/v1/devcontainers/{devcontainer_id}/harnesses")
     assert resp.status_code == 200
     assert resp.json() == {"items": [], "known": False}
 
 
-def test_list_harnesses_known_after_runtime_push(client, devcontainer_id) -> None:
-    live: LiveStateStore = client.app.state.live_state
-    record_harness_status(
-        live,
-        devcontainer_id,
-        [HarnessStatusItem(name="codex", installed=True, authenticated=False)],
-        None,
-    )
-    resp = client.get(f"/api/v1/devcontainers/{devcontainer_id}/harnesses")
+def test_get_harnesses_unknown_unknown_id(client) -> None:
+    resp = client.get("/api/v1/devcontainers/dc-x/harnesses")
+    assert resp.status_code == 200
+    assert resp.json() == {"items": [], "known": False}
+
+
+def test_refresh_recomputes_and_caches(client, devcontainer_id, monkeypatch) -> None:
+    async def fake_compute(ex):
+        return [HarnessStatus("codex", True, True), HarnessStatus("cursor", False, False)]
+
+    monkeypatch.setattr(harness_service, "compute_status", fake_compute)
+
+    resp = client.post(f"/api/v1/devcontainers/{devcontainer_id}/harnesses/refresh")
+    assert resp.status_code == 200
     body = resp.json()
     assert body["known"] is True
-    assert body["items"] == [{"name": "codex", "installed": True, "authenticated": False}]
+    assert {i["name"]: i["installed"] for i in body["items"]} == {"codex": True, "cursor": False}
 
 
-def test_record_harness_status_evict(client, devcontainer_id) -> None:
-    live: LiveStateStore = client.app.state.live_state
-    record_harness_status(
-        live,
-        devcontainer_id,
-        [HarnessStatusItem(name="codex", installed=True, authenticated=True)],
-        None,
-    )
-    live.evict_harness(devcontainer_id)
-    resp = client.get(f"/api/v1/devcontainers/{devcontainer_id}/harnesses")
-    assert resp.json()["known"] is False
+def test_refresh_404_for_unknown_devcontainer(client) -> None:
+    resp = client.post("/api/v1/devcontainers/dc-missing/harnesses/refresh")
+    assert resp.status_code == 404
