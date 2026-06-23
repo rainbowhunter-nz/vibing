@@ -8,4 +8,6 @@ def resolve_runtime_state(transient: RuntimeState | None, connected: bool) -> Ru
         return RuntimeState.CONNECTED
     if transient == RuntimeState.LAUNCHING:
         return RuntimeState.LAUNCHING
+    if transient == RuntimeState.ERROR:
+        return RuntimeState.ERROR
     return RuntimeState.DISCONNECTED

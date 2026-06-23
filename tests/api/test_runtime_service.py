@@ -47,10 +47,17 @@ def test_inject_sets_launching_transient() -> None:
     assert svc._live.get_runtime_transient("dc1") == RuntimeState.LAUNCHING
 
 
-def test_inject_failure_clears_to_disconnected() -> None:
+def test_inject_failure_sets_error_transient() -> None:
     svc = _service(FakeInjector(inject_ok=False))
     asyncio.run(svc.inject("dc1", "/work/repo"))
-    assert svc._live.get_runtime_transient("dc1") is None
+    assert svc._live.get_runtime_transient("dc1") == RuntimeState.ERROR
+
+
+def test_inject_retry_overwrites_error_with_launching() -> None:
+    svc = _service(FakeInjector(inject_ok=True), timeout=999)
+    svc._live.set_runtime_transient("dc1", RuntimeState.ERROR)
+    asyncio.run(svc.inject("dc1", "/work/repo"))
+    assert svc._live.get_runtime_transient("dc1") == RuntimeState.LAUNCHING
 
 
 def test_expire_launching_clears_when_not_connected() -> None:

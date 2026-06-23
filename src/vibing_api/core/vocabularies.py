@@ -13,3 +13,4 @@ class RuntimeState(StrEnum):
     CONNECTED = auto()
     LAUNCHING = auto()
     DISCONNECTED = auto()
+    ERROR = auto()

@@ -43,7 +43,7 @@ class RuntimeService:
         self._publish(devcontainer_id)
         launched = await self._injector.inject_by_path(devcontainer_id, local_path)
         if not launched:
-            self._live.clear_runtime_transient(devcontainer_id)
+            self._live.set_runtime_transient(devcontainer_id, RuntimeState.ERROR)
             self._publish(devcontainer_id)
             return
         run_in_background(self._expire_launching(devcontainer_id))
