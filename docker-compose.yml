@@ -2,6 +2,8 @@ services:
   vibing:
     # Image is built separately by scripts/build-image.sh; compose only runs it.
     image: vibing
+    # PID 1 reaps orphaned subprocess descendants (e.g. `devcontainer up` keep-alives).
+    init: true
     ports:
       - "8080:8080"
     volumes:

@@ -19,9 +19,9 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 # docker CLI client — the Dev Container CLI drives the mounted daemon socket through it.
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
 
-# git (devcontainer features), supervisor (runs both processes).
+# git (devcontainer features) + the Dev Container CLI.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git supervisor \
+    && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @devcontainers/cli \
     && npm cache clean --force
@@ -42,13 +42,12 @@ RUN uv build --wheel --out-dir /opt/vibing/wheels
 # Copy built frontend assets
 COPY --from=builder /build/dist ./dist
 
-# Process manager config
-COPY deploy/supervisord.conf /etc/supervisor/conf.d/vibing.conf
-
 ENV VIBING_DATABASE_URL=sqlite:////data/vibing.db
 ENV VIBING_STATIC_DIR=/repo/dist
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 VOLUME /data
 
-CMD ["supervisord", "-c", "/etc/supervisor/conf.d/vibing.conf"]
+# Single process — run it as PID 1. Container exits when it does (fail-fast);
+# orphaned subprocess descendants are reaped by Docker's init (compose `init: true`).
+CMD ["uv", "run", "--no-dev", "--frozen", "uvicorn", "vibing_api.main:app", "--host", "0.0.0.0", "--port", "8080"]
