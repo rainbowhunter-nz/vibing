@@ -27,13 +27,7 @@ def list_harnesses(devcontainer_id: str, request: Request) -> HarnessStatusList:
     cached = live.get_harness(devcontainer_id)
     if cached is None:
         return HarnessStatusList(items=[], known=False)
-    return HarnessStatusList(
-        items=[
-            HarnessStatusItem(name=s.name, installed=s.installed, authenticated=s.authenticated)
-            for s in cached
-        ],
-        known=True,
-    )
+    return HarnessStatusList(items=[HarnessStatusItem.from_status(s) for s in cached], known=True)
 
 
 @router.post("/{devcontainer_id}/harnesses/refresh", response_model=HarnessStatusList)

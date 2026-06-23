@@ -1,4 +1,4 @@
-from vibing_protocol import Command, CommandEnvelope, CommandType, RegisterEnvelope, decode, encode
+from vibing_protocol import RegisterEnvelope, decode, encode
 
 
 def test_decode_returns_dict_for_json_object():
@@ -18,16 +18,3 @@ def test_encode_then_decode_round_trips_register_envelope():
     restored = decode(encode(envelope))
     assert restored is not None
     assert RegisterEnvelope.model_validate(restored) == envelope
-
-
-def test_encode_then_decode_round_trips_command_envelope():
-    envelope = CommandEnvelope(
-        command=Command(
-            type=CommandType.AUTHENTICATE_HARNESS,
-            devcontainer_id="dc-1",
-            payload={"harness": "codex"},
-        )
-    )
-    restored = decode(encode(envelope))
-    assert restored is not None
-    assert CommandEnvelope.model_validate(restored) == envelope

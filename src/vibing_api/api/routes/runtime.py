@@ -1,7 +1,7 @@
 """Runtime WebSocket channel routes (ADR-0003, ADR-0014/0015): runtime -> Control Plane intake.
 
 Single WebSocket endpoint `/runtime/agent/ws` — per-devcontainer agent slot keyed by devcontainer_id.
-Inbound types: `runtime_registered` (registration), `harness_status` (status update).
+Inbound types: `runtime_registered` (registration), `delegated_runs` (run snapshots).
 """
 
 from collections.abc import Awaitable, Callable
@@ -10,11 +10,11 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from logzero import logger
 from pydantic import ValidationError
-from vibing_protocol import DelegatedRunsEnvelope, HarnessStatusEnvelope, RegisterEnvelope, decode
+from vibing_protocol import DelegatedRunsEnvelope, RegisterEnvelope, decode
 
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.runtime_channel import RuntimeRegistry, WebSocketRuntimeConnection
-from vibing_api.core.runtime_intake import persist_delegated_runs, record_harness_status
+from vibing_api.core.runtime_intake import persist_delegated_runs
 
 router = APIRouter(tags=["runtime"], prefix="/runtime")
 
@@ -54,16 +54,6 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
                 continue
 
             if unregister is None:
-                continue
-
-            if msg_type == "harness_status":
-                try:
-                    envelope = HarnessStatusEnvelope.model_validate(message)
-                except ValidationError:
-                    continue
-                live = websocket.app.state.live_state
-                broadcaster = getattr(websocket.app.state, "broadcaster", None)
-                record_harness_status(live, envelope.devcontainer_id, envelope.items, broadcaster)
                 continue
 
             if msg_type == "delegated_runs":
@@ -109,7 +99,6 @@ async def agent_ws(websocket: WebSocket) -> None:
 
         def unregister() -> None:
             manager.unregister(devcontainer_id, connection)
-            websocket.app.state.live_state.evict_harness(devcontainer_id)
             _broadcast_connection(websocket, ids=[devcontainer_id])
 
         return unregister

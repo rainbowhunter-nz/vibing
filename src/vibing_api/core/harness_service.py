@@ -24,7 +24,7 @@ async def refresh(
     broadcaster: Broadcaster | None = None,
 ) -> list[HarnessStatus]:
     statuses = await compute_status(ex)
-    live.set_harness(devcontainer_id, statuses)  # type: ignore[arg-type]  # Task 7 migrates LiveStateStore to HarnessStatus
+    live.set_harness(devcontainer_id, statuses)
     if broadcaster is not None:
         broadcaster.publish(SseEvent(scope="harnesses", ids=[devcontainer_id]))
     return statuses

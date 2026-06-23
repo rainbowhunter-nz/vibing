@@ -1,21 +1,8 @@
-"""Tests for SSE invalidation broadcast.
-
-Updated for ADR-0014/0015: event-sourcing layer removed; broadcaster is tested directly.
-"""
-
-from fastapi.testclient import TestClient
+"""Tests for SSE invalidation broadcast."""
 
 from vibing_api.core.broadcaster import Broadcaster, SseEvent
-from vibing_api.core.runtime_intake import record_harness_status
-
 
 _DC = "dc-1"
-_SESSION = "sess-1"
-
-
-# ---------------------------------------------------------------------------
-# Broadcaster unit tests
-# ---------------------------------------------------------------------------
 
 
 def test_broadcaster_publishes_devcontainer_scope() -> None:
@@ -35,36 +22,10 @@ def test_broadcaster_publishes_harnesses_scope() -> None:
     assert event.scope == "harnesses"
 
 
-# ---------------------------------------------------------------------------
-# record_harness_status broadcasts
-# ---------------------------------------------------------------------------
-
-
-def test_record_harness_status_broadcasts(client: TestClient) -> None:
-    """record_harness_status publishes a harnesses invalidation."""
-    from vibing_api.core.live_state import LiveStateStore
-    from vibing_protocol import HarnessStatusItem
-
-    resp = client.post("/api/v1/devcontainers", json={"name": "dc", "local_path": "/tmp/dc"})
-    assert resp.status_code == 201
-    dc_id = resp.json()["id"]
-
-    class _Spy:
-        def __init__(self) -> None:
-            self.published: list[SseEvent] = []
-
-        def publish(self, event: SseEvent) -> None:
-            self.published.append(event)
-
-    spy = _Spy()
-    live = LiveStateStore()
-    record_harness_status(
-        live,
-        dc_id,
-        [HarnessStatusItem(name="codex", installed=True, authenticated=False)],
-        spy,  # type: ignore[arg-type]
-    )
-
-    assert len(spy.published) == 1
-    assert spy.published[0].scope == "harnesses"
-    assert dc_id in spy.published[0].ids
+def test_broadcaster_publishes_delegated_runs_scope() -> None:
+    b = Broadcaster()
+    q = b.subscribe()
+    b.publish(SseEvent(scope="delegated_runs", ids=[_DC]))
+    event = q.get_nowait()
+    assert event.scope == "delegated_runs"
+    assert event.ids == [_DC]

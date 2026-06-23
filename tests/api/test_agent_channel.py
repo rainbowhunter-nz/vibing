@@ -70,17 +70,6 @@ def _register_msg(dc_id: str) -> dict[str, Any]:
     return {"type": "runtime_registered", "devcontainer_id": dc_id}
 
 
-def _harness_status_msg(dc_id: str) -> dict[str, Any]:
-    return {
-        "type": "harness_status",
-        "devcontainer_id": dc_id,
-        "items": [
-            {"name": "claude", "installed": True, "authenticated": True},
-            {"name": "gh", "installed": False, "authenticated": False},
-        ],
-    }
-
-
 def _delegated_runs_msg(dc_id: str) -> dict[str, Any]:
     return {
         "type": "delegated_runs",
@@ -139,51 +128,6 @@ def test_agent_slot_freed_after_disconnect(ws_client: TestClient, db_path: Path)
     with ws_client.websocket_connect(AGENT_WS_URL) as ws2:
         ws2.send_json(_register_msg(dc_id))
         assert ws2.receive_json() == {"type": "registered"}
-
-
-# ---------------------------------------------------------------------------
-# harness_status intake
-# ---------------------------------------------------------------------------
-
-
-def test_harness_status_stored_in_live_state(ws_client: TestClient, db_path: Path) -> None:
-    dc_id = _seed_devcontainer()
-    live: LiveStateStore = ws_client.app.state.live_state  # type: ignore[union-attr]
-    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
-        ws.send_json(_register_msg(dc_id))
-        assert ws.receive_json() == {"type": "registered"}
-        ws.send_json(_harness_status_msg(dc_id))
-        # Check inside the context — disconnect evicts harness
-        items = live.get_harness(dc_id)
-        assert items is not None
-        by_name = {i.name: i for i in items}
-        assert by_name["claude"].installed is True
-        assert by_name["claude"].authenticated is True
-        assert by_name["gh"].installed is False
-
-
-def test_harness_status_publishes_harnesses_invalidation(
-    ws_client: TestClient, spy: _FakeBroadcaster, db_path: Path
-) -> None:
-    dc_id = _seed_devcontainer()
-    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
-        ws.send_json(_register_msg(dc_id))
-        assert ws.receive_json() == {"type": "registered"}
-        spy.published.clear()  # clear the connect broadcast
-        ws.send_json(_harness_status_msg(dc_id))
-
-    harness_events = [e for e in spy.published if e.scope == "harnesses"]
-    assert len(harness_events) == 1
-    assert harness_events[0].ids == [dc_id]
-
-
-def test_harness_status_ignored_before_registration(ws_client: TestClient, db_path: Path) -> None:
-    dc_id = _seed_devcontainer()
-    live: LiveStateStore = ws_client.app.state.live_state  # type: ignore[union-attr]
-    with ws_client.websocket_connect(AGENT_WS_URL) as ws:
-        ws.send_json(_harness_status_msg(dc_id))
-        # Should be ignored (no crash)
-    assert live.get_harness(dc_id) is None
 
 
 # ---------------------------------------------------------------------------

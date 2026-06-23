@@ -2,17 +2,17 @@
 
 Holds two ephemeral maps keyed by devcontainer_id, alongside RuntimeRegistry:
 - lifecycle transient (starting/stopping/error) during in-flight operations
-- last harness-status the runtime pushed (evicted on disconnect → unknown)
+- CP-computed harness-status cache (container-scoped; cleared on container stop)
 
 Never persisted; lost on restart by design.
 
 Both maps are intentionally unbounded; entries are cleared on operation
-completion, runtime disconnect, or next start. An id that errors and is never
+completion, container stop, or next start. An id that errors and is never
 retried keeps a small entry until process restart — acceptable because the set
 of devcontainer ids is bounded.
 """
 
-from vibing_protocol import HarnessStatusItem
+from vibing_harness import HarnessStatus
 
 from vibing_api.core.vocabularies import DevcontainerStatus, RuntimeState
 
@@ -20,7 +20,7 @@ from vibing_api.core.vocabularies import DevcontainerStatus, RuntimeState
 class LiveStateStore:
     def __init__(self) -> None:
         self._transient: dict[str, DevcontainerStatus] = {}
-        self._harness: dict[str, list[HarnessStatusItem]] = {}
+        self._harness: dict[str, list[HarnessStatus]] = {}
         self._runtime_transient: dict[str, RuntimeState] = {}
 
     def set_transient(self, devcontainer_id: str, status: DevcontainerStatus) -> None:
@@ -41,11 +41,11 @@ class LiveStateStore:
     def get_runtime_transient(self, devcontainer_id: str) -> RuntimeState | None:
         return self._runtime_transient.get(devcontainer_id)
 
-    def set_harness(self, devcontainer_id: str, items: list[HarnessStatusItem]) -> None:
+    def set_harness(self, devcontainer_id: str, items: list[HarnessStatus]) -> None:
         self._harness[devcontainer_id] = items
 
     def evict_harness(self, devcontainer_id: str) -> None:
         self._harness.pop(devcontainer_id, None)
 
-    def get_harness(self, devcontainer_id: str) -> list[HarnessStatusItem] | None:
+    def get_harness(self, devcontainer_id: str) -> list[HarnessStatus] | None:
         return self._harness.get(devcontainer_id)
