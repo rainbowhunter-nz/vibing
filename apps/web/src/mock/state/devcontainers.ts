@@ -79,9 +79,13 @@ export function updateDevcontainer(id: string, body: DevcontainerUpdateBody): De
   return toDevcontainer(store[idx])
 }
 
+// Starting the container makes harness status known again (container-scoped, ADR-0019).
+// Real backend divergence: it recomputes asynchronously (the UI shows a spinner until the
+// `harnesses` invalidation lands); the mock flips synchronously so the reactive path is testable.
 export function startDevcontainer(id: string): Devcontainer {
   const idx = findIdx(id)
   store[idx] = { ...store[idx], status: 'running', updated_at: now() }
+  ensureHarnessEntry(id)
   return toDevcontainer(store[idx])
 }
 

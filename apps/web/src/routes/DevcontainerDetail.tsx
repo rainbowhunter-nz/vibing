@@ -289,7 +289,7 @@ function ControlPanel({
       <section>
         <SectionTitle>Coding harnesses</SectionTitle>
         {harnessState.kind === 'ready' ? (
-          <HarnessList devcontainerId={dc.id} harnesses={harnessState.data.items} known={harnessState.data.known} onChange={refetchHarnesses} />
+          <HarnessList devcontainerId={dc.id} harnesses={harnessState.data.items} known={harnessState.data.known} running={dc.status === 'running'} onChange={refetchHarnesses} />
         ) : harnessState.kind === 'error' ? (
           <ErrorState {...loadError('harnesses')} />
         ) : (

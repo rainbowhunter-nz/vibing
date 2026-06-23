@@ -194,7 +194,12 @@ const devcontainerHandlers = [
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
     try {
-      return HttpResponse.json(dc.startDevcontainer(params.id as string))
+      // Start makes harness status known again (container-scoped); refetch on both scopes.
+      const result = dc.startDevcontainer(params.id as string)
+      emitInvalidation('devcontainers')
+      emitInvalidation('runtime')
+      emitInvalidation('harnesses')
+      return HttpResponse.json(result)
     } catch (e) {
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e

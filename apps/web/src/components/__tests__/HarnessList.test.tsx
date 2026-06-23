@@ -18,7 +18,7 @@ const harnesses: HarnessStatus[] = [
 afterEach(cleanup)
 
 function setup() {
-  render(<HarnessList devcontainerId="dc-seed-0001" harnesses={harnesses} known onChange={() => {}} />)
+  render(<HarnessList devcontainerId="dc-seed-0001" harnesses={harnesses} known running onChange={() => {}} />)
 }
 
 describe('HarnessList', () => {
@@ -54,9 +54,14 @@ describe('HarnessList', () => {
     expect(screen.getAllByTitle('Installed').length).toBe(2)
   })
 
-  it('shows container-scoped message when known is false', () => {
-    render(<HarnessList devcontainerId="dc-seed-0002" harnesses={[]} known={false} onChange={() => {}} />)
+  it('shows container-scoped message when the container is not running', () => {
+    render(<HarnessList devcontainerId="dc-seed-0002" harnesses={[]} known={false} running={false} onChange={() => {}} />)
     expect(screen.getByText(/container not running — harness status unavailable/i)).toBeTruthy()
+  })
+
+  it('shows a loading spinner while a running container recomputes status', () => {
+    render(<HarnessList devcontainerId="dc-seed-0002" harnesses={[]} known={false} running onChange={() => {}} />)
+    expect(screen.getByTestId('spinner-harness')).toBeTruthy()
   })
 
   it('renders a refresh button', () => {
@@ -71,6 +76,7 @@ describe('HarnessList', () => {
         devcontainerId="dc-seed-0001"
         harnesses={harnesses}
         known
+        running
         onChange={onChangeFn}
       />,
     )

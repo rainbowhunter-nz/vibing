@@ -75,10 +75,11 @@ const refreshIcon = (
   </svg>
 )
 
-export function HarnessList({ devcontainerId, harnesses, known, onChange }: {
+export function HarnessList({ devcontainerId, harnesses, known, running, onChange }: {
   devcontainerId: string
   harnesses: HarnessStatus[]
   known: boolean
+  running: boolean
   onChange: () => void
 }) {
   const [pending, setPending] = useState<Set<string>>(new Set())
@@ -118,10 +119,14 @@ export function HarnessList({ devcontainerId, harnesses, known, onChange }: {
         <span className="text-center">Installed</span>
         <span className="text-center">Authenticated</span>
       </div>
-      {!known ? (
+      {!running ? (
         <p className="px-3 py-4 text-[13px] text-text-muted">
           Container not running — harness status unavailable.
         </p>
+      ) : !known ? (
+        <div className="flex justify-center px-3 py-5" data-testid="harness-loading">
+          <SpinnerEl testId="spinner-harness" />
+        </div>
       ) : harnesses.length === 0 ? (
         <p className="px-3 py-4 text-[13px] text-text-muted">No harnesses reported.</p>
       ) : (
