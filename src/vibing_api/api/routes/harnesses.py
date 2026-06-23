@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import StreamingResponse
@@ -39,7 +39,11 @@ async def refresh_harnesses(devcontainer_id: str, request: Request) -> HarnessSt
     return HarnessStatusList(items=[HarnessStatusItem.from_status(s) for s in statuses], known=True)
 
 
-def _stream_then_refresh(request: Request, devcontainer_id: str, gen) -> StreamingResponse:
+def _stream_then_refresh(
+    request: Request,
+    devcontainer_id: str,
+    gen: Callable[[DevcontainerExecutor], AsyncIterator[str]],
+) -> StreamingResponse:
     live: LiveStateStore = request.app.state.live_state
     broadcaster = getattr(request.app.state, "broadcaster", None)
     ex = _executor(request, devcontainer_id)

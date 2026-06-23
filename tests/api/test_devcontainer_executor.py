@@ -39,7 +39,7 @@ def test_write_pipes_blob_to_stdin_with_umask_and_home_path():
     argv, stdin = runner.calls[0]
     assert stdin == b'{"k":1}'
     shell = argv[-1]
-    assert "umask 077" in shell
+    assert "umask 177" in shell
     assert "$HOME/.codex/auth.json" in shell
     assert "cat >" in shell
 
@@ -51,6 +51,13 @@ def test_read_returns_bytes_and_none_when_absent():
     ex = DevcontainerExecutor("/work", runner=runner)
     got = asyncio.run(ex.read(".config/vibing-harness/cursor.json"))
     assert got == b'{"api_key":"x"}'
+
+    # absent file: non-zero rc → None
+    absent_runner = _fake_runner(
+        {'cat "$HOME/missing.txt"': b"cat: missing.txt: No such file\n__rc=1__"}
+    )
+    ex2 = DevcontainerExecutor("/work", runner=absent_runner)
+    assert asyncio.run(ex2.read("missing.txt")) is None
 
 
 def test_stream_yields_lines():

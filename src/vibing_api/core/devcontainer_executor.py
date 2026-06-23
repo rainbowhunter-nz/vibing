@@ -72,7 +72,7 @@ class DevcontainerExecutor:
         return result.stdout.encode()
 
     async def write(self, path: str, data: bytes, mode: int = 0o600) -> None:
-        umask = ~mode & 0o077
+        umask = 0o777 ^ mode
         shell = f'umask {umask:03o}; mkdir -p "$(dirname "$HOME/{path}")"; cat > "$HOME/{path}"'
         await self._collect(["bash", "-c", shell], stdin=data)
 

@@ -1,9 +1,14 @@
 import asyncio
 
+import pytest
+
+from vibing_api.core import harness_service
 from vibing_api.core.devcontainer_cli import DevcontainerFailure, DevcontainerSuccess
+from vibing_api.core.devcontainer_executor import DevcontainerExecutor
 from vibing_api.core.devcontainer_service import DevcontainerService
 from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.vocabularies import DevcontainerStatus
+from vibing_harness import HarnessStatus
 
 
 class FakeAdapter:
@@ -60,3 +65,38 @@ def test_stop_clears_transient_on_success() -> None:
     svc = DevcontainerService(FakeAdapter(DevcontainerSuccess(operation="start")), live_state=live)
     asyncio.run(svc.stop("dc1", "/path"))
     assert live.get_transient("dc1") is None
+
+
+def test_stop_evicts_harness_cache() -> None:
+    live = LiveStateStore()
+    bc = FakeBroadcaster()
+    live.set_harness("dc1", [HarnessStatus(name="codex", installed=True, authenticated=True)])
+    svc = DevcontainerService(
+        FakeAdapter(DevcontainerSuccess(operation="stop")), live_state=live, broadcaster=bc
+    )
+    asyncio.run(svc.stop("dc1", "/path"))
+    assert live.get_harness("dc1") is None
+    assert any(e.scope == "harnesses" for e in bc.events)
+
+
+def test_start_recomputes_harness_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    live = LiveStateStore()
+    bc = FakeBroadcaster()
+    calls: list[tuple] = []
+
+    async def fake_refresh(lv, devcontainer_id, ex, broadcaster):
+        calls.append((lv, devcontainer_id, ex, broadcaster))
+
+    monkeypatch.setattr(harness_service, "refresh", fake_refresh)
+    svc = DevcontainerService(
+        FakeAdapter(DevcontainerSuccess(operation="start", payload={"container_id": "c1"})),
+        live_state=live,
+        broadcaster=bc,
+    )
+    asyncio.run(svc.start("dc1", "/path"))
+    assert len(calls) == 1
+    lv, devcontainer_id, ex, broadcaster = calls[0]
+    assert lv is live
+    assert devcontainer_id == "dc1"
+    assert isinstance(ex, DevcontainerExecutor)
+    assert broadcaster is bc

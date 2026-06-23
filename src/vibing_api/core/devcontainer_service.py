@@ -9,8 +9,10 @@ import asyncio
 
 from logzero import logger
 
+from vibing_api.core import harness_service
 from vibing_api.core.broadcaster import Broadcaster, SseEvent
 from vibing_api.core.devcontainer_cli import DevcontainerCliAdapter, DevcontainerFailure
+from vibing_api.core.devcontainer_executor import DevcontainerExecutor
 from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.vocabularies import DevcontainerStatus
 
@@ -49,6 +51,12 @@ class DevcontainerService:
             return
         logger.info("devcontainer started: %s", devcontainer_id)
         self._clear(devcontainer_id)
+        try:
+            await harness_service.refresh(
+                self._live, devcontainer_id, DevcontainerExecutor(local_path), self._broadcaster
+            )
+        except Exception:
+            logger.exception("harness status recompute after start failed (%s)", devcontainer_id)
 
     async def stop(self, devcontainer_id: str, local_path: str) -> None:
         logger.info("devcontainer stop: %s (%s)", devcontainer_id, local_path)
@@ -60,6 +68,9 @@ class DevcontainerService:
             return
         logger.info("devcontainer stopped: %s", devcontainer_id)
         self._clear(devcontainer_id)
+        self._live.evict_harness(devcontainer_id)
+        if self._broadcaster is not None:
+            self._broadcaster.publish(SseEvent(scope="harnesses", ids=[devcontainer_id]))
 
 
 def _log_failure(devcontainer_id: str, failure: DevcontainerFailure) -> None:
