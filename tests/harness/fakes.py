@@ -1,6 +1,8 @@
 """FakeExecutor: an in-memory Executor for descriptor tests. `run` returns scripted
 results keyed by argv[0] (or a default); read/write hit an in-memory filesystem."""
 
+from collections.abc import AsyncIterator
+
 from vibing_harness.executor import CommandResult
 
 
@@ -21,3 +23,8 @@ class FakeExecutor:
     async def write(self, path: str, data: bytes, mode: int = 0o600) -> None:
         self.files[path] = data
         self.modes[path] = mode
+
+    async def stream(self, argv: list[str]) -> AsyncIterator[str]:
+        self.runs.append(argv)
+        return
+        yield  # make this an async generator

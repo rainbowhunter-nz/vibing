@@ -14,6 +14,9 @@ class _Stub(HarnessDescriptor):
     async def is_installed(self, ex: Executor) -> bool:
         return self._installed
 
+    def install_argv(self) -> list[str]:
+        return []
+
     async def install(self, ex: Executor) -> None: ...
 
     async def is_authenticated(self, ex: Executor) -> bool:

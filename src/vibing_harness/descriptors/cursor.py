@@ -17,8 +17,11 @@ class CursorDescriptor(HarnessDescriptor):
     async def is_installed(self, ex: Executor) -> bool:
         return (await ex.run([_BINARY, "--version"])).returncode == 0
 
+    def install_argv(self) -> list[str]:
+        return ["bash", "-c", _INSTALL]
+
     async def install(self, ex: Executor) -> None:
-        await ex.run(["bash", "-c", _INSTALL])
+        await ex.run(self.install_argv())
 
     async def _api_key(self, ex: Executor) -> str:
         raw = await ex.read(_CRED_PATH)

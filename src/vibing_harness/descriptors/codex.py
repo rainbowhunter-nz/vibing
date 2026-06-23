@@ -16,8 +16,11 @@ class CodexDescriptor(HarnessDescriptor):
     async def is_installed(self, ex: Executor) -> bool:
         return (await ex.run([_BINARY, "--version"])).returncode == 0
 
+    def install_argv(self) -> list[str]:
+        return ["npm", "install", "-g", "@openai/codex"]
+
     async def install(self, ex: Executor) -> None:
-        await ex.run(["npm", "install", "-g", "@openai/codex"])
+        await ex.run(self.install_argv())
 
     async def is_authenticated(self, ex: Executor) -> bool:
         return (await ex.run([_BINARY, "login", "status"])).returncode == 0

@@ -22,6 +22,9 @@ class HarnessDescriptor(ABC):
     async def is_installed(self, ex: Executor) -> bool: ...
 
     @abstractmethod
+    def install_argv(self) -> list[str]: ...
+
+    @abstractmethod
     async def install(self, ex: Executor) -> None: ...
 
     @abstractmethod
