@@ -31,15 +31,10 @@ CONTAINER_PID_PATH = "/tmp/vibing-runtime.pid"
 
 
 async def _default_log_streamer(engine: str, container_id: str) -> AsyncIterator[bytes]:
+    command = [engine, "exec", container_id, "tail", "-n", "+1", "-f", CONTAINER_LOG_PATH]
+    logger.info("exec (stream): %s", " ".join(command))
     proc = await asyncio.create_subprocess_exec(
-        engine,
-        "exec",
-        container_id,
-        "tail",
-        "-n",
-        "+1",
-        "-f",
-        CONTAINER_LOG_PATH,
+        *command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
     )

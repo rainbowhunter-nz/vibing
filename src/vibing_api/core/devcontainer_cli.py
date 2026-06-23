@@ -17,7 +17,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from logzero import logger
+
 _STDERR_TAIL_CHARS = 4000
+_LOG_OUTPUT_TAIL_CHARS = 2000
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,7 @@ async def _default_runner(command: list[str]) -> RunResult:
     # long-lived attached container keep-alive that inherits the child's stdout,
     # so a pipe never reaches EOF and `communicate()` would hang forever. Files
     # let us wait only for the direct child to exit, regardless of grandchildren.
+    logger.info("exec: %s", " ".join(command))
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         process = await asyncio.create_subprocess_exec(
             *command,
@@ -63,11 +67,19 @@ async def _default_runner(command: list[str]) -> RunResult:
         await process.wait()
         out.seek(0)
         err.seek(0)
-        return RunResult(
+        result = RunResult(
             returncode=process.returncode or 0,
             stdout=out.read().decode(errors="replace"),
             stderr=err.read().decode(errors="replace"),
         )
+    logger.info(
+        "exec done (exit %d): %s\nstdout: %s\nstderr: %s",
+        result.returncode,
+        " ".join(command),
+        result.stdout[-_LOG_OUTPUT_TAIL_CHARS:],
+        result.stderr[-_LOG_OUTPUT_TAIL_CHARS:],
+    )
+    return result
 
 
 def _last_json_object(text: str) -> dict[str, Any] | None:
