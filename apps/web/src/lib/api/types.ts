@@ -17,14 +17,12 @@ export interface ConfigResponse {
 }
 
 export type DevcontainerStatus = 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
-export type DevcontainerSource = 'manual' | 'discovered'
 
 export interface Devcontainer {
   id: string
   name: string
   local_path: string
   status: DevcontainerStatus
-  source: DevcontainerSource
   created_at: string | null
   updated_at: string | null
 }

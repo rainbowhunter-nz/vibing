@@ -25,7 +25,6 @@ function toDevcontainer(view: DevcontainerView): Devcontainer {
     name: view.name,
     local_path: view.local_path,
     status: view.status,
-    source: view.source,
     created_at: view.created_at,
     updated_at: view.updated_at,
   }
@@ -64,7 +63,6 @@ export function createDevcontainer(body: DevcontainerCreateBody): Devcontainer {
     name: body.name,
     local_path: body.local_path,
     status: 'stopped',
-    source: 'manual',
     created_at: ts,
     updated_at: ts,
     runtime: { state: 'disconnected' },
@@ -117,12 +115,7 @@ export function removeContainer(id: string): void {
 }
 
 export function deleteDevcontainer(id: string): void {
-  const dc = store.find((d) => d.id === id)
-  if (!dc) throw new NotFoundError(id)
-  if (dc.source === 'discovered') {
-    dc.status = 'stopped'
-    return
-  }
+  if (!store.some((d) => d.id === id)) throw new NotFoundError(id)
   store = store.filter((d) => d.id !== id)
 }
 

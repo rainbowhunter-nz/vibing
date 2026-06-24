@@ -7,7 +7,7 @@ afterEach(cleanup)
 
 const base: DevcontainerView = {
   id: 'dc-1', name: 'demo', local_path: '/x', status: 'running',
-  source: 'manual', created_at: null, updated_at: null,
+  created_at: null, updated_at: null,
   runtime: { state: 'connected' },
 }
 

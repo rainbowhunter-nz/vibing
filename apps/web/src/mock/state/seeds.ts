@@ -5,11 +5,11 @@ import type { Devcontainer, DelegatedRun, HarnessStatus } from '../../lib/api/ty
 // layer their extra fields on top of these.
 
 export const seedDevcontainers: Devcontainer[] = [
-  { id: 'dc-seed-0001', name: 'my-webapp', local_path: '/home/dev/my-webapp', status: 'running', source: 'manual', created_at: '2024-01-10T08:00:00.000Z', updated_at: '2024-01-15T10:00:00.000Z' },
+  { id: 'dc-seed-0001', name: 'my-webapp', local_path: '/home/dev/my-webapp', status: 'running', created_at: '2024-01-10T08:00:00.000Z', updated_at: '2024-01-15T10:00:00.000Z' },
   // dc-seed-0002 intentionally has NO harness entry → known:false
-  { id: 'dc-seed-0002', name: 'api-service', local_path: '/home/dev/api-service', status: 'stopped', source: 'manual', created_at: '2024-01-11T09:00:00.000Z', updated_at: '2024-01-14T14:30:00.000Z' },
-  { id: 'dc-seed-0003', name: 'docs-site', local_path: '/srv/devcontainers/docs-site', status: 'stopped', source: 'discovered', created_at: null, updated_at: null },
-  { id: 'dc-seed-0004', name: 'legacy-app', local_path: '/home/dev/legacy-app', status: 'error', source: 'manual', created_at: '2024-01-08T07:00:00.000Z', updated_at: '2024-01-13T16:00:00.000Z' },
+  { id: 'dc-seed-0002', name: 'api-service', local_path: '/home/dev/api-service', status: 'stopped', created_at: '2024-01-11T09:00:00.000Z', updated_at: '2024-01-14T14:30:00.000Z' },
+  { id: 'dc-seed-0003', name: 'docs-site', local_path: '/srv/devcontainers/docs-site', status: 'stopped', created_at: null, updated_at: null },
+  { id: 'dc-seed-0004', name: 'legacy-app', local_path: '/home/dev/legacy-app', status: 'error', created_at: '2024-01-08T07:00:00.000Z', updated_at: '2024-01-13T16:00:00.000Z' },
 ]
 
 // Harness status per devcontainer. dc-seed-0001 spans all three states for inspection.

@@ -45,14 +45,6 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function SourceBadge({ source }: { source: string }) {
-  return (
-    <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-text-muted">
-      {source}
-    </span>
-  )
-}
-
 function IconButton({
   title,
   busy,
@@ -116,7 +108,6 @@ export function LifecycleHeader({
           {dc.name}
         </button>
         <StatusBadge status={dc.status} />
-        <SourceBadge source={dc.source} />
         <div className="ml-auto flex items-center gap-1">
           {running ? (
             <IconButton title="Stop" busy={busy} onClick={() => onAction('stop')}>

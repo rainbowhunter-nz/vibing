@@ -58,12 +58,11 @@ describe('createDevcontainer', () => {
     expect(listDevcontainers().items.length).toBe(before + 1)
   })
 
-  it('returns the created devcontainer with source "manual" and status "stopped"', () => {
+  it('returns the created devcontainer with status "stopped"', () => {
     const dc = createDevcontainer({ name: 'fresh', local_path: '/tmp/fresh' })
     expect(dc.name).toBe('fresh')
     expect(dc.local_path).toBe('/tmp/fresh')
     expect(dc.status).toBe('stopped')
-    expect(dc.source).toBe('manual')
     expect(dc.id).toBeTruthy()
   })
 
@@ -137,11 +136,11 @@ describe('deleteDevcontainer', () => {
     expect(listDevcontainers().items.find((d) => d.id === 'dc-seed-0004')).toBeUndefined()
   })
 
-  it('keeps a discovered devcontainer in the list, resets status to stopped', () => {
+  it('removes any devcontainer from the list on delete', () => {
     const before = listDevcontainers().items.length
     deleteDevcontainer('dc-seed-0003')
-    expect(listDevcontainers().items.length).toBe(before)
-    expect(listDevcontainers().items.find((d) => d.id === 'dc-seed-0003')?.status).toBe('stopped')
+    expect(listDevcontainers().items.some((d) => d.id === 'dc-seed-0003')).toBe(false)
+    expect(listDevcontainers().items.length).toBe(before - 1)
   })
 
   it('throws NotFoundError for unknown id', () => {

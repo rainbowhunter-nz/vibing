@@ -90,7 +90,6 @@ const sample: DevcontainerView = {
   name: 'my-project',
   local_path: '/home/me/my-project',
   status: 'stopped',
-  source: 'manual',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   runtime: { state: 'disconnected' as const },
