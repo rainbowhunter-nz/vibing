@@ -20,14 +20,12 @@ from vibing_api.api.routes import (
     status,
 )
 from vibing_api.core.broadcaster import Broadcaster
-from vibing_api.core.catalog import DevcontainerCatalog
 from vibing_api.core.config import settings
 from vibing_api.core.database import get_connection, init_db
 from vibing_api.core.devcontainer_cli import DevcontainerCliAdapter
 from vibing_api.core.devcontainer_service import DevcontainerService
-from vibing_api.core.discovery import scan
+from vibing_api.core.devcontainer_store import DevcontainerStore
 from vibing_api.core.errors import register_error_handlers
-from vibing_api.core.file_config import load_devcontainers_dir
 from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
 from vibing_api.core.runtime_injector import RuntimeInjector
@@ -73,10 +71,9 @@ def create_app() -> FastAPI:
         with get_connection() as conn:
             return DevcontainerRepository(conn).get(devcontainer_id)
 
-    app.state.catalog = DevcontainerCatalog(
+    app.state.devcontainer_store = DevcontainerStore(
         list_records=_list_records,
         get_record=_get_record,
-        scanner=lambda: scan(load_devcontainers_dir()),
     )
     app.state.devcontainer_service = DevcontainerService(
         app.state.devcontainer_cli,

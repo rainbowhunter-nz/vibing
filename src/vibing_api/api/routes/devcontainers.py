@@ -4,13 +4,11 @@ from fastapi.responses import StreamingResponse
 from vibing_api.api.schemas.devcontainers import (
     Devcontainer,
     DevcontainerCreateRequest,
-    DevcontainerSource,
     DevcontainerUpdateRequest,
     DevcontainerView,
     DevcontainerViewList,
     RuntimeConnection,
 )
-from vibing_api.core.catalog import DevcontainerCatalog, ResolvedDevcontainer
 from vibing_api.core.database import get_connection
 from vibing_api.core.devcontainer_service import DevcontainerService, run_in_background
 from vibing_api.core.errors import DevcontainerNotFoundError, InvalidDevcontainerStateError
@@ -18,7 +16,7 @@ from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_status_resolver import resolve_runtime_state
 from vibing_api.core.status_resolver import resolve_status
 from vibing_api.core.vocabularies import DevcontainerStatus
-from vibing_api.repositories.devcontainers import DevcontainerRepository
+from vibing_api.repositories.devcontainers import DevcontainerRecord, DevcontainerRepository
 
 router = APIRouter(tags=["devcontainers"], prefix="/devcontainers")
 
@@ -27,7 +25,7 @@ _STOP_ALLOWED_FROM = frozenset({DevcontainerStatus.RUNNING, DevcontainerStatus.E
 
 
 async def _view(
-    resolved: ResolvedDevcontainer, request: Request, running: set[str] | None = None
+    resolved: DevcontainerRecord, request: Request, running: set[str] | None = None
 ) -> DevcontainerView:
     live: LiveStateStore = request.app.state.live_state
     if running is None:
@@ -44,7 +42,6 @@ async def _view(
         name=resolved.name,
         local_path=resolved.local_path,
         status=status_value,
-        source=resolved.source,
         created_at=resolved.created_at,
         updated_at=resolved.updated_at,
         runtime=runtime,
@@ -54,25 +51,23 @@ async def _view(
 @router.post("", response_model=Devcontainer, status_code=status.HTTP_201_CREATED)
 async def create_devcontainer(payload: DevcontainerCreateRequest, request: Request) -> Devcontainer:
     with get_connection() as conn:
-        record = DevcontainerRepository(conn).create(payload.name, payload.local_path)
+        record = DevcontainerRepository(conn).upsert(payload.name, payload.local_path)
         conn.commit()
-    catalog: DevcontainerCatalog = request.app.state.catalog
-    resolved = catalog.get(record.id)
-    assert resolved is not None  # catalog reads the same DB; a row just committed is always visible
+    resolved = request.app.state.devcontainer_store.get(record.id)
+    assert resolved is not None  # store reads same DB; row just committed is always visible
     return await _view(resolved, request)
 
 
 @router.get("", response_model=DevcontainerViewList)
 async def list_devcontainers(request: Request) -> DevcontainerViewList:
-    catalog: DevcontainerCatalog = request.app.state.catalog
     running = await request.app.state.devcontainer_cli.running_local_folders()
-    views = [await _view(r, request, running) for r in catalog.list()]
+    views = [await _view(r, request, running) for r in request.app.state.devcontainer_store.list()]
     return DevcontainerViewList(items=views)
 
 
 @router.get("/{devcontainer_id}", response_model=DevcontainerView)
 async def get_devcontainer(devcontainer_id: str, request: Request) -> DevcontainerView:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     return await _view(resolved, request)
@@ -87,8 +82,8 @@ async def update_devcontainer(
         conn.commit()
     if updated is None:
         raise DevcontainerNotFoundError(devcontainer_id)
-    resolved = request.app.state.catalog.get(devcontainer_id)
-    assert resolved is not None  # catalog reads the same DB; a row just committed is always visible
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
+    assert resolved is not None  # store reads same DB; row just committed is always visible
     return await _view(resolved, request)
 
 
@@ -108,7 +103,7 @@ async def _dispatch_lifecycle(
     action: str,
     allowed_from: frozenset[DevcontainerStatus],
 ) -> DevcontainerView:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     view = await _view(resolved, request)
@@ -124,7 +119,7 @@ async def _dispatch_lifecycle(
     return view
 
 
-async def _teardown_container(resolved: ResolvedDevcontainer, request: Request) -> None:
+async def _teardown_container(resolved: DevcontainerRecord, request: Request) -> None:
     """Kill+remove the container and clear its live state, keeping the record."""
     await request.app.state.devcontainer_cli.remove(resolved.local_path)
     live: LiveStateStore = request.app.state.live_state
@@ -135,7 +130,7 @@ async def _teardown_container(resolved: ResolvedDevcontainer, request: Request) 
 
 @router.post("/{devcontainer_id}/remove-container", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_container(devcontainer_id: str, request: Request) -> Response:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     await _teardown_container(resolved, request)
@@ -144,20 +139,19 @@ async def remove_container(devcontainer_id: str, request: Request) -> Response:
 
 @router.delete("/{devcontainer_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_devcontainer(devcontainer_id: str, request: Request) -> Response:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     await _teardown_container(resolved, request)
-    if resolved.source == DevcontainerSource.MANUAL:
-        with get_connection() as conn:
-            DevcontainerRepository(conn).delete(resolved.id)
-            conn.commit()
+    with get_connection() as conn:
+        DevcontainerRepository(conn).delete(resolved.id)
+        conn.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{devcontainer_id}/inject-runtime", status_code=202)
 async def inject_runtime(devcontainer_id: str, request: Request) -> dict:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     service = request.app.state.runtime_service
@@ -167,7 +161,7 @@ async def inject_runtime(devcontainer_id: str, request: Request) -> dict:
 
 @router.post("/{devcontainer_id}/stop-runtime", status_code=202)
 async def stop_runtime(devcontainer_id: str, request: Request) -> dict:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     service = request.app.state.runtime_service
@@ -177,7 +171,7 @@ async def stop_runtime(devcontainer_id: str, request: Request) -> dict:
 
 @router.get("/{devcontainer_id}/runtime-logs/stream")
 async def runtime_logs_stream(devcontainer_id: str, request: Request) -> StreamingResponse:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     stream = request.app.state.runtime_service.stream_log(resolved.local_path)

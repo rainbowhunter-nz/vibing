@@ -7,6 +7,7 @@ from vibing_api.repositories.devcontainers import DevcontainerRepository
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from vibing_api.core.config import settings
+
     monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'test.db'}")
     init_db()
 

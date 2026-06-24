@@ -1,13 +1,6 @@
-from enum import StrEnum, auto
-
 from pydantic import BaseModel, Field
 
 from vibing_api.core.vocabularies import DevcontainerStatus, RuntimeState
-
-
-class DevcontainerSource(StrEnum):
-    MANUAL = auto()
-    DISCOVERED = auto()
 
 
 class DevcontainerCreateRequest(BaseModel):
@@ -24,7 +17,6 @@ class Devcontainer(BaseModel):
     name: str
     local_path: str
     status: DevcontainerStatus
-    source: DevcontainerSource
     created_at: str | None
     updated_at: str | None
 

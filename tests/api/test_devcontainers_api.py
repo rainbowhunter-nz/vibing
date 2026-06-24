@@ -215,17 +215,24 @@ def test_delete_devcontainer_unknown_id_returns_not_found(client: TestClient) ->
     assert response.json()["error"]["code"] == "DEVCONTAINER_NOT_FOUND"
 
 
-def test_create_then_list_shows_source_and_status(client: TestClient) -> None:
+def test_create_then_list_shows_status(client: TestClient) -> None:
     created = client.post(
         "/api/v1/devcontainers", json={"name": "demo", "local_path": "/tmp/demo"}
     ).json()
-    assert created["source"] == "manual"
     assert created["status"] == "stopped"  # no container running
 
     listed = client.get("/api/v1/devcontainers").json()["items"]
     row = next(r for r in listed if r["id"] == created["id"])
-    assert row["source"] == "manual"
     assert row["status"] == "stopped"
+
+
+def test_view_has_no_source_field(client: TestClient, fake_cli) -> None:
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "n", "local_path": "/tmp/ns"}
+    ).json()
+    assert "source" not in created
+    got = client.get(f"/api/v1/devcontainers/{created['id']}").json()
+    assert "source" not in got
 
 
 def test_get_unknown_id_404(client: TestClient) -> None:

@@ -15,14 +15,14 @@ router = APIRouter(tags=["harnesses"], prefix="/devcontainers")
 
 
 def _executor(request: Request, devcontainer_id: str) -> DevcontainerExecutor:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         raise DevcontainerNotFoundError(devcontainer_id)
     return DevcontainerExecutor(resolved.local_path)
 
 
 async def _is_running(request: Request, devcontainer_id: str) -> bool:
-    resolved = request.app.state.catalog.get(devcontainer_id)
+    resolved = request.app.state.devcontainer_store.get(devcontainer_id)
     if resolved is None:
         return False
     running = await request.app.state.devcontainer_cli.running_local_folders()
