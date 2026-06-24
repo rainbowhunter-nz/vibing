@@ -19,7 +19,6 @@ from pathlib import Path
 
 from logzero import logger
 
-from vibing_api.core.runtime_injector_url import resolve_runtime_control_plane_url
 from vibing_api.core.devcontainer_cli import Runner, _default_runner
 
 _DEFAULT_UV_BINARY = "/usr/local/bin/uv"
@@ -91,10 +90,9 @@ class RuntimeInjector:
 
     async def inject(self, devcontainer_id: str, container_id: str, local_path: str) -> bool:
         logger.info("runtime injection: %s into container %s", devcontainer_id, container_id)
-        agent_url = resolve_runtime_control_plane_url(self._runtime_url)
-        if not await self._bootstrap(devcontainer_id, container_id, local_path, agent_url):
+        if not await self._bootstrap(devcontainer_id, container_id, local_path, self._runtime_url):
             return False
-        return await self._spawn(devcontainer_id, local_path, agent_url)
+        return await self._spawn(devcontainer_id, local_path, self._runtime_url)
 
     async def _bootstrap(
         self, devcontainer_id: str, container_id: str, local_path: str, agent_url: str

@@ -138,6 +138,31 @@ uv run vibing harness --help
 uv run vibing system --help
 ```
 
+## Connect Claude Code to the Runtime (MCP)
+
+The Devcontainer Runtime hosts a streamable-HTTP MCP server at `http://127.0.0.1:8848/mcp`,
+exposing the Delegated Run tools (`list_harnesses`, `spawn`, `get_status`, `get_result`, `stop`).
+The main harness — Claude Code running **inside the same devcontainer** — is the client, so
+`127.0.0.1` reaches it directly.
+
+Register it from inside the devcontainer (after the runtime is injected and connected):
+
+```bash
+claude mcp add -s project --transport http vibing-harness http://127.0.0.1:8848/mcp
+```
+
+`-s project` writes `.mcp.json` so the server is committed and reproducible; drop it for a
+local-only config, or use `-s user` to share across all projects in the container.
+
+Verify:
+
+```bash
+claude mcp list                 # configured servers + reachability
+```
+
+In a session, `/mcp` lists connected servers and their tools. If it shows as failing, confirm the
+runtime is running and connected — check `/tmp/vibing-runtime.log` in the container.
+
 ## Configuration
 
 Backend settings use the `VIBING_` prefix and may be set in the shell or root `.env` file.
