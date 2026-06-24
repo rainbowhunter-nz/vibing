@@ -47,6 +47,7 @@ def _drop_legacy(conn: sqlite3.Connection) -> None:
 def _migrate_devcontainers_unique_path(conn: sqlite3.Connection) -> None:
     """Add UNIQUE(local_path); dedup existing rows (keep oldest created_at) first."""
     indexes = conn.execute("PRAGMA index_list(devcontainers)").fetchall()
+    # index name comes from PRAGMA (not user input) — f-string interpolation is injection-safe.
     has_unique_path = any(
         row[2]  # unique flag
         and any(c[2] == "local_path" for c in conn.execute(f"PRAGMA index_info({row[1]})"))
@@ -54,6 +55,7 @@ def _migrate_devcontainers_unique_path(conn: sqlite3.Connection) -> None:
     )
     if has_unique_path:
         return
+    # On a created_at tie, GROUP BY keeps one arbitrary row — non-deterministic but constraint-safe.
     conn.executescript(
         "DELETE FROM devcontainers WHERE id NOT IN ("
         "  SELECT id FROM devcontainers d WHERE created_at = ("

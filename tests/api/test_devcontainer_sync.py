@@ -1,8 +1,11 @@
+import shutil
 from pathlib import Path
+
 import pytest
 from vibing_api.core.database import get_connection, init_db
 from vibing_api.core.devcontainer_sync import sync_devcontainers
 from vibing_api.core.live_state import LiveStateStore
+from vibing_api.core.vocabularies import DevcontainerStatus, RuntimeState
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 
@@ -30,21 +33,25 @@ def test_sync_adds_new_evicts_missing(tmp_path: Path) -> None:
         paths = {r.local_path for r in DevcontainerRepository(conn).list()}
     assert str(keep) in paths
 
-    # Pre-seed live-state for a soon-to-be-stale manual row, then remove its folder
+    # Pre-seed all four live-state caches for a soon-to-be-stale row, then remove its folder
     gone = _mk(root, "gone")
     sync_devcontainers(str(root), live)
     with get_connection() as conn:
         gone_id = next(
             r.id for r in DevcontainerRepository(conn).list() if r.local_path == str(gone)
         )
+    live.set_transient(gone_id, DevcontainerStatus.STARTING)
+    live.set_runtime_transient(gone_id, RuntimeState.LAUNCHING)
     live.set_harness(gone_id, [])
-    import shutil
-
+    live.set_delegated_runs(gone_id, [])
     shutil.rmtree(gone)
 
-    sync_devcontainers(str(root), live)  # evicts "gone"
+    sync_devcontainers(str(root), live)  # evicts "gone" and clears all its caches
     with get_connection() as conn:
         paths = {r.local_path for r in DevcontainerRepository(conn).list()}
     assert str(gone) not in paths
     assert str(keep) in paths
+    assert live.get_transient(gone_id) is None
+    assert live.get_runtime_transient(gone_id) is None
     assert live.get_harness(gone_id) is None
+    assert live.get_delegated_runs(gone_id) is None
