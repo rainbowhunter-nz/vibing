@@ -30,4 +30,4 @@ def test_wait_exits_nonzero_when_wait_errors(monkeypatch):
     monkeypatch.setattr(delegated, "_await_once", boom)
     result = runner.invoke(app, ["delegated", "wait", "run-1"])
     assert result.exit_code == 1
-    assert "server unreachable" in result.stdout + str(result.exception or "")
+    assert "server unreachable" in result.stdout

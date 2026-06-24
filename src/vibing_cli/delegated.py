@@ -16,7 +16,6 @@ from rich.console import Console
 app = typer.Typer(no_args_is_help=True, help="Delegated Run helpers (MCP client).")
 
 _out = Console()
-_err = Console(stderr=True)
 
 DEFAULT_MCP_URL = "http://127.0.0.1:8848/mcp"
 
