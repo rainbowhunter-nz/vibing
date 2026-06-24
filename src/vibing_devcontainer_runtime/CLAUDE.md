@@ -9,7 +9,7 @@ In-container companion process. **Delegation-only** — hosts the MCP delegation
 - `runtime_client.py`: WebSocket client that connects to `/runtime/agent/ws` and sends `register` + `delegated_runs`. **Outbound-only** — receives no Commands.
 - `local_executor.py`: `LocalExecutor` — the in-container `vibing_harness.Executor` impl (local subprocess `run`, direct `read`/`write`). Used for `list_harnesses` status checks and spawn.
 - `delegated_runs.py`: `DelegatedRunManager` — concurrent capped unattended runs; manages lifecycle of spawned harness processes (spawn argv/env from `vibing_harness`).
-- `mcp_server.py`: `build_mcp_server` — streamable-HTTP MCP server (`list_harnesses`/`spawn`/`get_status`/`get_result`/`stop`) the main harness calls (ADR-0011, ADR-0013). `list_harnesses` reads `vibing_harness` descriptors via `LocalExecutor`.
+- `mcp_server.py`: `build_mcp_server` — streamable-HTTP MCP server (`list_harnesses`/`spawn`/`get_status`/`get_result`/`await_run`/`stop`) the main harness calls (ADR-0011, ADR-0013). `list_harnesses` reads `vibing_harness` descriptors via `LocalExecutor`. `await_run` long-polls until a detached run is terminal (`completed`/`failed`/`stopped`) so the main harness can be woken by a background-shell waiter instead of polling.
 
 ## Context
 
