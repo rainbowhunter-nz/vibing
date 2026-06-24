@@ -5,6 +5,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from vibing_api.core.discovery import devcontainer_id
+
 _COLUMNS = "id, name, local_path, created_at, updated_at"
 
 
@@ -72,3 +74,15 @@ class DevcontainerRepository:
     def delete(self, devcontainer_id: str) -> bool:
         cursor = self._conn.execute("DELETE FROM devcontainers WHERE id = ?", (devcontainer_id,))
         return cursor.rowcount > 0
+
+    def upsert(self, name: str, local_path: str) -> DevcontainerRecord:
+        now = _now()
+        self._conn.execute(
+            f"INSERT INTO devcontainers ({_COLUMNS}) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(local_path) DO NOTHING",
+            (devcontainer_id(local_path), name, local_path, now, now),
+        )
+        row = self._conn.execute(
+            f"SELECT {_COLUMNS} FROM devcontainers WHERE local_path = ?", (local_path,)
+        ).fetchone()
+        return _row(row)
