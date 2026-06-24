@@ -49,6 +49,11 @@ def build_mcp_server(
         return delegated_runs.get_result(run_id)
 
     @mcp.tool()
+    async def await_run(run_id: str, timeout_seconds: float = 25.0) -> dict[str, Any]:
+        """Block until a detached Delegated Run finishes; return its result. Re-call if timed_out."""
+        return await delegated_runs.await_run(run_id, timeout=timeout_seconds)
+
+    @mcp.tool()
     async def stop(run_id: str) -> dict[str, Any]:
         """Stop a running Delegated Run."""
         return await delegated_runs.stop(run_id)

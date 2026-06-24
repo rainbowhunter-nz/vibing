@@ -48,6 +48,7 @@ class FakeDescriptor(HarnessDescriptor):
 class FakeDelegatedRuns:
     def __init__(self) -> None:
         self.spawned: list[tuple[Any, ...]] = []
+        self.awaited: tuple[str, float] | None = None
 
     async def spawn(self, harness, model, prompt, *, cwd=None, detached=False):
         self.spawned.append((harness, model, prompt, cwd, detached))
@@ -62,6 +63,10 @@ class FakeDelegatedRuns:
     async def stop(self, run_id):
         return {"run_id": run_id, "status": "stopped"}
 
+    async def await_run(self, run_id, timeout=25.0):
+        self.awaited = (run_id, timeout)
+        return {"run_id": run_id, "status": "completed", "result": "ok", "error": {}}
+
 
 def _descriptors_map():
     return {
@@ -73,7 +78,7 @@ def _descriptors_map():
 def test_tools_are_registered():
     mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
     names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert {"list_harnesses", "spawn", "get_status", "get_result", "stop"} <= names
+    assert {"list_harnesses", "spawn", "get_status", "get_result", "stop", "await_run"} <= names
 
 
 def test_list_harnesses_returns_statuses():
@@ -91,4 +96,14 @@ def test_spawn_forwards_args_and_returns_outcome():
         mcp.call_tool("spawn", {"harness": "codex", "model": "gpt-5.4", "prompt": "go"})
     )
     assert runs.spawned == [("codex", "gpt-5.4", "go", None, False)]
+    assert result["status"] == "completed" and result["result"] == "ok"
+
+
+def test_await_run_forwards_args_and_returns_result():
+    runs = FakeDelegatedRuns()
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), runs)
+    _content, result = asyncio.run(
+        mcp.call_tool("await_run", {"run_id": "run-1", "timeout_seconds": 5.0})
+    )
+    assert runs.awaited == ("run-1", 5.0)
     assert result["status"] == "completed" and result["result"] == "ok"
