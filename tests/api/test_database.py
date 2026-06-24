@@ -92,3 +92,42 @@ def test_init_db_is_idempotent(db_path: Path) -> None:
     with get_connection() as conn:
         (count,) = conn.execute("SELECT COUNT(*) FROM devcontainers").fetchone()
     assert count == 1
+
+
+def test_devcontainers_local_path_unique(db_path: Path) -> None:
+    init_db()
+    ts = "2026-01-01T00:00:00Z"
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO devcontainers (id, name, local_path, created_at, updated_at) "
+            "VALUES ('a', 'a', '/tmp/x', ?, ?)",
+            (ts, ts),
+        )
+        conn.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO devcontainers (id, name, local_path, created_at, updated_at) "
+                "VALUES ('b', 'b', '/tmp/x', ?, ?)",
+                (ts, ts),
+            )
+
+
+def test_migration_dedups_duplicate_paths_keep_oldest(db_path: Path) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "CREATE TABLE devcontainers (id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+            "local_path TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO devcontainers VALUES "
+            "('old', 'old', '/tmp/dup', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')"
+        )
+        conn.execute(
+            "INSERT INTO devcontainers VALUES "
+            "('new', 'new', '/tmp/dup', '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z')"
+        )
+        conn.commit()
+    init_db()
+    with get_connection() as conn:
+        rows = conn.execute("SELECT id FROM devcontainers WHERE local_path = '/tmp/dup'").fetchall()
+    assert [r[0] for r in rows] == ["old"]

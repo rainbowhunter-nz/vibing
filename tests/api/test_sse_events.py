@@ -12,6 +12,7 @@ reads the event immediately and terminates (_max=1 or _max=N).
 import json
 import threading
 import time
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -218,7 +219,9 @@ def test_sse_is_separate_from_runtime_websocket() -> None:
             assert r.status_code == 200
 
         # Seed a devcontainer so the agent WS registration has a valid devcontainer_id
-        resp = client.post("/api/v1/devcontainers", json={"name": "dc", "local_path": "/tmp/dc"})
+        resp = client.post(
+            "/api/v1/devcontainers", json={"name": "dc", "local_path": f"/tmp/{uuid.uuid4()}"}
+        )
         dc_id = resp.json()["id"]
         with client.websocket_connect("/api/v1/runtime/agent/ws") as ws:
             ws.send_json({"type": "runtime_registered", "devcontainer_id": dc_id})
