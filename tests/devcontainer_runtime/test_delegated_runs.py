@@ -224,3 +224,76 @@ def test_wait_exception_marks_failed_and_frees_slot():
         assert out2["status"] == "failed"
 
     asyncio.run(scenario())
+
+
+def test_await_run_returns_when_detached_run_completes():
+    gate = asyncio.Event()
+
+    def factory(argv, cwd, env):
+        return ScriptedProcess(CompletedCommand(0, "late result", ""), gate=gate)
+
+    async def scenario():
+        mgr = _mgr(factory=factory)
+        await mgr.spawn("codex", "m", "p", detached=True)
+        waiter = asyncio.ensure_future(mgr.await_run("run-1"))
+        assert not waiter.done()  # blocks while running
+        gate.set()
+        out = await waiter
+        assert out["status"] == "completed"
+        assert out["result"] == "late result"
+
+    asyncio.run(scenario())
+
+
+def test_await_run_returns_immediately_when_already_terminal():
+    async def scenario():
+        mgr = _mgr(factory=lambda *a: ScriptedProcess(CompletedCommand(0, "done", "")))
+        await mgr.spawn("codex", "m", "p")  # blocking -> already completed
+        out = await mgr.await_run("run-1")
+        assert out["status"] == "completed"
+        assert out["result"] == "done"
+
+    asyncio.run(scenario())
+
+
+def test_await_run_times_out_while_running():
+    gate = asyncio.Event()
+
+    def factory(argv, cwd, env):
+        return ScriptedProcess(CompletedCommand(0, "x", ""), gate=gate)
+
+    async def scenario():
+        mgr = _mgr(factory=factory)
+        await mgr.spawn("codex", "m", "p", detached=True)
+        out = await mgr.await_run("run-1", timeout=0.01)
+        assert out == {"run_id": "run-1", "status": "running", "timed_out": True}
+        gate.set()
+        await mgr.wait_all()
+
+    asyncio.run(scenario())
+
+
+def test_await_run_returns_when_run_stopped():
+    gate = asyncio.Event()
+
+    def factory(argv, cwd, env):
+        return ScriptedProcess(CompletedCommand(0, "x", ""), gate=gate)
+
+    async def scenario():
+        mgr = _mgr(factory=factory)
+        await mgr.spawn("codex", "m", "p", detached=True)
+        waiter = asyncio.ensure_future(mgr.await_run("run-1"))
+        await mgr.stop("run-1")
+        out = await waiter
+        assert out["status"] == "stopped"
+
+    asyncio.run(scenario())
+
+
+def test_await_run_unknown_id_raises():
+    async def scenario():
+        mgr = _mgr()
+        with pytest.raises(KeyError):
+            await mgr.await_run("nope")
+
+    asyncio.run(scenario())

@@ -33,6 +33,7 @@ class _Run:
     process: HarnessProcess | None = None
     task: asyncio.Task[None] | None = None
     started_at: str = ""
+    done: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class DelegatedRunManager:
@@ -109,6 +110,9 @@ class DelegatedRunManager:
             else:
                 run.status = "failed"
                 run.error = {"exit_code": result.returncode, "stderr_tail": result.stderr[-4000:]}
+        finally:
+            if run.status != "running":
+                run.done.set()
         await self._emit()
 
     def _get(self, run_id: str) -> _Run:
@@ -122,6 +126,16 @@ class DelegatedRunManager:
         run = self._get(run_id)
         return {"run_id": run_id, "status": run.status, "result": run.result, "error": run.error}
 
+    async def await_run(self, run_id: str, timeout: float | None = None) -> dict[str, Any]:
+        run = self._get(run_id)  # KeyError on unknown run
+        if run.status != "running":
+            return self.get_result(run_id)
+        try:
+            await asyncio.wait_for(run.done.wait(), timeout)
+        except asyncio.TimeoutError:
+            return {"run_id": run_id, "status": "running", "timed_out": True}
+        return self.get_result(run_id)
+
     async def stop(self, run_id: str) -> dict[str, Any]:
         run = self._get(run_id)
         if run.task is not None and not run.task.done():
@@ -134,6 +148,7 @@ class DelegatedRunManager:
             await run.process.terminate()
         if run.status == "running":
             run.status = "stopped"
+        run.done.set()
         await self._emit()
         return {"run_id": run_id, "status": run.status}
 
