@@ -25,7 +25,9 @@ from vibing_api.core.database import get_connection, init_db
 from vibing_api.core.devcontainer_cli import DevcontainerCliAdapter
 from vibing_api.core.devcontainer_service import DevcontainerService
 from vibing_api.core.devcontainer_store import DevcontainerStore
+from vibing_api.core.devcontainer_sync import sync_devcontainers
 from vibing_api.core.errors import register_error_handlers
+from vibing_api.core.file_config import load_devcontainers_dir
 from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
 from vibing_api.core.runtime_injector import RuntimeInjector
@@ -50,8 +52,9 @@ class SpaStaticFiles(StaticFiles):
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    sync_devcontainers(load_devcontainers_dir(), app.state.live_state)
     yield
 
 

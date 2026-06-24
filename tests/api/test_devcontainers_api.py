@@ -297,11 +297,14 @@ def fresh_db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
-def test_devcontainers_persist_across_app_restarts(fresh_db_path: Path) -> None:
+def test_devcontainers_persist_across_app_restarts(tmp_path: Path, fresh_db_path: Path) -> None:
+    demo = tmp_path / "demo"
+    (demo / ".devcontainer").mkdir(parents=True)
+
     with TestClient(create_app()) as first:
         created = first.post(
             "/api/v1/devcontainers",
-            json={"name": "demo", "local_path": "/tmp/demo"},
+            json={"name": "demo", "local_path": str(demo)},
         ).json()
 
     with TestClient(create_app()) as second:
