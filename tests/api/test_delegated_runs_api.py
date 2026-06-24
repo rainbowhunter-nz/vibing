@@ -21,10 +21,15 @@ def test_delegated_runs_returns_recorded_items(client):
     ).json()
     client.app.state.live_state.set_delegated_runs(
         created["id"],
-        [DelegatedRunItem(
-            run_id="r1", harness="codex", model="m", status="running",
-            started_at="2026-06-20T00:00:00+00:00",
-        )],
+        [
+            DelegatedRunItem(
+                run_id="r1",
+                harness="codex",
+                model="m",
+                status="running",
+                started_at="2026-06-20T00:00:00+00:00",
+            )
+        ],
     )
     resp = client.get(f"/api/v1/devcontainers/{created['id']}/delegated-runs")
     assert resp.status_code == 200

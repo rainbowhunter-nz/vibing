@@ -24,10 +24,10 @@ FastAPI Control Plane. Owns API routes, SQLite state, runtime WS intake. Drives 
 - `core/runtime_channel.py`: `RuntimeRegistry` holds one `RuntimeConnection` per `devcontainer_id` for liveness/intake (the `connected` runtime state). No command sending — the channel is outbound-only (ADR-0019).
 - `core/devcontainer_executor.py`: `DevcontainerExecutor(local_path)` — the `vibing_harness.Executor` impl over `devcontainer exec` (remoteUser-correct; **never** raw `docker exec`). PIPE-based runner (distinct from `DevcontainerCliAdapter`'s temp-file `_default_runner`) so it can `stream()` install output live and pipe creds to stdin; `run` recovers the in-container exit code via a `__rc=N__` shell marker. The default runner logs each exec command and its output tail (like `devcontainer_cli`).
 - `core/harness_service.py`: harness install/authenticate/status driven through a `DevcontainerExecutor` + `vibing_harness` descriptors. `install_stream`/`authenticate_stream` yield live output; `refresh`/`compute_status` compute and cache status in `LiveStateStore` and publish the `harnesses` SSE.
-- `core/runtime_intake.py`: `persist_delegated_runs` writes to `delegated_runs` table.
+- `core/runtime_intake.py`: `record_delegated_runs` stores snapshots in `LiveStateStore` and publishes SSE invalidation.
 - `core/broadcaster.py`: SSE invalidation fan-out.
-- `core/database.py`, `core/schema.py`: SQLite setup and schema (version 9). Tables: `app_meta`, `devcontainers` (no `status` column), `harness_credentials`, `delegated_runs`. `harness_status` table removed. `delegated_runs` is a projection keyed by `devcontainer_id` with **no FK** to `devcontainers` — the id may be a discovered (virtual, never-persisted) devcontainer; v9 migration rebuilds the table to drop the legacy FK, and manual delete cleans up its rows explicitly (was `ON DELETE CASCADE`).
-- `repositories/`: SQL only. `devcontainers.py`, `harness_credentials.py`, `delegated_runs.py`. Callers commit transactions.
+- `core/database.py`, `core/schema.py`: SQLite setup and schema (version 9). Tables: `app_meta`, `devcontainers` (no `status` column), `harness_credentials`. `harness_status` and `delegated_runs` tables removed; `_drop_legacy` drops both idempotently.
+- `repositories/`: SQL only. `devcontainers.py`, `harness_credentials.py`. Callers commit transactions.
 - `cli/dev.py`: dev helpers, mounted as `vibing dev ...`.
 
 ## Context

@@ -43,7 +43,10 @@ def test_runtime_transient_set_get_clear() -> None:
 
 def _item(run_id: str) -> DelegatedRunItem:
     return DelegatedRunItem(
-        run_id=run_id, harness="codex", model="m", status="running",
+        run_id=run_id,
+        harness="codex",
+        model="m",
+        status="running",
         started_at="2026-06-20T00:00:00+00:00",
     )
 

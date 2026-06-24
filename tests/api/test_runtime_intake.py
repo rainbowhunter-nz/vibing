@@ -13,7 +13,10 @@ def test_record_writes_cache_and_publishes() -> None:
             published.append(event)
 
     item = DelegatedRunItem(
-        run_id="r1", harness="codex", model="m", status="running",
+        run_id="r1",
+        harness="codex",
+        model="m",
+        status="running",
         started_at="2026-06-20T00:00:00+00:00",
     )
     record_delegated_runs(store, "dc1", [item], _B())

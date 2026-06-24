@@ -7,23 +7,6 @@ import sqlite3
 
 SCHEMA_VERSION = "9"
 
-# delegated_runs is a read-model projection keyed by devcontainer_id, which may be a
-# discovered (virtual, never-persisted) id — so it carries NO FK to devcontainers.
-_DELEGATED_RUNS_DDL = """
-    CREATE TABLE IF NOT EXISTS delegated_runs (
-        devcontainer_id TEXT NOT NULL,
-        run_id TEXT NOT NULL,
-        harness TEXT NOT NULL,
-        model TEXT NOT NULL,
-        status TEXT NOT NULL,
-        result TEXT,
-        error TEXT,
-        started_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (devcontainer_id, run_id)
-    )
-    """
-
 _TABLE_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS app_meta (
@@ -47,32 +30,18 @@ _TABLE_STATEMENTS: tuple[str, ...] = (
         updated_at TEXT NOT NULL
     )
     """,
-    _DELEGATED_RUNS_DDL,
 )
 
-_INDEX_STATEMENTS: tuple[str, ...] = (
-    "CREATE INDEX IF NOT EXISTS idx_delegated_runs_devcontainer ON delegated_runs(devcontainer_id)",
-)
+_INDEX_STATEMENTS: tuple[str, ...] = ()
 
 
 def _drop_legacy(conn: sqlite3.Connection) -> None:
     with conn:
         conn.execute("DROP TABLE IF EXISTS harness_status")
+        conn.execute("DROP TABLE IF EXISTS delegated_runs")
         cols = {row[1] for row in conn.execute("PRAGMA table_info(devcontainers)")}
         if "status" in cols:
             conn.execute("ALTER TABLE devcontainers DROP COLUMN status")
-
-
-def _drop_delegated_runs_fk(conn: sqlite3.Connection) -> None:
-    """Rebuild delegated_runs without its legacy FK so discovered-devcontainer runs persist."""
-    if not conn.execute("PRAGMA foreign_key_list(delegated_runs)").fetchall():
-        return
-    conn.executescript(
-        "ALTER TABLE delegated_runs RENAME TO _delegated_runs_old;"
-        f"{_DELEGATED_RUNS_DDL};"
-        "INSERT INTO delegated_runs SELECT * FROM _delegated_runs_old;"
-        "DROP TABLE _delegated_runs_old;"
-    )
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
@@ -89,7 +58,6 @@ def apply_schema(conn: sqlite3.Connection) -> None:
     for statement in _TABLE_STATEMENTS:
         conn.execute(statement)
     _drop_legacy(conn)
-    _drop_delegated_runs_fk(conn)
     for statement in _INDEX_STATEMENTS:
         conn.execute(statement)
     _migrate_schema(conn)

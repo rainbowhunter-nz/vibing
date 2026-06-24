@@ -18,7 +18,6 @@ from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_status_resolver import resolve_runtime_state
 from vibing_api.core.status_resolver import resolve_status
 from vibing_api.core.vocabularies import DevcontainerStatus
-from vibing_api.repositories.delegated_runs import DelegatedRunRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 router = APIRouter(tags=["devcontainers"], prefix="/devcontainers")
@@ -151,7 +150,6 @@ async def delete_devcontainer(devcontainer_id: str, request: Request) -> Respons
     if resolved.source == DevcontainerSource.MANUAL:
         with get_connection() as conn:
             DevcontainerRepository(conn).delete(resolved.id)
-            DelegatedRunRepository(conn).delete(resolved.id)
             conn.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
