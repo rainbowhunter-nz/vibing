@@ -1,5 +1,14 @@
-"""Cursor CLI (`cursor-agent`) descriptor. Auth is an api-key persisted to our own
-config file and injected as CURSOR_API_KEY at spawn (the documented automation path)."""
+"""Cursor CLI (`cursor-agent`) descriptor. Two auth paths, checked in cost order:
+
+1. Interactive subscription login (`cursor-agent login`), read back via
+   `cursor-agent status --format json` → `isAuthenticated`. Preferred — flat-rate, cheaper
+   than metered api-key usage — and needs no env injection: the CLI uses its own session.
+2. Our stored api-key (written by the Control Plane), injected as CURSOR_API_KEY and
+   validated via `cursor-agent models`, which honors the key and exits non-zero on a
+   missing/invalid one. Used only when not logged in interactively.
+
+`status` reflects only the login session (it ignores CURSOR_API_KEY), so it can't speak for
+the api-key path — hence the separate `models` probe for case 2."""
 
 import json
 
@@ -29,8 +38,22 @@ class CursorDescriptor(HarnessDescriptor):
             return ""
         return json.loads(raw).get("api_key", "")
 
+    async def _logged_in(self, ex: Executor) -> bool:
+        res = await ex.run([_BINARY, "status", "--format", "json"])
+        if res.returncode != 0:
+            return False
+        try:
+            return bool(json.loads(res.stdout).get("isAuthenticated"))
+        except json.JSONDecodeError:
+            return False
+
     async def is_authenticated(self, ex: Executor) -> bool:
-        return bool(await self._api_key(ex))
+        if await self._logged_in(ex):
+            return True
+        key = await self._api_key(ex)
+        if not key:
+            return False
+        return (await ex.run([_BINARY, "models"], env={"CURSOR_API_KEY": key})).returncode == 0
 
     async def write_credentials(self, ex: Executor, blob: dict) -> None:
         await ex.write(_CRED_PATH, json.dumps({"api_key": blob["api_key"]}).encode())
@@ -39,6 +62,8 @@ class CursorDescriptor(HarnessDescriptor):
         return [_BINARY, "-p", prompt, "--model", model, "--force", "--output-format", "text"]
 
     async def spawn_env(self, ex: Executor) -> dict[str, str]:
+        if await self._logged_in(ex):
+            return {}  # use the subscription session; don't inject the metered key
         key = await self._api_key(ex)
         return {"CURSOR_API_KEY": key} if key else {}
 

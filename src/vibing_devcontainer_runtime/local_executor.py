@@ -2,6 +2,7 @@
 subprocess + direct file IO. Home-relative paths join the runtime's $HOME."""
 
 import asyncio
+import os
 from pathlib import Path
 
 from vibing_harness import CommandResult
@@ -11,10 +12,13 @@ class LocalExecutor:
     def __init__(self, home: Path | None = None) -> None:
         self._home = home or Path.home()
 
-    async def run(self, argv: list[str]) -> CommandResult:
+    async def run(self, argv: list[str], env: dict[str, str] | None = None) -> CommandResult:
         try:
             proc = await asyncio.create_subprocess_exec(
-                *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, **env} if env else None,
             )
         except FileNotFoundError:
             return CommandResult(127, "", "binary not found")

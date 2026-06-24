@@ -62,9 +62,12 @@ class DevcontainerExecutor:
             out.extend(chunk)
         return bytes(out)
 
-    async def _run_with_rc(self, argv: list[str]) -> CommandResult:
+    async def _run_with_rc(
+        self, argv: list[str], env: dict[str, str] | None = None
+    ) -> CommandResult:
+        prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in (env or {}).items())
         joined = " ".join(shlex.quote(a) for a in argv)
-        shell = f"{joined}; printf '\\n__rc=%d__' \"$?\""
+        shell = f"{prefix}{joined}; printf '\\n__rc=%d__' \"$?\""
         raw = (await self._collect(["bash", "-c", shell])).decode(errors="replace")
         rc = 0
         marker = raw.rfind("__rc=")
@@ -76,8 +79,8 @@ class DevcontainerExecutor:
             raw = raw[:marker].rstrip("\n")
         return CommandResult(returncode=rc, stdout=raw, stderr="")
 
-    async def run(self, argv: list[str]) -> CommandResult:
-        return await self._run_with_rc(argv)
+    async def run(self, argv: list[str], env: dict[str, str] | None = None) -> CommandResult:
+        return await self._run_with_rc(argv, env)
 
     async def read(self, path: str) -> bytes | None:
         result = await self._run_with_rc(["bash", "-c", f'cat "$HOME/{path}"'])

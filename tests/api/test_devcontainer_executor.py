@@ -32,6 +32,15 @@ def test_run_collects_combined_output_and_zero_rc():
     assert "codex --version" in argv[-1]
 
 
+def test_run_injects_env_into_shell():
+    runner = _fake_runner({"cursor-agent models": b"ok\n__rc=0__"})
+    ex = DevcontainerExecutor("/work", runner=runner)
+    result = asyncio.run(ex.run(["cursor-agent", "models"], env={"CURSOR_API_KEY": "k 1"}))
+    assert result.returncode == 0
+    shell = runner.calls[0][0][-1]
+    assert "CURSOR_API_KEY='k 1' cursor-agent models" in shell
+
+
 def test_write_pipes_blob_to_stdin_with_umask_and_home_path():
     runner = _fake_runner({})
     ex = DevcontainerExecutor("/work", runner=runner)

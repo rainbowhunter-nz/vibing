@@ -10,6 +10,13 @@ def test_run_executes_real_command(tmp_path):
     assert "hi" in result.stdout
 
 
+def test_run_passes_env_to_subprocess(tmp_path):
+    ex = LocalExecutor(home=tmp_path)
+    result = asyncio.run(ex.run(["bash", "-c", "echo $MY_VAR"], env={"MY_VAR": "hello"}))
+    assert result.returncode == 0
+    assert "hello" in result.stdout
+
+
 def test_run_missing_binary_returns_127(tmp_path):
     ex = LocalExecutor(home=tmp_path)
     result = asyncio.run(ex.run(["definitely-not-a-binary-xyz"]))
