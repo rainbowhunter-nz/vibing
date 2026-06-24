@@ -297,3 +297,22 @@ def test_await_run_unknown_id_raises():
             await mgr.await_run("nope")
 
     asyncio.run(scenario())
+
+
+def test_await_run_returns_failed_payload_for_failed_detached_run():
+    gate = asyncio.Event()
+
+    def factory(argv, cwd, env):
+        return ScriptedProcess(CompletedCommand(2, "", "boom"), gate=gate)
+
+    async def scenario():
+        mgr = _mgr(factory=factory)
+        await mgr.spawn("codex", "m", "p", detached=True)
+        waiter = asyncio.ensure_future(mgr.await_run("run-1"))
+        assert not waiter.done()
+        gate.set()
+        out = await waiter
+        assert out["status"] == "failed"
+        assert out["error"]["exit_code"] == 2
+
+    asyncio.run(scenario())

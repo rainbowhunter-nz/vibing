@@ -20,6 +20,13 @@ _out = Console()
 DEFAULT_MCP_URL = "http://127.0.0.1:8848/mcp"
 
 
+def _unwrap(exc: BaseException) -> BaseException:
+    """Drill through single-member exception groups (anyio task groups wrap errors)."""
+    while isinstance(exc, BaseExceptionGroup) and len(exc.exceptions) == 1:
+        exc = exc.exceptions[0]
+    return exc
+
+
 async def _await_once(mcp_url: str, run_id: str, timeout_seconds: float) -> dict[str, Any]:
     """One `await_run` MCP call; returns the tool's structured payload."""
     async with streamablehttp_client(mcp_url) as (read, write, _):
@@ -44,13 +51,14 @@ def wait(
     mcp_url: Annotated[
         str, typer.Option(envvar="VIBING_MCP_URL", help="Runtime MCP server URL.")
     ] = DEFAULT_MCP_URL,
+    # Must stay below MCP client's HTTP read timeout (~30 s) or every long-poll call will fail.
     timeout_seconds: Annotated[float, typer.Option(help="Per-call long-poll timeout.")] = 25.0,
 ) -> None:
     """Block until the Delegated Run finishes, then print its result."""
     try:
         payload = asyncio.run(_poll(mcp_url, run_id, timeout_seconds))
     except Exception as exc:
-        _out.print(f"[bold red]✗ await_run failed[/bold red]: {exc}")
+        _out.print(f"[bold red]✗ await_run failed[/bold red]: {_unwrap(exc)}")
         raise typer.Exit(1) from exc
 
     status = payload.get("status")

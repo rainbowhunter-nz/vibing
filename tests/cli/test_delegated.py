@@ -31,3 +31,14 @@ def test_wait_exits_nonzero_when_wait_errors(monkeypatch):
     result = runner.invoke(app, ["delegated", "wait", "run-1"])
     assert result.exit_code == 1
     assert "server unreachable" in result.stdout
+
+
+def test_wait_unwraps_exception_group_to_leaf_message(monkeypatch):
+    async def boom(mcp_url, run_id, timeout_seconds):
+        raise ExceptionGroup("boom", [RuntimeError("connection refused")])
+
+    monkeypatch.setattr(delegated, "_await_once", boom)
+    result = runner.invoke(app, ["delegated", "wait", "run-1"])
+    assert result.exit_code == 1
+    assert "connection refused" in result.stdout
+    assert "sub-exception" not in result.stdout
