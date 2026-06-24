@@ -314,10 +314,15 @@ def test_remove_container_evicts_delegated_runs(client: TestClient, fake_cli) ->
     ).json()
     client.app.state.live_state.set_delegated_runs(
         created["id"],
-        [DelegatedRunItem(
-            run_id="r1", harness="codex", model="m", status="running",
-            started_at="2026-06-20T00:00:00+00:00",
-        )],
+        [
+            DelegatedRunItem(
+                run_id="r1",
+                harness="codex",
+                model="m",
+                status="running",
+                started_at="2026-06-20T00:00:00+00:00",
+            )
+        ],
     )
     client.post(f"/api/v1/devcontainers/{created['id']}/remove-container")
     assert client.app.state.live_state.get_delegated_runs(created["id"]) is None
