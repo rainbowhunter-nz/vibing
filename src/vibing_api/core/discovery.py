@@ -19,7 +19,11 @@ class DiscoveredDevcontainer:
     local_path: str
 
 
-def discovered_id(local_path: str) -> str:
+def is_devcontainer_folder(path: Path) -> bool:
+    return path.is_dir() and (path / ".devcontainer").is_dir()
+
+
+def devcontainer_id(local_path: str) -> str:
     return str(uuid.uuid5(_NAMESPACE, local_path))
 
 
@@ -31,8 +35,8 @@ def scan(devcontainers_dir: str | None) -> list[DiscoveredDevcontainer]:
         return []
     out: list[DiscoveredDevcontainer] = []
     for child in sorted(root.iterdir()):
-        if not child.is_dir() or not (child / ".devcontainer").is_dir():
+        if not is_devcontainer_folder(child):
             continue
         path = str(child)
-        out.append(DiscoveredDevcontainer(discovered_id(path), child.name, path))
+        out.append(DiscoveredDevcontainer(devcontainer_id(path), child.name, path))
     return out

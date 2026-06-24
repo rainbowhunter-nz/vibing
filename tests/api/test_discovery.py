@@ -1,4 +1,6 @@
-from vibing_api.core.discovery import discovered_id, scan
+from pathlib import Path
+
+from vibing_api.core.discovery import devcontainer_id, is_devcontainer_folder, scan
 
 
 def _make_dc(parent, name, with_dotdir=True):
@@ -34,6 +36,16 @@ def test_scan_is_not_recursive(tmp_path) -> None:
     assert {d.name for d in scan(str(tmp_path))} == {"outer"}
 
 
+def test_is_devcontainer_folder(tmp_path: Path) -> None:
+    good = tmp_path / "proj"
+    (good / ".devcontainer").mkdir(parents=True)
+    assert is_devcontainer_folder(good)
+    assert not is_devcontainer_folder(tmp_path / "missing")
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert not is_devcontainer_folder(plain)
+
+
 def test_id_is_stable_for_path() -> None:
-    assert discovered_id("/a/b") == discovered_id("/a/b")
-    assert discovered_id("/a/b") != discovered_id("/a/c")
+    assert devcontainer_id("/a/b") == devcontainer_id("/a/b")
+    assert devcontainer_id("/a/b") != devcontainer_id("/a/c")
