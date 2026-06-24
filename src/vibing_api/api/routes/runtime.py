@@ -14,7 +14,7 @@ from vibing_protocol import DelegatedRunsEnvelope, RegisterEnvelope, decode
 
 from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.runtime_channel import RuntimeRegistry, WebSocketRuntimeConnection
-from vibing_api.core.runtime_intake import persist_delegated_runs
+from vibing_api.core.runtime_intake import record_delegated_runs
 
 router = APIRouter(tags=["runtime"], prefix="/runtime")
 
@@ -63,10 +63,15 @@ async def _serve(websocket: WebSocket, register: Register) -> None:
                     continue
                 broadcaster = getattr(websocket.app.state, "broadcaster", None)
                 try:
-                    persist_delegated_runs(runs_env.devcontainer_id, runs_env.items, broadcaster)
+                    record_delegated_runs(
+                        websocket.app.state.live_state,
+                        runs_env.devcontainer_id,
+                        runs_env.items,
+                        broadcaster,
+                    )
                 except Exception:
                     logger.exception(
-                        "Failed to persist delegated runs (devcontainer=%s)",
+                        "Failed to record delegated runs (devcontainer=%s)",
                         runs_env.devcontainer_id,
                     )
                 continue

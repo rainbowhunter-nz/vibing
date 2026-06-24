@@ -15,7 +15,6 @@ from vibing_api.core.broadcaster import SseEvent
 from vibing_api.core.database import get_connection, init_db
 from vibing_api.core.live_state import LiveStateStore
 from vibing_api.core.runtime_channel import RuntimeRegistry
-from vibing_api.repositories.delegated_runs import DelegatedRunRepository
 from vibing_api.repositories.devcontainers import DevcontainerRepository
 
 
@@ -175,8 +174,7 @@ def test_delegated_runs_snapshot_is_persisted(ws_client: TestClient, db_path: Pa
         assert ws.receive_json() == {"type": "registered"}
         ws.send_json(_delegated_runs_msg(dc_id))
 
-    with get_connection() as conn:
-        rows = DelegatedRunRepository(conn).list(dc_id)
+    rows = ws_client.app.state.live_state.get_delegated_runs(dc_id)
     assert [r.run_id for r in rows] == ["run-1"]
 
 
