@@ -3,6 +3,7 @@ from typing import Annotated
 import typer
 
 from vibing_api.cli import dev_app
+from vibing_cli import delegated
 from vibing_cli.client import devcontainers, harnesses, http, system
 from vibing_devcontainer_runtime.cli import cli as devcontainer_runtime_app
 from vibing_devcontainer_runtime.preflight import preflight as runtime_preflight
@@ -30,6 +31,7 @@ runtime_app.add_typer(devcontainer_runtime_app, name="devcontainer")
 runtime_app.command("preflight")(runtime_preflight)
 app.add_typer(runtime_app, name="runtime")
 
+app.add_typer(delegated.app, name="delegated")
 app.add_typer(devcontainers.app, name="devcontainer")
 app.add_typer(harnesses.app, name="harness")
 app.add_typer(system.app, name="system")
