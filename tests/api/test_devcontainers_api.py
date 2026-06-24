@@ -304,3 +304,20 @@ def test_devcontainers_persist_across_app_restarts(fresh_db_path: Path) -> None:
         assert len(items) == 1
         assert items[0]["id"] == created["id"]
         assert items[0]["name"] == "demo"
+
+
+def test_remove_container_evicts_delegated_runs(client: TestClient, fake_cli) -> None:
+    from vibing_protocol import DelegatedRunItem
+
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "rc", "local_path": "/tmp/rc2"}
+    ).json()
+    client.app.state.live_state.set_delegated_runs(
+        created["id"],
+        [DelegatedRunItem(
+            run_id="r1", harness="codex", model="m", status="running",
+            started_at="2026-06-20T00:00:00+00:00",
+        )],
+    )
+    client.post(f"/api/v1/devcontainers/{created['id']}/remove-container")
+    assert client.app.state.live_state.get_delegated_runs(created["id"]) is None

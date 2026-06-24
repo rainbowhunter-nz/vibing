@@ -130,6 +130,7 @@ async def _teardown_container(resolved: ResolvedDevcontainer, request: Request) 
     live: LiveStateStore = request.app.state.live_state
     live.clear_transient(resolved.id)
     live.evict_harness(resolved.id)
+    live.evict_delegated_runs(resolved.id)
 
 
 @router.post("/{devcontainer_id}/remove-container", status_code=status.HTTP_204_NO_CONTENT)
