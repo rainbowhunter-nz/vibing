@@ -225,13 +225,18 @@ const devcontainerHandlers = [
   http.get('*/api/v1/devcontainers/:id/harnesses', ({ params }) => {
     const failure = scenarioFailure('DEVCONTAINER_NOT_FOUND')
     if (failure) return failure
+    let view
     try {
-      dc.getDevcontainer(params.id as string)
+      view = dc.getDevcontainer(params.id as string)
     } catch (e) {
       if (e instanceof dc.NotFoundError) return notFound(params.id as string)
       throw e
     }
     if (getScenario() === 'empty') return HttpResponse.json({ items: [] })
+    // Self-heal like the backend: a running but uncached container computes status on GET
+    // (covers a container already up before vibing, or a vibing restart) so it never
+    // stays known:false forever.
+    if (view.status === 'running') hn.ensureHarnessEntry(params.id as string)
     return HttpResponse.json(hn.listHarnesses(params.id as string))
   }),
 

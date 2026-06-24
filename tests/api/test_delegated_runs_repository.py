@@ -35,6 +35,15 @@ def _item(run_id: str, status: str = "running") -> DelegatedRunItem:
     )
 
 
+def test_replace_allows_unpersisted_devcontainer() -> None:
+    """Discovered devcontainers are virtual (never persisted); their runs must still store."""
+    with get_connection() as conn:
+        repo = DelegatedRunRepository(conn)
+        repo.replace("discovered-uuid5", [_item("run-1")])
+        conn.commit()
+        assert {r.run_id for r in repo.list("discovered-uuid5")} == {"run-1"}
+
+
 def test_replace_is_a_full_snapshot() -> None:
     dc_id = _seed_devcontainer()
     with get_connection() as conn:

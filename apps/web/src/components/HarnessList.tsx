@@ -113,7 +113,7 @@ export function HarnessList({ devcontainerId, harnesses, known, running, onChang
             onClick={handleRefresh}
             className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-border text-text-subtle hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {refreshing ? <SpinnerEl testId="spinner-refresh" /> : refreshIcon}
+            {refreshIcon}
           </button>
         </span>
         <span className="text-center">Installed</span>
@@ -123,7 +123,7 @@ export function HarnessList({ devcontainerId, harnesses, known, running, onChang
         <p className="px-3 py-4 text-[13px] text-text-muted">
           Container not running — harness status unavailable.
         </p>
-      ) : !known ? (
+      ) : !known || refreshing ? (
         <div className="flex justify-center px-3 py-5" data-testid="harness-loading">
           <SpinnerEl testId="spinner-harness" />
         </div>

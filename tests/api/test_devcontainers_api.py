@@ -254,6 +254,35 @@ def test_delete_manual_removes_container_and_record(client: TestClient, fake_cli
     assert client.get(f"/api/v1/devcontainers/{created['id']}").status_code == 404
 
 
+def test_delete_manual_cleans_up_delegated_runs(client: TestClient, fake_cli) -> None:
+    from vibing_api.core.database import get_connection
+    from vibing_api.repositories.delegated_runs import DelegatedRunRepository
+    from vibing_protocol import DelegatedRunItem
+
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "d", "local_path": "/tmp/d"}
+    ).json()
+    with get_connection() as conn:
+        DelegatedRunRepository(conn).replace(
+            created["id"],
+            [
+                DelegatedRunItem(
+                    run_id="run-1",
+                    harness="codex",
+                    model="m",
+                    status="running",
+                    started_at="2026-06-20T00:00:00+00:00",
+                )
+            ],
+        )
+        conn.commit()
+
+    client.delete(f"/api/v1/devcontainers/{created['id']}")
+
+    with get_connection() as conn:
+        assert DelegatedRunRepository(conn).list(created["id"]) == []
+
+
 def test_delete_unknown_404(client: TestClient, fake_cli) -> None:
     assert client.delete("/api/v1/devcontainers/nope").status_code == 404
 

@@ -52,6 +52,11 @@ class DelegatedRunRepository:
             ],
         )
 
+    def delete(self, devcontainer_id: str) -> None:
+        self._conn.execute(
+            "DELETE FROM delegated_runs WHERE devcontainer_id = ?", (devcontainer_id,)
+        )
+
     def list(self, devcontainer_id: str) -> list[DelegatedRunRow]:
         rows = self._conn.execute(
             "SELECT run_id, harness, model, status, result, error, started_at "

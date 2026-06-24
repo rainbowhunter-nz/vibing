@@ -7,12 +7,12 @@ FastAPI Control Plane. Owns API routes, SQLite state, runtime WS intake. Drives 
 - `main.py`: app factory, router mounting, static frontend serving.
 - `api/routes/`: HTTP + WebSocket routes. Key routes:
   - `devcontainers.py`: CRUD + `start`/`stop`/`delete` lifecycle endpoints. `POST /{id}/remove-container` kills+removes the container (`devcontainer_cli.remove`) and clears live state but keeps the record. `DELETE` does the same teardown and additionally removes the DB row for manual (discovered reappears). `POST /{id}/inject-runtime`: explicit runtime injection (202, background task). `POST /{id}/stop-runtime` (202, `docker exec` kill via PID file); `GET /{id}/runtime-logs/stream` streams log via `tail -n +1 -f` (`text/plain`, chunked HTTP). The devcontainer view's `runtime` is `{state: connected|launching|disconnected}` (was `runtime_connected`). `GET` endpoints compute `status` live and include a `source` field (`manual` | `discovered`).
-  - `harnesses.py`: `install` and `authenticate` as **synchronous streaming POST** endpoints (chunked HTTP) that run via `DevcontainerExecutor` and pipe `devcontainer exec` output live; on completion recompute + cache status and SSE-invalidate. `GET /{id}/harnesses` serves cached status; `POST /{id}/harnesses/refresh` recomputes on demand. No longer sends runtime Commands (ADR-0019).
+  - `harnesses.py`: `install` and `authenticate` as **synchronous streaming POST** endpoints (chunked HTTP) that run via `DevcontainerExecutor` and pipe `devcontainer exec` output live; on completion recompute + cache status and SSE-invalidate. `GET /{id}/harnesses` serves cached status, and **self-heals**: if the cache is empty but the container is running (vibing didn't start it — already up before vibing, or a restart), it computes + caches on demand so status never stays `known=false` forever. `POST /{id}/harnesses/refresh` recomputes on demand. No longer sends runtime Commands (ADR-0019).
   - `delegated_runs.py`: frontend-facing `delegated-runs` list (stores snapshots; not yet served to the UI).
   - `runtime.py`: `/runtime/agent/ws` — one Devcontainer Runtime per `devcontainer_id`; dispatches `delegated_runs` (→ `persist_delegated_runs`); on register, clears the runtime `launching` transient. No `harness_status` intake, no command sending (channel is outbound-only, ADR-0019).
   - `events.py`: SSE invalidation stream for the frontend.
 - `api/schemas/`: API response/request models.
-- `core/live_state.py`: `LiveStateStore` — in-memory transient lifecycle status (starting/stopping/error) + a CP-computed harness-status cache (keyed to container-running; recomputed on container start, post-install/auth, and manual refresh — not evicted on runtime disconnect) plus a runtime-state transient (`launching`, or sticky `error` on inject failure) cleared on WS connect / launch timeout / retry inject. Never persisted; lost on restart by design.
+- `core/live_state.py`: `LiveStateStore` — in-memory transient lifecycle status (starting/stopping/error) + a CP-computed harness-status cache (keyed to container-running; recomputed on container start, post-install/auth, manual refresh, and lazily on GET when running but uncached — not evicted on runtime disconnect) plus a runtime-state transient (`launching`, or sticky `error` on inject failure) cleared on WS connect / launch timeout / retry inject. Never persisted; lost on restart by design.
 - `core/status_resolver.py`: `resolve_status` — transient wins if set, else live from Docker (`devcontainer.local_folder` label).
 - `core/file_config.py`: reads `vibing.yaml` (sibling of `vibing.db`); exposes `devcontainers_dir` for folder discovery.
 - `core/discovery.py`: non-recursive folder scan of `devcontainers_dir`; emits `DiscoveredDevcontainer` (virtual, never persisted); stable uuid5 id keyed on `local_path`.
@@ -26,7 +26,7 @@ FastAPI Control Plane. Owns API routes, SQLite state, runtime WS intake. Drives 
 - `core/harness_service.py`: harness install/authenticate/status driven through a `DevcontainerExecutor` + `vibing_harness` descriptors. `install_stream`/`authenticate_stream` yield live output; `refresh`/`compute_status` compute and cache status in `LiveStateStore` and publish the `harnesses` SSE.
 - `core/runtime_intake.py`: `persist_delegated_runs` writes to `delegated_runs` table.
 - `core/broadcaster.py`: SSE invalidation fan-out.
-- `core/database.py`, `core/schema.py`: SQLite setup and schema (version 8). Tables: `app_meta`, `devcontainers` (no `status` column), `harness_credentials`, `delegated_runs`. `harness_status` table removed.
+- `core/database.py`, `core/schema.py`: SQLite setup and schema (version 9). Tables: `app_meta`, `devcontainers` (no `status` column), `harness_credentials`, `delegated_runs`. `harness_status` table removed. `delegated_runs` is a projection keyed by `devcontainer_id` with **no FK** to `devcontainers` — the id may be a discovered (virtual, never-persisted) devcontainer; v9 migration rebuilds the table to drop the legacy FK, and manual delete cleans up its rows explicitly (was `ON DELETE CASCADE`).
 - `repositories/`: SQL only. `devcontainers.py`, `harness_credentials.py`, `delegated_runs.py`. Callers commit transactions.
 - `cli/dev.py`: dev helpers, mounted as `vibing dev ...`.
 
@@ -34,6 +34,6 @@ FastAPI Control Plane. Owns API routes, SQLite state, runtime WS intake. Drives 
 
 - `/runtime/agent/ws`: one Devcontainer Runtime per devcontainer id (no host worker endpoint).
 - Devcontainer `status` is computed live on every request (transient → Docker label) — never stored in DB.
-- Harness status is CP-computed via `devcontainer exec` and cached in-memory per devcontainer; keyed to container-running (visible even with the runtime down), unknown (`?` in frontend) only when the container is not running. Recomputed on container start, post-install/auth, and manual refresh.
+- Harness status is CP-computed via `devcontainer exec` and cached in-memory per devcontainer; keyed to container-running (visible even with the runtime down), unknown (`?` in frontend) only when the container is not running. Recomputed on container start, post-install/auth, manual refresh, and lazily on GET when running but uncached.
 - `source` field on devcontainer responses: `manual` (DB row) | `discovered` (virtual, from folder scan).
 - Tests: `tests/api`.

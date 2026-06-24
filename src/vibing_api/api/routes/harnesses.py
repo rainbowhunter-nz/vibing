@@ -21,10 +21,26 @@ def _executor(request: Request, devcontainer_id: str) -> DevcontainerExecutor:
     return DevcontainerExecutor(resolved.local_path)
 
 
+async def _is_running(request: Request, devcontainer_id: str) -> bool:
+    resolved = request.app.state.catalog.get(devcontainer_id)
+    if resolved is None:
+        return False
+    running = await request.app.state.devcontainer_cli.running_local_folders()
+    return resolved.local_path in running
+
+
 @router.get("/{devcontainer_id}/harnesses", response_model=HarnessStatusList)
-def list_harnesses(devcontainer_id: str, request: Request) -> HarnessStatusList:
+async def list_harnesses(devcontainer_id: str, request: Request) -> HarnessStatusList:
     live: LiveStateStore = request.app.state.live_state
     cached = live.get_harness(devcontainer_id)
+    if cached is None and await _is_running(request, devcontainer_id):
+        # Container is running but uncached -- vibing didn't start it (already up before
+        # vibing, or vibing restarted), so nothing recomputed status. Self-heal here so
+        # the frontend doesn't spin on `known=False` forever.
+        broadcaster = getattr(request.app.state, "broadcaster", None)
+        cached = await harness_service.refresh(
+            live, devcontainer_id, _executor(request, devcontainer_id), broadcaster
+        )
     if cached is None:
         return HarnessStatusList(items=[], known=False)
     return HarnessStatusList(items=[HarnessStatusItem.from_status(s) for s in cached], known=True)

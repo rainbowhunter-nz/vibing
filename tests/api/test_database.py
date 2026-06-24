@@ -54,7 +54,7 @@ def test_init_db_records_schema_version(db_path: Path) -> None:
     with get_connection() as conn:
         row = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
     assert row is not None
-    assert row[0] == "8"
+    assert row[0] == "9"
 
 
 def test_devcontainers_table_exists_with_required_columns(db_path: Path) -> None:
@@ -73,17 +73,22 @@ def test_get_connection_enables_foreign_keys(db_path: Path) -> None:
     assert fk_on == 1
 
 
-def test_foreign_keys_block_orphan_inserts(db_path: Path) -> None:
+def test_delegated_runs_accepts_unpersisted_devcontainer(db_path: Path) -> None:
+    """Discovered devcontainers are virtual (never persisted) — their runs must still store."""
     init_db()
     ts = "2026-01-01T00:00:00Z"
     with get_connection() as conn:
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "INSERT INTO delegated_runs "
-                "(devcontainer_id, run_id, harness, model, status, started_at, updated_at) "
-                "VALUES ('missing-dc', 'run-1', 'gh', 'gpt4', 'running', ?, ?)",
-                (ts, ts),
-            )
+        conn.execute(
+            "INSERT INTO delegated_runs "
+            "(devcontainer_id, run_id, harness, model, status, started_at, updated_at) "
+            "VALUES ('discovered-dc', 'run-1', 'gh', 'gpt4', 'running', ?, ?)",
+            (ts, ts),
+        )
+        conn.commit()
+        (count,) = conn.execute(
+            "SELECT COUNT(*) FROM delegated_runs WHERE devcontainer_id = 'discovered-dc'"
+        ).fetchone()
+    assert count == 1
 
 
 def test_init_db_is_idempotent(db_path: Path) -> None:
@@ -101,25 +106,44 @@ def test_init_db_is_idempotent(db_path: Path) -> None:
     assert count == 1
 
 
-def test_fk_cascade_on_devcontainer_delete(db_path: Path) -> None:
-    init_db()
+def test_migrates_legacy_delegated_runs_fk(db_path: Path) -> None:
+    """A pre-existing delegated_runs with the legacy FK is rebuilt without it, preserving rows."""
     ts = "2026-01-01T00:00:00Z"
     with get_connection() as conn:
         conn.execute(
+            "CREATE TABLE devcontainers (id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+            "local_path TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute(
+            "CREATE TABLE delegated_runs ("
+            "devcontainer_id TEXT NOT NULL REFERENCES devcontainers(id) ON DELETE CASCADE, "
+            "run_id TEXT NOT NULL, harness TEXT NOT NULL, model TEXT NOT NULL, "
+            "status TEXT NOT NULL, result TEXT, error TEXT, started_at TEXT NOT NULL, "
+            "updated_at TEXT NOT NULL, PRIMARY KEY (devcontainer_id, run_id))"
+        )
+        conn.execute(
             "INSERT INTO devcontainers (id, name, local_path, created_at, updated_at) "
-            "VALUES ('dc-cascade', 'cascade test', '/tmp/c', ?, ?)",
+            "VALUES ('dc1', 'd', '/tmp/d', ?, ?)",
             (ts, ts),
         )
         conn.execute(
             "INSERT INTO delegated_runs "
             "(devcontainer_id, run_id, harness, model, status, started_at, updated_at) "
-            "VALUES ('dc-cascade', 'run-1', 'gh', 'gpt4', 'running', ?, ?)",
+            "VALUES ('dc1', 'run-1', 'gh', 'gpt4', 'running', ?, ?)",
             (ts, ts),
         )
         conn.commit()
-        conn.execute("DELETE FROM devcontainers WHERE id = 'dc-cascade'")
+
+    init_db()  # migration drops the FK, preserves the row
+
+    with get_connection() as conn:
+        assert conn.execute("PRAGMA foreign_key_list(delegated_runs)").fetchall() == []
+        conn.execute(
+            "INSERT INTO delegated_runs "
+            "(devcontainer_id, run_id, harness, model, status, started_at, updated_at) "
+            "VALUES ('discovered-dc', 'run-2', 'gh', 'gpt4', 'running', ?, ?)",
+            (ts, ts),
+        )
         conn.commit()
-        (count,) = conn.execute(
-            "SELECT COUNT(*) FROM delegated_runs WHERE devcontainer_id = 'dc-cascade'"
-        ).fetchone()
-        assert count == 0, "cascade failed: delegated_runs still has rows after devcontainer delete"
+        run_ids = {r[0] for r in conn.execute("SELECT run_id FROM delegated_runs")}
+    assert run_ids == {"run-1", "run-2"}

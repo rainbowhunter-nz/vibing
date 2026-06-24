@@ -69,21 +69,23 @@ describe('HarnessList', () => {
     expect(screen.getByTestId('harness-refresh')).toBeTruthy()
   })
 
-  it('disables the refresh button while refreshing', () => {
-    const onChangeFn = vi.fn()
+  it('greys out the refresh button and shows the same loading spinner while refreshing', () => {
     render(
       <HarnessList
         devcontainerId="dc-seed-0001"
         harnesses={harnesses}
         known
         running
-        onChange={onChangeFn}
+        onChange={() => {}}
       />,
     )
-    const btn = screen.getByTestId('harness-refresh')
-    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    const btn = screen.getByTestId('harness-refresh') as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
     fireEvent.click(btn)
-    // Button should be busy immediately after click
-    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    // Greyed out (disabled), not swapped for an in-button spinner; the panel shows the
+    // same centered spinner as a just-started container -- one coherent loading state.
+    expect(btn.disabled).toBe(true)
+    expect(screen.queryByTestId('spinner-refresh')).toBeNull()
+    expect(screen.getByTestId('spinner-harness')).toBeTruthy()
   })
 })
