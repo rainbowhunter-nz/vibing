@@ -43,7 +43,13 @@ frontend --GET /devcontainers/{id}/delegated-runs--> live_state.get_delegated_ru
 - **`core/live_state.py`**: add `_delegated_runs: dict[str, list[DelegatedRunItem]]`
   with `set_delegated_runs` / `get_delegated_runs` / `evict_delegated_runs`,
   mirroring the `_harness` map. Documented as never-persisted, rebuilt on runtime
-  reconnect.
+  reconnect (verified: the runtime's `_on_registered` re-pushes a full snapshot on
+  every (re)connect, so a CP restart self-heals).
+- **Eviction lifetime**: delegated runs are container-scoped like harness status —
+  evict in `_teardown_container` right beside `evict_harness` (container stop /
+  remove-container / DELETE all flow through it). **Not** evicted on a plain runtime
+  WS disconnect — a crash-and-reconnect would flicker, and the reconnect re-pushes
+  the truth anyway.
 - **`core/runtime_intake.py`**: `persist_delegated_runs` → `record_delegated_runs(
   live_state, devcontainer_id, items, broadcaster)` — writes the map and publishes
   the SSE. No DB access.
@@ -85,21 +91,30 @@ Run in `lifespan` after `init_db()`:
 
 Stale = local_path no longer contains a `.devcontainer/` folder, applied uniformly
 to every row (manual-origin included). New folders added at runtime appear after
-restart or via POST — accepted tradeoff.
+restart or via POST — accepted tradeoff. **Orphan tradeoff:** if the folder is gone
+but its container is still running, eviction removes the only row referencing it,
+leaving an invisible orphan container (killable via `docker rm -f`). Accepted as a
+genuine edge — sync stays Docker-free and fast; documented in the ADR consequences.
 
 ### Schema
 - `devcontainers` gains `UNIQUE(local_path)`.
 - Migration: rebuild `devcontainers` to add the constraint if absent (table-rebuild
-  pattern; foreign-key-free table, so a straight copy). Assumes no pre-existing
-  duplicate paths (none can exist — old catalog deduped by path).
+  pattern; foreign-key-free table, so a straight copy). **Dedup first** — POST has no
+  duplicate-path guard today, so existing DBs may hold duplicate paths; before adding
+  the constraint, keep one row per `local_path` (the **oldest `created_at`**, to
+  preserve the original id/bookmarks) and delete the rest. Makes the migration total.
 
 ### Repository — `repositories/devcontainers.py`
 - `upsert(name, local_path) -> DevcontainerRecord`:
   `INSERT (id, …) VALUES (uuid5(NAMESPACE, local_path), …)
-   ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, updated_at=excluded.updated_at`,
-  then re-`get` by path. Idempotent; id is stable per path.
-- POST `create` route uses `upsert` (re-adding a known path returns the existing row).
-- `get`/`list`/`delete`/`update` unchanged.
+   ON CONFLICT(local_path) DO NOTHING`, then re-`get` by path. Idempotent; id stable
+  per path. **`DO NOTHING` (not `DO UPDATE`)** — `name` is set once at first insert and
+  is user-owned thereafter; neither startup sync nor a re-POST may overwrite it.
+- POST `create` route uses `upsert` — re-adding a known path returns the existing row
+  unchanged (a different name in the re-POST is silently ignored). POST still returns
+  `201` always; we do not special-case insert-vs-conflict (corner case; UI prevents
+  duplicate adds).
+- `get`/`list`/`delete`/`update` unchanged (`update` remains the user rename path).
 
 ### Discovery — `core/discovery.py`
 - Keep `scan`; extract `is_devcontainer_folder(path: Path) -> bool` (the
