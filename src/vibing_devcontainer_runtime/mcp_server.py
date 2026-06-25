@@ -18,16 +18,17 @@ complementing the in-process Task subagents of subagent-driven-development. When
 says "use external subagent", dispatch the work here.
 
 Dispatch protocol:
-1. spawn(harness, model, prompt, title, detached=true) -> run_id. `title` is a short human
-   label shown in the UI.
+1. spawn(harness, prompt, title, detached=true) -> run_id. `title` is a short human label
+   shown in the UI. Omit `model` to use the harness's recommended default; only pass it to
+   override. Discover defaults via list_harnesses (each harness reports `default_model`).
 2. Run `vibing delegated wait <run_id>` as a BACKGROUND shell command; its completion
    auto-wakes you with the result. Do not poll get_run in a loop.
 3. get_run(run_id) -> status + result + error. list_runs() -> all runs. stop(run_id) cancels.
 
-Model rule of thumb:
-- cursor  -> composer-2.5 (or latest Composer): fast, cheap, good default.
-- codex   -> gpt-5.5 (or latest GPT): autonomous CLI coding.
-See docs/external-subagent-guide.md for deeper task -> model routing.
+Model rule of thumb (defaults, applied automatically when `model` is omitted):
+- cursor  -> composer-2.5: fast, cheap, good default.
+- codex   -> gpt-5.5: autonomous CLI coding.
+Pass `model` only to override these. See docs/external-subagent-guide.md for task -> model routing.
 """
 
 
@@ -50,24 +51,33 @@ def build_mcp_server(
 
     @mcp.tool()
     async def list_harnesses() -> list[dict[str, Any]]:
-        """List managed coding harnesses with installed/authenticated status."""
+        """List managed coding harnesses with installed/authenticated status and the
+        `default_model` used when `spawn` is called without a model."""
         out = []
         for d in descriptors_map.values():
             s = await d.status(executor)
-            out.append({"name": s.name, "installed": s.installed, "authenticated": s.authenticated})
+            out.append(
+                {
+                    "name": s.name,
+                    "installed": s.installed,
+                    "authenticated": s.authenticated,
+                    "default_model": s.default_model,
+                }
+            )
         return out
 
     @mcp.tool()
     async def spawn(
         harness: str,
-        model: str,
         prompt: str,
         title: str,
+        model: str | None = None,
         detached: bool = False,
         cwd: str | None = None,
     ) -> dict[str, Any]:
         """Spawn an external-subagent Delegated Run. `title` is a short UI label.
-        Blocks for the result unless detached=true."""
+        Omit `model` to use the harness's recommended default (see list_harnesses);
+        only pass it to override. Blocks for the result unless detached=true."""
         return await delegated_runs.spawn(harness, model, prompt, title, cwd=cwd, detached=detached)
 
     @mcp.tool()

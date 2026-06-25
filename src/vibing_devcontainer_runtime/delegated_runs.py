@@ -65,7 +65,7 @@ class DelegatedRunManager:
     async def spawn(
         self,
         harness: str,
-        model: str,
+        model: str | None,
         prompt: str,
         title: str,
         *,
@@ -73,6 +73,9 @@ class DelegatedRunManager:
         detached: bool = False,
     ) -> dict[str, Any]:
         descriptor = self._descriptors[harness]  # KeyError on unknown harness
+        model = model or descriptor.default_model
+        if not model:
+            raise RuntimeError(f"harness {harness} has no default model; pass model explicitly")
         if not await descriptor.is_authenticated(self._executor):
             raise RuntimeError(f"harness {harness} is not authenticated")
         if self._active() >= self._max:

@@ -13,10 +13,12 @@ class HarnessStatus:
     name: str
     installed: bool
     authenticated: bool
+    default_model: str = ""
 
 
 class HarnessDescriptor(ABC):
     name: str
+    default_model: str = ""  # recommended model when the caller doesn't pick one
 
     @abstractmethod
     async def is_installed(self, ex: Executor) -> bool: ...
@@ -45,4 +47,9 @@ class HarnessDescriptor(ABC):
     async def status(self, ex: Executor) -> HarnessStatus:
         installed = await self.is_installed(ex)
         authenticated = await self.is_authenticated(ex) if installed else False
-        return HarnessStatus(name=self.name, installed=installed, authenticated=authenticated)
+        return HarnessStatus(
+            name=self.name,
+            installed=installed,
+            authenticated=authenticated,
+            default_model=self.default_model,
+        )

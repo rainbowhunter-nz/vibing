@@ -22,6 +22,7 @@ _INSTALL = "curl https://cursor.com/install -fsS | bash"
 
 class CursorDescriptor(HarnessDescriptor):
     name = "cursor"
+    default_model = "composer-2.5"
 
     async def is_installed(self, ex: Executor) -> bool:
         return (await ex.run([_BINARY, "--version"])).returncode == 0

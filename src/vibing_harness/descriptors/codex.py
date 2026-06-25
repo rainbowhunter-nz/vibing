@@ -12,6 +12,7 @@ _CRED_PATH = ".codex/auth.json"
 
 class CodexDescriptor(HarnessDescriptor):
     name = "codex"
+    default_model = "gpt-5.5"
 
     async def is_installed(self, ex: Executor) -> bool:
         return (await ex.run([_BINARY, "--version"])).returncode == 0

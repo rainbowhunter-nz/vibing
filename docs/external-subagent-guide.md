@@ -5,6 +5,9 @@ coding-harness runs (ADR-0013). This guide says which harness + model to pick.
 
 ## Rule of thumb (use this first)
 
+These are each harness's **`default_model`** — `spawn` applies them automatically when you
+omit `model`, and `list_harnesses` reports them. Pass `model` only to override.
+
 - **cursor → `composer-2.5`** (or latest Composer): fast, cheap, strong default.
 - **codex → `gpt-5.5`** (or latest GPT): autonomous CLI coding.
 
@@ -43,7 +46,8 @@ When a harness is added to `vibing_harness`:
 1. **Probe live.** Run the harness's own model-list command (e.g. `cursor-agent models`)
    and one trivial `spawn` per candidate to confirm what actually works in the target auth
    mode. Document auth-gated exclusions (as with codex `-codex` models).
-2. **Add a rule-of-thumb line** (harness → best default model) above.
+2. **Set the descriptor's `default_model`** to that best default (the class attr on the
+   `HarnessDescriptor`), and add a rule-of-thumb line (harness → default model) above.
 3. **Add decision-table rows** for the harness; note family strengths conservatively.
 4. **Update the server `instructions`** rule-of-thumb list in
    `src/vibing_devcontainer_runtime/mcp_server.py` if the default choice changes.

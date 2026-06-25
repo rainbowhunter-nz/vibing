@@ -22,6 +22,7 @@ class FakeExecutor:
 
 class FakeDescriptor(HarnessDescriptor):
     name = "codex"
+    default_model = "gpt-5.5"
 
     def __init__(self, authed: bool = True) -> None:
         self._authed = authed
@@ -83,6 +84,30 @@ def test_spawn_stores_title_in_list_runs():
     item = mgr.list_runs()[0]
     assert item["title"] == "refactor auth retry"
     assert item["run_id"] == "run-1"
+
+
+def test_spawn_without_model_uses_harness_default():
+    captured: dict[str, Any] = {}
+
+    class CapturingDescriptor(FakeDescriptor):
+        def build_spawn_argv(self, model: str, prompt: str) -> list[str]:
+            captured["model"] = model
+            return ["codex", "exec", prompt]
+
+    mgr = _mgr(descriptors_map={"codex": CapturingDescriptor()})
+    out = asyncio.run(mgr.spawn("codex", None, "do it", "t"))
+    assert out["status"] == "completed"
+    assert captured["model"] == "gpt-5.5"
+    assert mgr.list_runs()[0]["model"] == "gpt-5.5"
+
+
+def test_spawn_without_model_and_no_default_raises():
+    class NoDefault(FakeDescriptor):
+        default_model = ""
+
+    mgr = _mgr(descriptors_map={"codex": NoDefault()})
+    with pytest.raises(RuntimeError, match="no default model"):
+        asyncio.run(mgr.spawn("codex", None, "p", "t"))
 
 
 def test_blocking_spawn_returns_result():

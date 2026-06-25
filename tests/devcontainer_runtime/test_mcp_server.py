@@ -17,8 +17,11 @@ class FakeExecutor:
 
 
 class FakeDescriptor(HarnessDescriptor):
-    def __init__(self, name: str, installed: bool, authenticated: bool) -> None:
+    def __init__(
+        self, name: str, installed: bool, authenticated: bool, default_model: str = ""
+    ) -> None:
         self.name = name
+        self.default_model = default_model
         self._installed = installed
         self._authenticated = authenticated
 
@@ -78,7 +81,9 @@ class FakeDelegatedRuns:
 
 def _descriptors_map():
     return {
-        "codex": FakeDescriptor("codex", installed=True, authenticated=True),
+        "codex": FakeDescriptor(
+            "codex", installed=True, authenticated=True, default_model="gpt-5.5"
+        ),
         "cursor": FakeDescriptor("cursor", installed=False, authenticated=False),
     }
 
@@ -112,8 +117,9 @@ def test_list_harnesses_returns_statuses():
     mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
     _content, result = asyncio.run(mcp.call_tool("list_harnesses", {}))
     harnesses = result["result"] if isinstance(result, dict) and "result" in result else result
-    names = {h["name"] for h in harnesses}
-    assert names == {"codex", "cursor"}
+    by_name = {h["name"]: h for h in harnesses}
+    assert set(by_name) == {"codex", "cursor"}
+    assert by_name["codex"]["default_model"] == "gpt-5.5"
 
 
 def test_spawn_forwards_args_and_returns_outcome():
@@ -126,6 +132,13 @@ def test_spawn_forwards_args_and_returns_outcome():
     )
     assert runs.spawned == [("codex", "gpt-5.5", "go", "demo", None, False)]
     assert result["status"] == "completed" and result["result"] == "ok"
+
+
+def test_spawn_without_model_forwards_none():
+    runs = FakeDelegatedRuns()
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), runs)
+    asyncio.run(mcp.call_tool("spawn", {"harness": "codex", "prompt": "go", "title": "demo"}))
+    assert runs.spawned == [("codex", None, "go", "demo", None, False)]
 
 
 def test_await_run_forwards_args_and_returns_result():
