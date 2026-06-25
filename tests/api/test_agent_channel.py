@@ -76,6 +76,7 @@ def _delegated_runs_msg(dc_id: str) -> dict[str, Any]:
         "items": [
             {
                 "run_id": "run-1",
+                "title": "seed task",
                 "harness": "codex",
                 "model": "m",
                 "status": "running",
