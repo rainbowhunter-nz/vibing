@@ -16,6 +16,7 @@ def test_record_writes_cache_and_publishes() -> None:
         run_id="r1",
         harness="codex",
         model="m",
+        title="seed task",
         status="running",
         started_at="2026-06-20T00:00:00+00:00",
     )

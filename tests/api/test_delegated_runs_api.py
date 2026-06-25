@@ -26,6 +26,7 @@ def test_delegated_runs_returns_recorded_items(client):
                 run_id="r1",
                 harness="codex",
                 model="m",
+                title="seed task",
                 status="running",
                 started_at="2026-06-20T00:00:00+00:00",
             )
@@ -34,3 +35,28 @@ def test_delegated_runs_returns_recorded_items(client):
     resp = client.get(f"/api/v1/devcontainers/{created['id']}/delegated-runs")
     assert resp.status_code == 200
     assert [i["run_id"] for i in resp.json()["items"]] == ["r1"]
+
+
+def test_delegated_runs_endpoint_includes_title(client):
+    from vibing_protocol import DelegatedRunItem
+
+    created = client.post(
+        "/api/v1/devcontainers", json={"name": "dc", "local_path": "/tmp/dc"}
+    ).json()
+    client.app.state.live_state.set_delegated_runs(
+        created["id"],
+        [
+            DelegatedRunItem(
+                run_id="r1",
+                harness="codex",
+                model="m",
+                title="refactor auth retry",
+                status="running",
+                started_at="2026-06-20T00:00:00+00:00",
+            )
+        ],
+    )
+    resp = client.get(f"/api/v1/devcontainers/{created['id']}/delegated-runs")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"][0]["title"] == "refactor auth retry"

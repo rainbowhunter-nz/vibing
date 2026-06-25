@@ -46,6 +46,7 @@ def _item(run_id: str) -> DelegatedRunItem:
         run_id=run_id,
         harness="codex",
         model="m",
+        title="seed task",
         status="running",
         started_at="2026-06-20T00:00:00+00:00",
     )
