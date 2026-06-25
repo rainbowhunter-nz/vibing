@@ -69,7 +69,7 @@ On connect the Devcontainer Runtime sends `register`, then immediately reports H
 
 ## MCP Delegation
 
-The Devcontainer Runtime hosts a streamable-HTTP MCP server (default `127.0.0.1:8848`). The main harness (Claude Code) calls it to spawn Delegated Runs (`spawn`), poll status (`get_status`/`get_result`), and stop them (`stop`). Delegated Runs are in-container only; the Control Plane does not track them.
+The Devcontainer Runtime hosts a streamable-HTTP MCP server (default `127.0.0.1:8848`). The main harness (Claude Code) calls it to spawn Delegated Runs (`spawn`, with a required `title`), list them (`list_runs`), fetch a run's result (`get_run`), block until a detached run finishes (`await_run`), and stop them (`stop`). The server carries `instructions` framing these as *external subagents* (see `external-subagent-guide.md`). Delegated Runs are in-container only; the Control Plane does not track them.
 
 ## Devcontainer Runtime Injection
 
