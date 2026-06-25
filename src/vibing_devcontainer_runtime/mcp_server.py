@@ -1,7 +1,7 @@
 """build_mcp_server: the in-container MCP server the main harness calls (ADR-0011/0013).
 
 Streamable-HTTP, stateless, JSON responses. Tools delegate to vibing_harness descriptors
-(status) and DelegatedRunManager (spawn/status/result/stop).
+(status) and DelegatedRunManager (spawn/list_runs/get_run/await_run/stop).
 """
 
 from typing import Any
