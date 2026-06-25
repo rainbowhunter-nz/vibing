@@ -12,6 +12,25 @@ from vibing_harness import Executor, HarnessDescriptor
 from vibing_devcontainer_runtime.delegated_runs import DelegatedRunManager
 
 
+_INSTRUCTIONS = """\
+This server provides EXTERNAL SUBAGENTS: full coding-harness runs you dispatch work to,
+complementing the in-process Task subagents of subagent-driven-development. When the user
+says "use external subagent", dispatch the work here.
+
+Dispatch protocol:
+1. spawn(harness, model, prompt, title, detached=true) -> run_id. `title` is a short human
+   label shown in the UI.
+2. Run `vibing delegated wait <run_id>` as a BACKGROUND shell command; its completion
+   auto-wakes you with the result. Do not poll get_run in a loop.
+3. get_run(run_id) -> status + result + error. list_runs() -> all runs. stop(run_id) cancels.
+
+Model rule of thumb:
+- cursor  -> composer-2.5 (or latest Composer): fast, cheap, good default.
+- codex   -> gpt-5.5 (or latest GPT): autonomous CLI coding.
+See docs/external-subagent-guide.md for deeper task -> model routing.
+"""
+
+
 def build_mcp_server(
     executor: Executor,
     descriptors_map: dict[str, HarnessDescriptor],
@@ -20,7 +39,14 @@ def build_mcp_server(
     host: str = "127.0.0.1",
     port: int = 8848,
 ) -> FastMCP:
-    mcp = FastMCP("vibing-harness", host=host, port=port, stateless_http=True, json_response=True)
+    mcp = FastMCP(
+        "vibing-harness",
+        host=host,
+        port=port,
+        stateless_http=True,
+        json_response=True,
+        instructions=_INSTRUCTIONS,
+    )
 
     @mcp.tool()
     async def list_harnesses() -> list[dict[str, Any]]:
@@ -45,13 +71,13 @@ def build_mcp_server(
         return await delegated_runs.spawn(harness, model, prompt, title, cwd=cwd, detached=detached)
 
     @mcp.tool()
-    def get_status(run_id: str) -> dict[str, Any]:
-        """Get the status of a detached Delegated Run."""
-        return delegated_runs.get_status(run_id)
+    def list_runs() -> list[dict[str, Any]]:
+        """List dispatched Delegated Runs (run_id, title, harness, model, status)."""
+        return delegated_runs.list_runs()
 
     @mcp.tool()
-    def get_result(run_id: str) -> dict[str, Any]:
-        """Get the result of a finished Delegated Run."""
+    def get_run(run_id: str) -> dict[str, Any]:
+        """Get a Delegated Run's status, result, and error."""
         return delegated_runs.get_result(run_id)
 
     @mcp.tool()

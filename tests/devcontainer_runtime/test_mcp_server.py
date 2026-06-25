@@ -54,11 +54,19 @@ class FakeDelegatedRuns:
         self.spawned.append((harness, model, prompt, title, cwd, detached))
         return {"run_id": "run-1", "status": "completed", "result": "ok"}
 
-    def get_status(self, run_id):
-        return {"run_id": run_id, "status": "running"}
-
     def get_result(self, run_id):
         return {"run_id": run_id, "status": "completed", "result": "ok", "error": {}}
+
+    def list_runs(self):
+        return [
+            {
+                "run_id": "run-1",
+                "title": "t",
+                "harness": "codex",
+                "model": "gpt-5.5",
+                "status": "running",
+            }
+        ]
 
     async def stop(self, run_id):
         return {"run_id": run_id, "status": "stopped"}
@@ -78,7 +86,26 @@ def _descriptors_map():
 def test_tools_are_registered():
     mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
     names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert {"list_harnesses", "spawn", "get_status", "get_result", "stop", "await_run"} <= names
+    assert {"list_harnesses", "spawn", "list_runs", "get_run", "stop", "await_run"} <= names
+    assert "get_status" not in names and "get_result" not in names
+
+
+def test_server_has_external_subagent_instructions():
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
+    assert mcp.instructions and "external subagent" in mcp.instructions.lower()
+
+
+def test_get_run_returns_status_result_error():
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
+    _content, result = asyncio.run(mcp.call_tool("get_run", {"run_id": "run-1"}))
+    assert result["status"] == "completed" and result["result"] == "ok" and "error" in result
+
+
+def test_list_runs_tool_returns_titles():
+    mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), FakeDelegatedRuns())
+    _content, result = asyncio.run(mcp.call_tool("list_runs", {}))
+    items = result["result"] if isinstance(result, dict) and "result" in result else result
+    assert items[0]["title"] == "t"
 
 
 def test_list_harnesses_returns_statuses():
