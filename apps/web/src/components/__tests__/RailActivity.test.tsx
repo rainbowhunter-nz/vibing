@@ -10,8 +10,8 @@ vi.mock('../../lib/api/endpoints')
 const mockRuns = vi.mocked(fetchDelegatedRuns)
 
 const runs: DelegatedRun[] = [
-  { run_id: 'run-9', harness: 'claude-code', model: 'opus-4.8', status: 'running', result: null, error: null, started_at: '2024-01-15T10:20:00.000Z' },
-  { run_id: 'run-3', harness: 'cursor', model: 'auto', status: 'completed', result: 'done', error: null, started_at: '2024-01-15T09:55:00.000Z' },
+  { run_id: 'run-9', title: 'refactor auth retry', harness: 'claude-code', model: 'opus-4.8', status: 'running', result: null, error: null, started_at: '2024-01-15T10:20:00.000Z' },
+  { run_id: 'run-3', title: 'add parser tests', harness: 'cursor', model: 'auto', status: 'completed', result: 'done', error: null, started_at: '2024-01-15T09:55:00.000Z' },
 ]
 
 function renderAt(path: string) {
@@ -42,9 +42,9 @@ describe('RailActivity', () => {
     mockRuns.mockResolvedValue({ items: runs })
     renderAt('/devcontainers/dc-1')
 
-    await waitFor(() => expect(screen.getByText('run-9')).toBeTruthy())
-    expect(screen.getByText('claude-code · opus-4.8')).toBeTruthy()
-    expect(screen.queryByText('run-3')).toBeNull()
+    await waitFor(() => expect(screen.getByText('refactor auth retry')).toBeTruthy())
+    expect(screen.getByText('run-9 · claude-code · opus-4.8')).toBeTruthy()
+    expect(screen.queryByText('add parser tests')).toBeNull()
     expect(mockRuns).toHaveBeenCalledWith('dc-1')
   })
 

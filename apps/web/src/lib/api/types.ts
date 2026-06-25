@@ -99,6 +99,7 @@ export interface DelegatedRun {
   run_id: string
   harness: string
   model: string
+  title: string
   status: DelegatedRunStatus
   result: string | null
   error: Record<string, unknown> | null

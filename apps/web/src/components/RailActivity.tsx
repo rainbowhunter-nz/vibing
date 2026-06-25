@@ -28,9 +28,9 @@ function ActiveRuns({ id }: { id: string }) {
         >
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
-            <span className="font-mono text-[12px] leading-tight text-text">{run.run_id}</span>
+            <span className="text-[12px] font-medium leading-tight text-text">{run.title}</span>
           </div>
-          <div className="pl-3 text-[11px] leading-tight text-text-subtle">{run.harness} · {run.model}</div>
+          <div className="pl-3 font-mono text-[11px] leading-tight text-text-subtle">{run.run_id} · {run.harness} · {run.model}</div>
         </li>
       ))}
     </ul>

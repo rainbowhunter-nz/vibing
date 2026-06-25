@@ -29,15 +29,15 @@ export const seedHarnesses: Record<string, HarnessStatus[]> = {
 // terminal states; the detail page surfaces only the running ones.
 export const seedDelegatedRuns: Record<string, DelegatedRun[]> = {
   'dc-seed-0001': [
-    { run_id: 'run-9', harness: 'claude-code', model: 'opus-4.8', status: 'running', result: null, error: null, started_at: '2024-01-15T10:20:00.000Z' },
-    { run_id: 'run-8', harness: 'cursor', model: 'auto', status: 'running', result: null, error: null, started_at: '2024-01-15T10:15:00.000Z' },
-    { run_id: 'run-7', harness: 'codex', model: 'gpt-5-codex', status: 'running', result: null, error: null, started_at: '2024-01-15T10:10:00.000Z' },
-    { run_id: 'run-6', harness: 'claude-code', model: 'opus-4.8', status: 'running', result: null, error: null, started_at: '2024-01-15T10:05:00.000Z' },
-    { run_id: 'run-4', harness: 'codex', model: 'gpt-5-codex', status: 'running', result: null, error: null, started_at: '2024-01-15T10:00:00.000Z' },
-    { run_id: 'run-3', harness: 'claude-code', model: 'opus-4.8', status: 'completed', result: 'Refactored auth module; 3 files changed, tests pass.', error: null, started_at: '2024-01-15T09:55:00.000Z' },
-    { run_id: 'run-2', harness: 'cursor', model: 'auto', status: 'failed', result: null, error: { exit_code: 1, stderr_tail: 'ENOENT: package.json not found' }, started_at: '2024-01-15T09:40:00.000Z' },
-    { run_id: 'run-1', harness: 'codex', model: 'gpt-5-codex', status: 'stopped', result: null, error: null, started_at: '2024-01-15T09:20:00.000Z' },
-    { run_id: 'run-0', harness: 'claude-code', model: 'opus-4.8', status: 'completed', result: 'Added unit tests for the parser; coverage 84% → 91%.', error: null, started_at: '2024-01-15T08:50:00.000Z' },
+    { run_id: 'run-9', title: 'refactor auth retry', harness: 'claude-code', model: 'opus-4.8', status: 'running', result: null, error: null, started_at: '2024-01-15T10:20:00.000Z' },
+    { run_id: 'run-8', title: 'wire settings page', harness: 'cursor', model: 'auto', status: 'running', result: null, error: null, started_at: '2024-01-15T10:15:00.000Z' },
+    { run_id: 'run-7', title: 'migrate config loader', harness: 'codex', model: 'gpt-5-codex', status: 'running', result: null, error: null, started_at: '2024-01-15T10:10:00.000Z' },
+    { run_id: 'run-6', title: 'add e2e for rail', harness: 'claude-code', model: 'opus-4.8', status: 'running', result: null, error: null, started_at: '2024-01-15T10:05:00.000Z' },
+    { run_id: 'run-4', title: 'fix flaky test', harness: 'codex', model: 'gpt-5-codex', status: 'running', result: null, error: null, started_at: '2024-01-15T10:00:00.000Z' },
+    { run_id: 'run-3', title: 'refactor auth module', harness: 'claude-code', model: 'opus-4.8', status: 'completed', result: 'Refactored auth module; 3 files changed, tests pass.', error: null, started_at: '2024-01-15T09:55:00.000Z' },
+    { run_id: 'run-2', title: 'install deps', harness: 'cursor', model: 'auto', status: 'failed', result: null, error: { exit_code: 1, stderr_tail: 'ENOENT: package.json not found' }, started_at: '2024-01-15T09:40:00.000Z' },
+    { run_id: 'run-1', title: 'spike caching', harness: 'codex', model: 'gpt-5-codex', status: 'stopped', result: null, error: null, started_at: '2024-01-15T09:20:00.000Z' },
+    { run_id: 'run-0', title: 'add parser unit tests', harness: 'claude-code', model: 'opus-4.8', status: 'completed', result: 'Added unit tests for the parser; coverage 84% → 91%.', error: null, started_at: '2024-01-15T08:50:00.000Z' },
   ],
 }
 
