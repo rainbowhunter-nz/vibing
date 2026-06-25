@@ -7,5 +7,8 @@ cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 IMAGE="${IMAGE:-vibing}"
 
 echo "Building image ${IMAGE}..."
-docker build --load -t "$IMAGE" .
+# Disable BuildKit: the buildx docker-container driver boots a BuildKit
+# container that fails under the host's podman/netavark networking. The
+# Dockerfile uses no BuildKit features, so the native builder suffices.
+DOCKER_BUILDKIT=0 docker build -t "$IMAGE" .
 echo "Built ${IMAGE}."
