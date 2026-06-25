@@ -80,3 +80,9 @@ test('install action drives harness to Installed via SSE refetch', async ({ page
   await page.getByTitle('Install cursor', { exact: true }).click()
   await expect(page.getByTitle('Install cursor', { exact: true })).toHaveCount(0)
 })
+
+test('active runs rail shows delegated-run titles', async ({ page }) => {
+  await page.goto('/devcontainers/dc-seed-0001') // running; has running delegated runs
+  await expect(page.getByText('Active runs')).toBeVisible()
+  await expect(page.getByText('refactor auth retry')).toBeVisible()
+})

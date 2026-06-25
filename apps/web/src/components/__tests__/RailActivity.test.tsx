@@ -38,7 +38,7 @@ afterEach(() => {
 })
 
 describe('RailActivity', () => {
-  it('shows only running runs for the current devcontainer, name + harness · model', async () => {
+  it('shows only running runs for the current devcontainer, title + run_id · harness · model', async () => {
     mockRuns.mockResolvedValue({ items: runs })
     renderAt('/devcontainers/dc-1')
 
