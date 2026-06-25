@@ -9,6 +9,7 @@ def test_delegated_runs_envelope_roundtrip():
                 run_id="run-1",
                 harness="codex",
                 model="gpt-5-codex",
+                title="seed task",
                 status="running",
                 started_at="2026-06-20T00:00:00+00:00",
             )
