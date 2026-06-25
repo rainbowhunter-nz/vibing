@@ -33,10 +33,16 @@ def build_mcp_server(
 
     @mcp.tool()
     async def spawn(
-        harness: str, model: str, prompt: str, detached: bool = False, cwd: str | None = None
+        harness: str,
+        model: str,
+        prompt: str,
+        title: str,
+        detached: bool = False,
+        cwd: str | None = None,
     ) -> dict[str, Any]:
-        """Spawn a Delegated Run. Blocks for the result unless detached=true."""
-        return await delegated_runs.spawn(harness, model, prompt, cwd=cwd, detached=detached)
+        """Spawn an external-subagent Delegated Run. `title` is a short UI label.
+        Blocks for the result unless detached=true."""
+        return await delegated_runs.spawn(harness, model, prompt, title, cwd=cwd, detached=detached)
 
     @mcp.tool()
     def get_status(run_id: str) -> dict[str, Any]:

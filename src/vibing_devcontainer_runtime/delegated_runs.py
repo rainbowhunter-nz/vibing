@@ -27,6 +27,7 @@ class _Run:
     run_id: str
     harness: str
     model: str
+    title: str = ""
     status: str = "running"  # running | completed | failed | stopped
     result: str = ""
     error: dict[str, Any] = field(default_factory=dict)
@@ -66,6 +67,7 @@ class DelegatedRunManager:
         harness: str,
         model: str,
         prompt: str,
+        title: str,
         *,
         cwd: str | None = None,
         detached: bool = False,
@@ -77,7 +79,13 @@ class DelegatedRunManager:
             raise RuntimeError("delegated runs at capacity")
 
         self._counter += 1
-        run = _Run(run_id=f"run-{self._counter}", harness=harness, model=model, started_at=_now())
+        run = _Run(
+            run_id=f"run-{self._counter}",
+            harness=harness,
+            model=model,
+            title=title,
+            started_at=_now(),
+        )
         self._runs[run.run_id] = run
 
         argv = descriptor.build_spawn_argv(model, prompt)
@@ -165,6 +173,7 @@ class DelegatedRunManager:
         return [
             {
                 "run_id": r.run_id,
+                "title": r.title,
                 "harness": r.harness,
                 "model": r.model,
                 "status": r.status,

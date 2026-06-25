@@ -77,12 +77,20 @@ def _mgr(**kwargs: Any) -> DelegatedRunManager:
     )
 
 
+def test_spawn_stores_title_in_list_runs():
+    mgr = _mgr(factory=lambda *a: ScriptedProcess(CompletedCommand(0, "ok", "")))
+    asyncio.run(mgr.spawn("codex", "gpt-5.5", "do it", "refactor auth retry"))
+    item = mgr.list_runs()[0]
+    assert item["title"] == "refactor auth retry"
+    assert item["run_id"] == "run-1"
+
+
 def test_blocking_spawn_returns_result():
     def factory(argv, cwd, env):
         return ScriptedProcess(CompletedCommand(0, "the answer\n", ""))
 
     mgr = _mgr(factory=factory)
-    out = asyncio.run(mgr.spawn("codex", "gpt-5.4", "do it"))
+    out = asyncio.run(mgr.spawn("codex", "gpt-5.4", "do it", "t"))
     assert out == {"run_id": "run-1", "status": "completed", "result": "the answer"}
 
 
@@ -95,7 +103,7 @@ def test_spawn_uses_workspace_as_default_cwd_and_spawn_env():
         return ScriptedProcess(CompletedCommand(0, "ok", ""))
 
     mgr = _mgr(factory=factory)
-    asyncio.run(mgr.spawn("codex", "m", "p"))
+    asyncio.run(mgr.spawn("codex", "m", "p", "t"))
     assert captured["cwd"] == "/ws"
 
 
@@ -104,7 +112,7 @@ def test_failed_run_status():
         return ScriptedProcess(CompletedCommand(2, "", "boom"))
 
     mgr = _mgr(factory=factory)
-    out = asyncio.run(mgr.spawn("codex", "m", "p"))
+    out = asyncio.run(mgr.spawn("codex", "m", "p", "t"))
     assert out["status"] == "failed"
     assert mgr.get_result("run-1")["error"]["exit_code"] == 2
 
@@ -112,7 +120,7 @@ def test_failed_run_status():
 def test_unauthenticated_harness_raises():
     mgr = _mgr(descriptors_map={"codex": FakeDescriptor(authed=False)})
     with pytest.raises(RuntimeError, match="not authenticated"):
-        asyncio.run(mgr.spawn("codex", "m", "p"))
+        asyncio.run(mgr.spawn("codex", "m", "p", "t"))
 
 
 def test_detached_spawn_returns_running_then_pollable():
@@ -123,7 +131,7 @@ def test_detached_spawn_returns_running_then_pollable():
 
     async def scenario():
         mgr = _mgr(factory=factory)
-        started = await mgr.spawn("codex", "m", "p", detached=True)
+        started = await mgr.spawn("codex", "m", "p", "t", detached=True)
         assert started == {"run_id": "run-1", "status": "running"}
         assert mgr.get_status("run-1")["status"] == "running"
         gate.set()
@@ -142,9 +150,9 @@ def test_capacity_cap_rejects_when_full():
 
     async def scenario():
         mgr = _mgr(factory=factory, max_concurrent=1)
-        await mgr.spawn("codex", "m", "p", detached=True)
+        await mgr.spawn("codex", "m", "p", "t", detached=True)
         with pytest.raises(RuntimeError, match="at capacity"):
-            await mgr.spawn("codex", "m", "p", detached=True)
+            await mgr.spawn("codex", "m", "p", "t", detached=True)
         gate.set()
         await mgr.wait_all()
 
@@ -156,7 +164,7 @@ def test_stop_preserves_terminal_status_of_completed_run():
 
     async def scenario():
         mgr = _mgr(factory=lambda *a: proc)
-        await mgr.spawn("codex", "m", "p")  # blocking — completes before stop
+        await mgr.spawn("codex", "m", "p", "t")  # blocking — completes before stop
         out = await mgr.stop("run-1")
         assert out["status"] == "completed"
         assert mgr.get_status("run-1")["status"] == "completed"
@@ -170,7 +178,7 @@ def test_stop_terminates_detached_run():
 
     async def scenario():
         mgr = _mgr(factory=lambda *a: proc)
-        await mgr.spawn("codex", "m", "p", detached=True)
+        await mgr.spawn("codex", "m", "p", "t", detached=True)
         out = await mgr.stop("run-1")
         assert out["status"] == "stopped"
         assert proc.terminated is True
@@ -202,7 +210,7 @@ def test_report_hook_fires_and_lists_runs():
 
     async def scenario():
         mgr.report = _report
-        out = await mgr.spawn("codex", "m", "do it")
+        out = await mgr.spawn("codex", "m", "do it", "t")
         assert out["status"] in {"completed", "failed"}
         assert len(reports) >= 2
         last = mgr.list_runs()
@@ -216,11 +224,11 @@ def test_wait_exception_marks_failed_and_frees_slot():
     async def scenario():
         mgr = _mgr(factory=lambda *a: BoomProcess(), max_concurrent=1)
         # blocking spawn — must return failed without raising
-        out = await mgr.spawn("codex", "m", "p")
+        out = await mgr.spawn("codex", "m", "p", "t")
         assert out["status"] == "failed"
 
         # slot must be freed — second spawn must not raise "at capacity"
-        out2 = await mgr.spawn("codex", "m", "p")
+        out2 = await mgr.spawn("codex", "m", "p", "t")
         assert out2["status"] == "failed"
 
     asyncio.run(scenario())
@@ -234,7 +242,7 @@ def test_await_run_returns_when_detached_run_completes():
 
     async def scenario():
         mgr = _mgr(factory=factory)
-        await mgr.spawn("codex", "m", "p", detached=True)
+        await mgr.spawn("codex", "m", "p", "t", detached=True)
         waiter = asyncio.ensure_future(mgr.await_run("run-1"))
         assert not waiter.done()  # blocks while running
         gate.set()
@@ -248,7 +256,7 @@ def test_await_run_returns_when_detached_run_completes():
 def test_await_run_returns_immediately_when_already_terminal():
     async def scenario():
         mgr = _mgr(factory=lambda *a: ScriptedProcess(CompletedCommand(0, "done", "")))
-        await mgr.spawn("codex", "m", "p")  # blocking -> already completed
+        await mgr.spawn("codex", "m", "p", "t")  # blocking -> already completed
         out = await mgr.await_run("run-1")
         assert out["status"] == "completed"
         assert out["result"] == "done"
@@ -264,7 +272,7 @@ def test_await_run_times_out_while_running():
 
     async def scenario():
         mgr = _mgr(factory=factory)
-        await mgr.spawn("codex", "m", "p", detached=True)
+        await mgr.spawn("codex", "m", "p", "t", detached=True)
         out = await mgr.await_run("run-1", timeout=0.01)
         assert out == {"run_id": "run-1", "status": "running", "timed_out": True}
         gate.set()
@@ -281,7 +289,7 @@ def test_await_run_returns_when_run_stopped():
 
     async def scenario():
         mgr = _mgr(factory=factory)
-        await mgr.spawn("codex", "m", "p", detached=True)
+        await mgr.spawn("codex", "m", "p", "t", detached=True)
         waiter = asyncio.ensure_future(mgr.await_run("run-1"))
         await mgr.stop("run-1")
         out = await waiter
@@ -307,7 +315,7 @@ def test_await_run_returns_failed_payload_for_failed_detached_run():
 
     async def scenario():
         mgr = _mgr(factory=factory)
-        await mgr.spawn("codex", "m", "p", detached=True)
+        await mgr.spawn("codex", "m", "p", "t", detached=True)
         waiter = asyncio.ensure_future(mgr.await_run("run-1"))
         assert not waiter.done()
         gate.set()

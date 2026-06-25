@@ -50,8 +50,8 @@ class FakeDelegatedRuns:
         self.spawned: list[tuple[Any, ...]] = []
         self.awaited: tuple[str, float] | None = None
 
-    async def spawn(self, harness, model, prompt, *, cwd=None, detached=False):
-        self.spawned.append((harness, model, prompt, cwd, detached))
+    async def spawn(self, harness, model, prompt, title, *, cwd=None, detached=False):
+        self.spawned.append((harness, model, prompt, title, cwd, detached))
         return {"run_id": "run-1", "status": "completed", "result": "ok"}
 
     def get_status(self, run_id):
@@ -93,9 +93,11 @@ def test_spawn_forwards_args_and_returns_outcome():
     runs = FakeDelegatedRuns()
     mcp = build_mcp_server(FakeExecutor(), _descriptors_map(), runs)
     _content, result = asyncio.run(
-        mcp.call_tool("spawn", {"harness": "codex", "model": "gpt-5.4", "prompt": "go"})
+        mcp.call_tool(
+            "spawn", {"harness": "codex", "model": "gpt-5.5", "prompt": "go", "title": "demo"}
+        )
     )
-    assert runs.spawned == [("codex", "gpt-5.4", "go", None, False)]
+    assert runs.spawned == [("codex", "gpt-5.5", "go", "demo", None, False)]
     assert result["status"] == "completed" and result["result"] == "ok"
 
 
